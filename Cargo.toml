@@ -9,3 +9,11 @@ homepage = "https://github.com/danimaribeiro/tuxedo"
 repository = "https://github.com/danimaribeiro/tuxedo"
 
 [dependencies]
+
+[dev-dependencies]
+insta = "1"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -1,0 +1,14 @@
+---
+source: src/lexer.rs
+expression: tokens
+---
+[
+    Ident(
+        "puts",
+    ),
+    StringLit(
+        "hello world",
+    ),
+    Newline,
+    Eof,
+]
