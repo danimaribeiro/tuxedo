@@ -1,0 +1,8 @@
+/.bundle/
+/vendor/
+/pkg/
+/exe/*/tuxedo
+/exe/*/tuxedo.exe
+/spec/reports/
+/tmp/
+Gemfile.lock

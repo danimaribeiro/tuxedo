@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# RubyGems executable shims assume a gem's executables are Ruby scripts, so
+# this file exists purely to locate and exec the real, compiled `tuxedo`
+# binary for the current platform.
+
+require "tuxedo/r"
+
+begin
+  command = [Tuxedo::R.executable, *ARGV]
+  if Gem.win_platform?
+    # `exec` can fail to locate the binary on Windows; `system` is more reliable there.
+    system(*command, exception: true)
+  else
+    exec(*command)
+  end
+rescue Tuxedo::R::UnsupportedPlatformException, Tuxedo::R::ExecutableNotFoundException => e
+  warn "ERROR: #{e.message}"
+  exit 1
+end

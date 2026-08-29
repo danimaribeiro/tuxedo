@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+            gem_platform: arm64-darwin
+          - target: x86_64-apple-darwin
+            os: macos-13
+            gem_platform: x86_64-darwin
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            gem_platform: x86_64-linux
+            use_cross: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            gem_platform: aarch64-linux
+            use_cross: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            gem_platform: x86_64-linux-musl
+            use_cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            gem_platform: aarch64-linux-musl
+            use_cross: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (native)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp target/${{ matrix.target }}/release/tuxedo staging/tuxedo
+          chmod +x staging/tuxedo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tuxedo-${{ matrix.gem_platform }}
+          path: staging/tuxedo
+
+  package:
+    name: Package gems
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: ruby
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble platform binaries
+        run: |
+          set -eu
+          cd ruby
+          for dir in ../artifacts/tuxedo-*/; do
+            platform=$(basename "$dir" | sed 's/^tuxedo-//')
+            mkdir -p "exe/$platform"
+            cp "$dir/tuxedo" "exe/$platform/tuxedo"
+            chmod +x "exe/$platform/tuxedo"
+          done
+
+      - name: Build gems
+        run: |
+          cd ruby
+          bundle exec rake gem:ruby
+          for platform in arm64-darwin x86_64-darwin x86_64-linux aarch64-linux x86_64-linux-musl aarch64-linux-musl; do
+            bundle exec rake "gem:${platform}"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gems
+          path: ruby/pkg/*.gem
+
+      # Uncomment once RUBYGEMS_API_KEY is configured as a repo secret.
+      # - name: Push to RubyGems
+      #   env:
+      #     GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+      #   run: |
+      #     for gem in ruby/pkg/*.gem; do
+      #       gem push "$gem"
+      #     done
