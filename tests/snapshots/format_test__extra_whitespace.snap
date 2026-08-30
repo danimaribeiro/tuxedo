@@ -1,0 +1,5 @@
+---
+source: tests/format_test.rs
+expression: output
+---
+puts "hello world"

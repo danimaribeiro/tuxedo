@@ -43,7 +43,8 @@ impl Visit<'_> for Formatter {
 
     fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
         self.output.push('"');
-        self.output.push_str(std::str::from_utf8(node.unescaped()).unwrap_or(""));
+        self.output
+            .push_str(std::str::from_utf8(node.unescaped()).unwrap_or(""));
         self.output.push('"');
     }
 }
