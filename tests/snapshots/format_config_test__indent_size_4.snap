@@ -1,0 +1,9 @@
+---
+source: tests/format_config_test.rs
+expression: output
+---
+class Dog
+    def speak
+        puts "woof"
+    end
+end

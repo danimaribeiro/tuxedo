@@ -1,11 +1,9 @@
-//! Golden/snapshot tests for the formatter.
+//! Formatter tests.
 //!
-//! Each `.rb` file under `tests/fixtures/format/` is formatted, and the
-//! output is checked against a committed `insta` snapshot. Run
-//! `cargo insta review` to accept new/changed snapshots.
-//!
-//! Every fixture is also checked for idempotency: formatting already
-//! formatted code should be a no-op.
+//! Each `.rb` file under `tests/fixtures/format/` must already be
+//! formatted. Two checks per fixture:
+//!   1. Stability:   format(input) == input
+//!   2. Idempotency: format(format(input)) == format(input)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,27 +30,21 @@ fn collect_rb_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn format_fixtures() {
-    let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/format");
-
     for path in fixture_paths() {
         let input = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
 
-        let snapshot_name = path
-            .strip_prefix(&fixtures_dir)
-            .expect("fixture path should be under fixtures_dir")
-            .with_extension("")
-            .to_string_lossy()
-            .replace(std::path::MAIN_SEPARATOR, "__");
-
         let output = tuxedo::format(&input);
 
-        insta::assert_snapshot!(snapshot_name, output);
+        assert_eq!(
+            input, output,
+            "fixture is not already formatted: {}",
+            path.display()
+        );
 
         let reformatted = tuxedo::format(&output);
         assert_eq!(
-            output,
-            reformatted,
+            output, reformatted,
             "formatting is not idempotent for fixture: {}",
             path.display()
         );

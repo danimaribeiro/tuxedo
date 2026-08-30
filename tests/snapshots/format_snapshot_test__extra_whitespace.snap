@@ -1,0 +1,7 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+puts "hello"
+puts "world"
+puts "foo"

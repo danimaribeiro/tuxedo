@@ -1,44 +1,317 @@
+use crate::config::FormatConfig;
 use ruby_prism::Visit;
 
 pub fn format(source: &str) -> String {
+    format_with_config(source, &FormatConfig::default())
+}
+
+pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
     let result = ruby_prism::parse(source.as_bytes());
     let node = result.node();
 
-    let mut formatter = Formatter::new();
+    let mut formatter = Formatter::new(config);
     formatter.visit(&node);
-    formatter.output
+    let trimmed = formatter.output.trim_end_matches('\n');
+    let mut result = trimmed.to_string();
+    result.push('\n');
+    result
 }
 
 struct Formatter {
     output: String,
+    indent: usize,
+    inline: bool,
+    indent_str: String,
 }
 
 impl Formatter {
-    fn new() -> Self {
+    fn new(config: &FormatConfig) -> Self {
         Self {
             output: String::new(),
+            indent: 0,
+            inline: false,
+            indent_str: " ".repeat(config.indent_size),
+        }
+    }
+
+    fn write_indent(&mut self) {
+        for _ in 0..self.indent {
+            self.output.push_str(&self.indent_str);
+        }
+    }
+
+    fn ensure_blank_line(&mut self) {
+        if !self.output.is_empty() && !self.output.ends_with("\n\n") {
+            self.output.push('\n');
         }
     }
 }
 
+fn is_block_statement(node: &ruby_prism::Node) -> bool {
+    matches!(
+        node,
+        ruby_prism::Node::ClassNode { .. }
+            | ruby_prism::Node::DefNode { .. }
+            | ruby_prism::Node::IfNode { .. }
+            | ruby_prism::Node::UnlessNode { .. }
+    )
+}
+
 impl Visit<'_> for Formatter {
+    fn visit_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
+        let stmts = node.body();
+        for (i, stmt) in stmts.iter().enumerate() {
+            if i > 0 && self.indent == 0 && is_block_statement(&stmt) {
+                self.ensure_blank_line();
+            }
+            self.visit(&stmt);
+        }
+    }
+
     fn visit_call_node(&mut self, node: &ruby_prism::CallNode<'_>) {
         let name = node.name();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
+        let inline = self.inline;
+        self.inline = false;
+
+        if let Some(receiver) = node.receiver() {
+            if !inline {
+                self.write_indent();
+            }
+            self.inline = true;
+            self.visit(&receiver);
+            self.output.push(' ');
+            self.output.push_str(name_str);
+            if let Some(args) = node.arguments() {
+                self.output.push(' ');
+                let arguments = args.arguments();
+                for (i, arg) in arguments.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.inline = true;
+                    self.visit(&arg);
+                }
+            }
+            if !inline {
+                self.output.push('\n');
+            }
+        } else {
+            if !inline {
+                self.write_indent();
+            }
+            self.output.push_str(name_str);
+
+            if let Some(args) = node.arguments() {
+                self.output.push(' ');
+                let arguments = args.arguments();
+                for (i, arg) in arguments.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.visit(&arg);
+                }
+            }
+
+            if !inline {
+                self.output.push('\n');
+            }
+        }
+    }
+
+    fn visit_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
+        let name = node.name();
+        let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
+
+        self.write_indent();
+        self.output.push_str("def ");
         self.output.push_str(name_str);
 
-        if let Some(args) = node.arguments() {
-            self.output.push(' ');
-            let arguments = args.arguments();
-            for (i, arg) in arguments.iter().enumerate() {
-                if i > 0 {
-                    self.output.push_str(", ");
-                }
-                self.visit(&arg);
-            }
+        if let Some(params) = node.parameters() {
+            self.output.push('(');
+            self.visit_parameters_node(&params);
+            self.output.push(')');
         }
 
         self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.body() {
+            self.visit(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_required_parameter_node(&mut self, node: &ruby_prism::RequiredParameterNode<'_>) {
+        let name = node.name();
+        self.output
+            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    }
+
+    fn visit_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) {
+        let requireds = node.requireds();
+        for (i, param) in requireds.iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            self.visit(&param);
+        }
+    }
+
+    fn visit_local_variable_read_node(
+        &mut self,
+        node: &ruby_prism::LocalVariableReadNode<'_>,
+    ) {
+        let name = node.name();
+        self.output
+            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    }
+
+    fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
+        self.write_indent();
+        self.output.push_str("class ");
+        self.visit(&node.constant_path());
+
+        if let Some(superclass) = node.superclass() {
+            self.output.push_str(" < ");
+            self.visit(&superclass);
+        }
+
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.body() {
+            self.visit(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
+        if let Some(parent) = node.parent() {
+            self.visit(&parent);
+            self.output.push_str("::");
+        }
+        let name = node.name();
+        self.output
+            .push_str(std::str::from_utf8(name.unwrap().as_slice()).unwrap_or(""));
+    }
+
+    fn visit_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
+        let name = node.name();
+        self.output
+            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    }
+
+    fn visit_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
+        let keyword = node.if_keyword_loc().map(|k| k.as_slice());
+        let is_elsif = keyword == Some(b"elsif");
+
+        if !is_elsif {
+            self.write_indent();
+        }
+        self.output.push_str(if is_elsif { "elsif " } else { "if " });
+        self.inline = true;
+        self.visit(&node.predicate());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        if let Some(consequent) = node.subsequent() {
+            self.write_indent();
+            self.visit(&consequent);
+        } else {
+            self.write_indent();
+            self.output.push_str("end\n");
+        }
+    }
+
+    fn visit_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
+        self.output.push_str("else\n");
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
+        self.write_indent();
+        self.output.push_str("unless ");
+        self.inline = true;
+        self.visit(&node.predicate());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        if let Some(consequent) = node.else_clause() {
+            self.write_indent();
+            self.visit_else_node(&consequent);
+        } else {
+            self.write_indent();
+            self.output.push_str("end\n");
+        }
+    }
+
+    fn visit_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
+        self.inline = true;
+        self.visit(&node.left());
+        let op = node.operator_loc().as_slice();
+        let op_str = std::str::from_utf8(op).unwrap_or("&&");
+        self.output.push(' ');
+        self.output.push_str(op_str);
+        self.output.push(' ');
+        self.inline = true;
+        self.visit(&node.right());
+    }
+
+    fn visit_or_node(&mut self, node: &ruby_prism::OrNode<'_>) {
+        self.inline = true;
+        self.visit(&node.left());
+        let op = node.operator_loc().as_slice();
+        let op_str = std::str::from_utf8(op).unwrap_or("||");
+        self.output.push(' ');
+        self.output.push_str(op_str);
+        self.output.push(' ');
+        self.inline = true;
+        self.visit(&node.right());
+    }
+
+    fn visit_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) {
+        self.output.push_str("true");
+    }
+
+    fn visit_false_node(&mut self, _node: &ruby_prism::FalseNode<'_>) {
+        self.output.push_str("false");
+    }
+
+    fn visit_nil_node(&mut self, _node: &ruby_prism::NilNode<'_>) {
+        self.output.push_str("nil");
+    }
+
+    fn visit_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) {
+        let loc = node.location();
+        let src = std::str::from_utf8(loc.as_slice()).unwrap_or("0");
+        self.output.push_str(src);
     }
 
     fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
