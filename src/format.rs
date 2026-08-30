@@ -1,36 +1,49 @@
-use crate::lexer;
-use crate::parser::{self, Node};
+use ruby_prism::Visit;
 
 pub fn format(source: &str) -> String {
-    let tokens = lexer::lex(source);
-    let nodes = parser::parse(&tokens);
+    let result = ruby_prism::parse(source.as_bytes());
+    let node = result.node();
 
-    let mut out = String::new();
-    for node in &nodes {
-        format_node(node, &mut out);
-        out.push('\n');
-    }
-    out
+    let mut formatter = Formatter::new();
+    formatter.visit(&node);
+    formatter.output
 }
 
-fn format_node(node: &Node, out: &mut String) {
-    match node {
-        Node::Call { name, args } => {
-            out.push_str(name);
-            if !args.is_empty() {
-                out.push(' ');
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        out.push_str(", ");
-                    }
-                    format_node(arg, out);
+struct Formatter {
+    output: String,
+}
+
+impl Formatter {
+    fn new() -> Self {
+        Self {
+            output: String::new(),
+        }
+    }
+}
+
+impl Visit<'_> for Formatter {
+    fn visit_call_node(&mut self, node: &ruby_prism::CallNode<'_>) {
+        let name = node.name();
+        let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
+        self.output.push_str(name_str);
+
+        if let Some(args) = node.arguments() {
+            self.output.push(' ');
+            let arguments = args.arguments();
+            for (i, arg) in arguments.iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(", ");
                 }
+                self.visit(&arg);
             }
         }
-        Node::StringLit(s) => {
-            out.push('"');
-            out.push_str(s);
-            out.push('"');
-        }
+
+        self.output.push('\n');
+    }
+
+    fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
+        self.output.push('"');
+        self.output.push_str(std::str::from_utf8(node.unescaped()).unwrap_or(""));
+        self.output.push('"');
     }
 }

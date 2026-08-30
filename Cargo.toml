@@ -9,6 +9,7 @@ homepage = "https://github.com/danimaribeiro/tuxedo"
 repository = "https://github.com/danimaribeiro/tuxedo"
 
 [dependencies]
+ruby-prism = "1.9.0"
 
 [dev-dependencies]
 insta = "1"
