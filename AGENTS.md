@@ -80,7 +80,27 @@ speedup factor.
 - `src/walk.rs` — shared file-walking/parallel-processing logic (`walk_and_process`) used
   by both the `format` and `check` commands; respects `.gitignore` unless `--no-ignore`.
 - `src/format.rs` — the formatter, built on `ruby-prism` (Ruby's own parser, via the
-  `ruby-prism` crate) to parse source into an AST and re-emit formatted code.
+  `ruby-prism` crate) to parse source into an AST and re-emit formatted code. When adding
+  or debugging a `visit_*_node` method, dump the actual Prism AST first instead of guessing
+  field names/types: `echo '<ruby snippet>' | cargo run --release -- format --ast` (stdin
+  only). It prints node names, field order, and which fields are optional/repeated —
+  matches `ruby_prism`'s generated Rust accessors 1:1.
+
+  **Useful Debugging Commands for Formatter Development:**
+  ```bash
+  # 1. Dump AST for a specific ruby construct
+  echo 'config = args.last.is_a?(Hash) ? args.pop : {}' | cargo run --release -- format --ast
+  
+  # 2. Test how the formatter handles a specific ruby snippet
+  echo 'yield unless pretend?' | cargo run --release -- format
+
+  # 3. Explore the ruby-prism Rust API documentation locally
+  cargo doc --package ruby-prism --open
+  
+  # 4. View the raw generated Rust node structures directly (useful for finding field accessors)
+  find target -name bindings.rs | grep ruby-prism | xargs grep -A 10 "pub struct IfNode"
+  ```
+
 - `src/lint.rs` — lint rule checking (`check`) and auto-fixing (`fix`), producing
   `Diagnostic`s (rule name, message, line/col).
 - `src/config.rs` — config loading. Looks for `.tuxedo.toml`, walking up from the current
