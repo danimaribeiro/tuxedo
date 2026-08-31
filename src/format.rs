@@ -21,6 +21,7 @@ struct Formatter {
     output: String,
     indent: usize,
     inline: bool,
+    single_line: bool,
     indent_str: String,
 }
 
@@ -30,6 +31,7 @@ impl Formatter {
             output: String::new(),
             indent: 0,
             inline: false,
+            single_line: false,
             indent_str: " ".repeat(config.indent_size),
         }
     }
@@ -95,6 +97,18 @@ fn is_block_statement(node: &ruby_prism::Node) -> bool {
 impl Visit<'_> for Formatter {
     fn visit_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
         let stmts = node.body();
+
+        if self.single_line {
+            for (i, stmt) in stmts.iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str("; ");
+                }
+                self.inline = true;
+                self.visit(&stmt);
+            }
+            return;
+        }
+
         for (i, stmt) in stmts.iter().enumerate() {
             if i > 0 && self.indent == 0 && is_block_statement(&stmt) {
                 self.ensure_blank_line();
@@ -200,6 +214,9 @@ impl Visit<'_> for Formatter {
                     }
                 }
             }
+            if let Some(block) = node.block() {
+                self.visit(&block);
+            }
             if !inline {
                 self.output.push('\n');
             }
@@ -220,6 +237,9 @@ impl Visit<'_> for Formatter {
                 }
             }
 
+            if let Some(block) = node.block() {
+                self.visit(&block);
+            }
             if !inline {
                 self.output.push('\n');
             }
@@ -265,6 +285,70 @@ impl Visit<'_> for Formatter {
                 self.output.push_str(", ");
             }
             self.visit(&param);
+        }
+    }
+
+    fn visit_block_parameters_node(&mut self, node: &ruby_prism::BlockParametersNode<'_>) {
+        self.output.push('|');
+        if let Some(params) = node.parameters() {
+            self.visit_parameters_node(&params);
+        }
+        self.output.push('|');
+    }
+
+    fn visit_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
+        let brace = node.opening_loc().as_slice() == b"{";
+
+        self.output.push(' ');
+        self.output.push_str(if brace { "{" } else { "do" });
+
+        if let Some(params) = node.parameters() {
+            self.output.push(' ');
+            self.inline = true;
+            self.visit(&params);
+        }
+
+        if brace {
+            if let Some(body) = node.body() {
+                self.output.push(' ');
+                let was_single_line = self.single_line;
+                self.single_line = true;
+                self.inline = true;
+                self.visit(&body);
+                self.single_line = was_single_line;
+            }
+            self.output.push_str(" }");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+            if let Some(body) = node.body() {
+                self.visit(&body);
+            }
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
+    }
+
+    fn visit_yield_node(&mut self, node: &ruby_prism::YieldNode<'_>) {
+        let inline = self.inline;
+        self.inline = false;
+        if !inline {
+            self.write_indent();
+        }
+        self.output.push_str("yield");
+        if let Some(args) = node.arguments() {
+            self.output.push(' ');
+            for (i, arg) in args.arguments().iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(", ");
+                }
+                self.inline = true;
+                self.visit(&arg);
+            }
+        }
+        if !inline {
+            self.output.push('\n');
         }
     }
 
