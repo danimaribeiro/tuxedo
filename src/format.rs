@@ -114,10 +114,75 @@ impl Visit<'_> for Formatter {
             if !inline {
                 self.write_indent();
             }
-            if name_str == "!" && node.arguments().is_none() {
+
+            let is_index = name_str == "[]" || name_str == "[]=";
+            let is_identifier_call = name_str
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_');
+
+            if is_index {
+                self.inline = true;
+                self.visit(&receiver);
+                self.output.push('[');
+                let mut args: Vec<_> = node
+                    .arguments()
+                    .map(|a| a.arguments().iter().collect())
+                    .unwrap_or_default();
+                let value = if name_str == "[]=" { args.pop() } else { None };
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    self.inline = true;
+                    self.visit(arg);
+                }
+                self.output.push(']');
+                if let Some(value) = value {
+                    self.output.push_str(" = ");
+                    self.inline = true;
+                    self.visit(&value);
+                }
+            } else if name_str == "!" && node.arguments().is_none() {
                 self.output.push('!');
                 self.inline = true;
                 self.visit(&receiver);
+            } else if is_identifier_call {
+                self.inline = true;
+                self.visit(&receiver);
+                let op = node
+                    .call_operator_loc()
+                    .and_then(|l| std::str::from_utf8(l.as_slice()).ok())
+                    .unwrap_or(".");
+                self.output.push_str(op);
+
+                if node.is_attribute_write() {
+                    self.output
+                        .push_str(name_str.strip_suffix('=').unwrap_or(name_str));
+                    self.output.push_str(" = ");
+                    if let Some(value) = node.arguments().and_then(|a| a.arguments().iter().next())
+                    {
+                        self.inline = true;
+                        self.visit(&value);
+                    }
+                } else {
+                    self.output.push_str(name_str);
+                    if let Some(args) = node.arguments() {
+                        let arguments = args.arguments();
+                        let parenthesized = node.opening_loc().is_some();
+                        self.output.push(if parenthesized { '(' } else { ' ' });
+                        for (i, arg) in arguments.iter().enumerate() {
+                            if i > 0 {
+                                self.output.push_str(", ");
+                            }
+                            self.inline = true;
+                            self.visit(&arg);
+                        }
+                        if parenthesized {
+                            self.output.push(')');
+                        }
+                    }
+                }
             } else {
                 self.inline = true;
                 self.visit(&receiver);
