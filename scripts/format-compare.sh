@@ -11,6 +11,14 @@
 #   test-projects/<project>/tuxedo   - source formatted by our formatter
 #   test-projects/<project>/rubocop  - source autocorrected by rubocop (Layout only)
 #
+# rubocop runs with --force-default-config, ignoring the project's own
+# .rubocop.yml. tuxedo has no per-project config for individual style
+# choices yet, so the only fair baseline is rubocop's own defaults — a
+# project's local overrides (e.g. Thor's AllCops: DisabledByDefault: true,
+# which silently turns off most Layout cops rather than customizing them)
+# would otherwise produce a misleading reference full of un-corrected,
+# never-checked code.
+#
 # Follow up on a mismatch with:
 #   scripts/format-diff.sh <project> <relative/path.rb>
 
@@ -50,8 +58,8 @@ cp -r "$SRC" "$BASE/rubocop"
 echo "Running tuxedo format..."
 "$TUXEDO_BIN" format --quiet "$BASE/tuxedo"
 
-echo "Running rubocop -A (Layout cops only)..."
-(cd "$BASE/rubocop" && rubocop --only Layout -A --no-color . >/dev/null 2>&1) || true
+echo "Running rubocop -A (Layout cops only, default config)..."
+(cd "$BASE/rubocop" && rubocop --only Layout --force-default-config -A --no-color . >/dev/null 2>&1) || true
 
 echo
 echo "Comparing output..."

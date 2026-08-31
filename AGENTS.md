@@ -61,7 +61,12 @@ scripts/format-diff.sh <name> <relative/path.rb>   # show the diff for one misma
 them file-by-file. Comparison is scoped to RuboCop's `Layout` department (whitespace,
 indentation, blank lines) rather than the full `Style`/`Lint` cop set, since tuxedo's
 formatter is a formatting tool, not a full linter — `Style` cops rewrite idiom choices
-(quote style, `.each` vs `.map`, etc.) that aren't formatting concerns.
+(quote style, `.each` vs `.map`, etc.) that aren't formatting concerns. rubocop also runs
+with `--force-default-config`, ignoring the project's own `.rubocop.yml` — tuxedo has no
+per-project style config yet, so rubocop's own defaults are the only fair baseline (a
+project's local overrides, like Thor's `AllCops: DisabledByDefault: true`, can silently
+turn off Layout cops rather than customize them, which produced a misleading reference
+full of un-corrected code before this was added).
 
 ## Architecture
 
