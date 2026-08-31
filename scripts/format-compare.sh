@@ -55,11 +55,13 @@ rm -rf "$BASE/tuxedo" "$BASE/rubocop"
 cp -r "$SRC" "$BASE/tuxedo"
 cp -r "$SRC" "$BASE/rubocop"
 
+TIMEFORMAT='%R'
+
 echo "Running tuxedo format..."
-"$TUXEDO_BIN" format --quiet "$BASE/tuxedo"
+tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null; } 2>&1 )
 
 echo "Running rubocop -A (Layout cops only, default config)..."
-(cd "$BASE/rubocop" && rubocop --only Layout --force-default-config -A --no-color . >/dev/null 2>&1) || true
+rubocop_time=$( { time (cd "$BASE/rubocop" && rubocop --only Layout --force-default-config -A --no-color . >/dev/null 2>&1 || true); } 2>&1 )
 
 echo
 echo "Comparing output..."
@@ -76,6 +78,9 @@ done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
 
 echo
 echo "$mismatches / $total files differ between tuxedo and rubocop output."
+echo
+echo "tuxedo:  ${tuxedo_time}s"
+echo "rubocop: ${rubocop_time}s"
 if [ "$mismatches" -gt 0 ]; then
   echo
   echo "To see a diff for one file:"
