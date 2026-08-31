@@ -43,6 +43,26 @@ CI runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and `c
 for the Rust side, and `bundle exec rake test` (from `ruby/`) for the gem side — run these
 before considering a change done.
 
+## Testing against real-world Ruby projects
+
+`test-projects/` (gitignored, not committed) holds real Ruby codebases used to stress-test
+the formatter beyond the fixtures in `tests/fixtures/`. To add one, clone its source into
+`test-projects/<name>/source`. Then:
+
+```bash
+scripts/format-compare.sh <name>              # format with tuxedo + autocorrect with
+                                               # rubocop (Layout cops only), diff the two,
+                                               # list files that differ
+scripts/format-diff.sh <name> <relative/path.rb>   # show the diff for one mismatching file
+```
+
+`format-compare.sh` writes two working copies next to the source
+(`test-projects/<name>/tuxedo` and `.../rubocop`, both regenerated on each run) and compares
+them file-by-file. Comparison is scoped to RuboCop's `Layout` department (whitespace,
+indentation, blank lines) rather than the full `Style`/`Lint` cop set, since tuxedo's
+formatter is a formatting tool, not a full linter — `Style` cops rewrite idiom choices
+(quote style, `.each` vs `.map`, etc.) that aren't formatting concerns.
+
 ## Architecture
 
 - `src/main.rs` — CLI entry point (clap-based). Two subcommands: `format` and `check`.
