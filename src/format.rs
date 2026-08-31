@@ -45,6 +45,24 @@ impl Formatter {
             self.output.push('\n');
         }
     }
+
+    fn write_assignment(&mut self, name: &[u8], op: &str, value: &ruby_prism::Node<'_>) {
+        let inline = self.inline;
+        self.inline = false;
+        if !inline {
+            self.write_indent();
+        }
+        self.output
+            .push_str(std::str::from_utf8(name).unwrap_or(""));
+        self.output.push(' ');
+        self.output.push_str(op);
+        self.output.push(' ');
+        self.inline = true;
+        self.visit(value);
+        if !inline {
+            self.output.push('\n');
+        }
+    }
 }
 
 fn is_block_statement(node: &ruby_prism::Node) -> bool {
@@ -64,6 +82,7 @@ impl Visit<'_> for Formatter {
             if i > 0 && self.indent == 0 && is_block_statement(&stmt) {
                 self.ensure_blank_line();
             }
+            self.inline = false;
             self.visit(&stmt);
         }
     }
@@ -171,6 +190,43 @@ impl Visit<'_> for Formatter {
         let name = node.name();
         self.output
             .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    }
+
+    fn visit_local_variable_write_node(&mut self, node: &ruby_prism::LocalVariableWriteNode<'_>) {
+        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    }
+
+    fn visit_local_variable_operator_write_node(
+        &mut self,
+        node: &ruby_prism::LocalVariableOperatorWriteNode<'_>,
+    ) {
+        let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
+        self.write_assignment(node.name().as_slice(), op, &node.value());
+    }
+
+    fn visit_local_variable_or_write_node(
+        &mut self,
+        node: &ruby_prism::LocalVariableOrWriteNode<'_>,
+    ) {
+        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    }
+
+    fn visit_local_variable_and_write_node(
+        &mut self,
+        node: &ruby_prism::LocalVariableAndWriteNode<'_>,
+    ) {
+        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    }
+
+    fn visit_instance_variable_write_node(
+        &mut self,
+        node: &ruby_prism::InstanceVariableWriteNode<'_>,
+    ) {
+        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    }
+
+    fn visit_constant_write_node(&mut self, node: &ruby_prism::ConstantWriteNode<'_>) {
+        self.write_assignment(node.name().as_slice(), "=", &node.value());
     }
 
     fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
