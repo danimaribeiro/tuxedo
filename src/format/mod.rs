@@ -1,6 +1,8 @@
 use crate::config::FormatConfig;
 use ruby_prism::Visit;
 
+mod literals;
+
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
 }
@@ -1405,40 +1407,32 @@ impl Visit<'_> for Formatter {
         }
     }
 
-    fn visit_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("true"));
+    fn visit_true_node(&mut self, node: &ruby_prism::TrueNode<'_>) {
+        self.fmt_true_node(node);
     }
 
-    fn visit_false_node(&mut self, _node: &ruby_prism::FalseNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("false"));
+    fn visit_false_node(&mut self, node: &ruby_prism::FalseNode<'_>) {
+        self.fmt_false_node(node);
     }
 
-    fn visit_nil_node(&mut self, _node: &ruby_prism::NilNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("nil"));
+    fn visit_nil_node(&mut self, node: &ruby_prism::NilNode<'_>) {
+        self.fmt_nil_node(node);
     }
 
     fn visit_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_integer_node(node);
     }
 
     fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
-        let unescaped = node.unescaped();
-        self.write_leaf(|f| {
-            f.output.push('"');
-            f.write_bytes(unescaped);
-            f.output.push('"');
-        });
+        self.fmt_string_node(node);
     }
 
     fn visit_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_symbol_node(node);
     }
 
     fn visit_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_float_node(node);
     }
 
     fn visit_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) {
