@@ -85,6 +85,7 @@ fn is_block_statement(node: &ruby_prism::Node) -> bool {
             | ruby_prism::Node::DefNode { .. }
             | ruby_prism::Node::IfNode { .. }
             | ruby_prism::Node::UnlessNode { .. }
+            | ruby_prism::Node::CaseNode { .. }
     )
 }
 
@@ -532,6 +533,50 @@ impl Visit<'_> for Formatter {
             self.write_indent();
             self.output.push_str("end\n");
         }
+    }
+
+    fn visit_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
+        self.write_indent();
+        self.output.push_str("case");
+        if let Some(predicate) = node.predicate() {
+            self.output.push(' ');
+            self.inline = true;
+            self.visit(&predicate);
+            self.inline = false;
+        }
+        self.output.push('\n');
+
+        for when in node.conditions().iter() {
+            self.visit(&when);
+        }
+
+        if let Some(consequent) = node.else_clause() {
+            self.write_indent();
+            self.visit_else_node(&consequent);
+        } else {
+            self.write_indent();
+            self.output.push_str("end\n");
+        }
+    }
+
+    fn visit_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
+        self.write_indent();
+        self.output.push_str("when ");
+        for (i, condition) in node.conditions().iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(&condition);
+        }
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
     }
 
     fn visit_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
