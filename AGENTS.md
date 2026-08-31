@@ -66,7 +66,15 @@ with `--force-default-config`, ignoring the project's own `.rubocop.yml` — tux
 per-project style config yet, so rubocop's own defaults are the only fair baseline (a
 project's local overrides, like Thor's `AllCops: DisabledByDefault: true`, can silently
 turn off Layout cops rather than customize them, which produced a misleading reference
-full of un-corrected code before this was added).
+full of un-corrected code before this was added). It also sets `BUNDLE_GEMFILE=/dev/null`
+for the rubocop run — a project that pins its own rubocop version in `Gemfile.lock` (e.g.
+Rails) otherwise makes the globally-installed `rubocop` refuse to run at all, which
+`format-compare.sh` would silently swallow as "no changes" without this. The script
+prints a warning and the run's tail output if it detects that failure anyway, in case a
+future rubocop version changes the error text this check looks for.
+
+`format-compare.sh` also prints wall-clock timing for both formatters and the resulting
+speedup factor.
 
 ## Architecture
 

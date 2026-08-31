@@ -61,7 +61,15 @@ echo "Running tuxedo format..."
 tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null; } 2>&1 )
 
 echo "Running rubocop -A (Layout cops only, default config)..."
-rubocop_time=$( { time (cd "$BASE/rubocop" && rubocop --only Layout --force-default-config -A --no-color . >/dev/null 2>&1 || true); } 2>&1 )
+rubocop_log="$(mktemp)"
+rubocop_time=$( { time (cd "$BASE/rubocop" && BUNDLE_GEMFILE=/dev/null rubocop --only Layout --force-default-config -A --no-color . >"$rubocop_log" 2>&1 || true); } 2>&1 )
+if grep -q "Could not find proper version of rubocop" "$rubocop_log"; then
+  echo "warning: rubocop refused to run because $PROJECT pins its own rubocop version" \
+    "in Gemfile.lock (worked around with BUNDLE_GEMFILE=/dev/null, but double-check" \
+    "the output below if this project still looks off)." >&2
+  tail -5 "$rubocop_log" >&2
+fi
+rm -f "$rubocop_log"
 
 echo
 echo "Comparing output..."
