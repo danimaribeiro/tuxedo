@@ -6,15 +6,31 @@ pub fn format(source: &str) -> String {
 }
 
 pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
-    let result = ruby_prism::parse(source.as_bytes());
-    let node = result.node();
+    let parsed = ruby_prism::parse(source.as_bytes());
+    let node = parsed.node();
 
-    let mut formatter = Formatter::new(config);
+    let mut formatter = Formatter::new(source, &parsed, config);
     formatter.visit(&node);
+    formatter.flush_remaining_comments();
     let trimmed = formatter.output.trim_end_matches('\n');
     let mut result = trimmed.to_string();
     result.push('\n');
     result
+}
+
+struct CommentSpan {
+    start: usize,
+    text: String,
+}
+
+fn line_starts(source: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    for (i, b) in source.bytes().enumerate() {
+        if b == b'\n' {
+            starts.push(i + 1);
+        }
+    }
+    starts
 }
 
 struct Formatter {
@@ -23,22 +39,80 @@ struct Formatter {
     inline: bool,
     single_line: bool,
     indent_str: String,
+    comments: Vec<CommentSpan>,
+    comment_cursor: usize,
+    line_starts: Vec<usize>,
 }
 
 impl Formatter {
-    fn new(config: &FormatConfig) -> Self {
+    fn new(source: &str, parsed: &ruby_prism::ParseResult<'_>, config: &FormatConfig) -> Self {
+        let comments = parsed
+            .comments()
+            .map(|c| CommentSpan {
+                start: c.location().start_offset(),
+                text: String::from_utf8_lossy(c.text()).into_owned(),
+            })
+            .collect();
+
         Self {
             output: String::new(),
             indent: 0,
             inline: false,
             single_line: false,
             indent_str: " ".repeat(config.indent_size),
+            comments,
+            comment_cursor: 0,
+            line_starts: line_starts(source),
         }
     }
 
     fn write_indent(&mut self) {
         for _ in 0..self.indent {
             self.output.push_str(&self.indent_str);
+        }
+    }
+
+    fn line_of(&self, offset: usize) -> usize {
+        match self.line_starts.binary_search(&offset) {
+            Ok(i) => i,
+            Err(i) => i - 1,
+        }
+    }
+
+    fn emit_leading_comments_before(&mut self, line: usize) {
+        while self.comment_cursor < self.comments.len()
+            && self.line_of(self.comments[self.comment_cursor].start) < line
+        {
+            self.write_indent();
+            self.output
+                .push_str(&self.comments[self.comment_cursor].text);
+            self.output.push('\n');
+            self.comment_cursor += 1;
+        }
+    }
+
+    fn emit_trailing_comment_if_same_line(&mut self, line: usize) {
+        if self.comment_cursor < self.comments.len()
+            && self.line_of(self.comments[self.comment_cursor].start) == line
+        {
+            if self.output.ends_with('\n') {
+                self.output.pop();
+            }
+            self.output.push(' ');
+            self.output
+                .push_str(&self.comments[self.comment_cursor].text);
+            self.output.push('\n');
+            self.comment_cursor += 1;
+        }
+    }
+
+    fn flush_remaining_comments(&mut self) {
+        while self.comment_cursor < self.comments.len() {
+            self.write_indent();
+            self.output
+                .push_str(&self.comments[self.comment_cursor].text);
+            self.output.push('\n');
+            self.comment_cursor += 1;
         }
     }
 
@@ -110,11 +184,17 @@ impl Visit<'_> for Formatter {
         }
 
         for (i, stmt) in stmts.iter().enumerate() {
+            let start_line = self.line_of(stmt.location().start_offset());
+            self.emit_leading_comments_before(start_line);
+
             if i > 0 && self.indent == 0 && is_block_statement(&stmt) {
                 self.ensure_blank_line();
             }
             self.inline = false;
             self.visit(&stmt);
+
+            let end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
+            self.emit_trailing_comment_if_same_line(end_line);
         }
     }
 
