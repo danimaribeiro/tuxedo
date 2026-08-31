@@ -2,6 +2,7 @@ use crate::config::FormatConfig;
 use ruby_prism::Visit;
 
 mod literals;
+mod variables;
 
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
@@ -730,30 +731,26 @@ impl Visit<'_> for Formatter {
     }
 
     fn visit_local_variable_read_node(&mut self, node: &ruby_prism::LocalVariableReadNode<'_>) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_local_variable_read_node(node);
     }
 
     fn visit_global_variable_read_node(&mut self, node: &ruby_prism::GlobalVariableReadNode<'_>) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_global_variable_read_node(node);
     }
 
     fn visit_instance_variable_read_node(
         &mut self,
         node: &ruby_prism::InstanceVariableReadNode<'_>,
     ) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_instance_variable_read_node(node);
     }
 
     fn visit_class_variable_read_node(&mut self, node: &ruby_prism::ClassVariableReadNode<'_>) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_class_variable_read_node(node);
     }
 
-    fn visit_self_node(&mut self, _node: &ruby_prism::SelfNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("self"));
+    fn visit_self_node(&mut self, node: &ruby_prism::SelfNode<'_>) {
+        self.fmt_self_node(node);
     }
 
     fn visit_local_variable_write_node(&mut self, node: &ruby_prism::LocalVariableWriteNode<'_>) {
