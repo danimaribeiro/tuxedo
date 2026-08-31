@@ -81,6 +81,10 @@ echo "$mismatches / $total files differ between tuxedo and rubocop output."
 echo
 echo "tuxedo:  ${tuxedo_time}s"
 echo "rubocop: ${rubocop_time}s"
+speedup=$(awk -v a="$rubocop_time" -v b="$tuxedo_time" 'BEGIN { if (b > 0) printf "%.1f", a / b }')
+if [ -n "$speedup" ]; then
+  echo "tuxedo is ${speedup}x faster"
+fi
 if [ "$mismatches" -gt 0 ]; then
   echo
   echo "To see a diff for one file:"
