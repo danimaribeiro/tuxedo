@@ -100,8 +100,9 @@ impl Formatter {
                 self.output.pop();
             }
             self.output.push(' ');
-            self.output
-                .push_str(&Self::format_comment(&self.comments[self.comment_cursor].text));
+            self.output.push_str(&Self::format_comment(
+                &self.comments[self.comment_cursor].text,
+            ));
             self.output.push('\n');
             self.comment_cursor += 1;
         }
@@ -110,8 +111,9 @@ impl Formatter {
     fn flush_remaining_comments(&mut self) {
         while self.comment_cursor < self.comments.len() {
             self.write_indent();
-            self.output
-                .push_str(&Self::format_comment(&self.comments[self.comment_cursor].text));
+            self.output.push_str(&Self::format_comment(
+                &self.comments[self.comment_cursor].text,
+            ));
             self.output.push('\n');
             self.comment_cursor += 1;
         }
@@ -138,22 +140,22 @@ impl Formatter {
             self.write_indent();
         }
         self.inline = true;
-        
+
         let start_len = self.output.len();
         write_target(self);
         self.output.push(' ');
         self.output.push_str(op);
         self.output.push(' ');
         let prefix_len = self.output.len() - start_len;
-        
+
         let extra_indent = prefix_len / self.indent_str.len();
         self.indent += extra_indent;
-        
+
         self.inline = true;
         self.visit(value);
-        
+
         self.indent -= extra_indent;
-        
+
         if !inline && !self.output.ends_with('\n') {
             self.output.push('\n');
         }
@@ -257,8 +259,9 @@ impl Visit<'_> for Formatter {
                     self.ensure_blank_line();
                 }
                 self.write_indent();
-                self.output
-                    .push_str(&Self::format_comment(&self.comments[self.comment_cursor].text));
+                let formatted =
+                    Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+                self.output.push_str(&formatted);
                 self.output.push('\n');
                 prev_end_line = Some(comment_line);
                 self.comment_cursor += 1;
