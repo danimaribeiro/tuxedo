@@ -86,6 +86,9 @@ fn is_block_statement(node: &ruby_prism::Node) -> bool {
             | ruby_prism::Node::IfNode { .. }
             | ruby_prism::Node::UnlessNode { .. }
             | ruby_prism::Node::CaseNode { .. }
+            | ruby_prism::Node::WhileNode { .. }
+            | ruby_prism::Node::UntilNode { .. }
+            | ruby_prism::Node::ForNode { .. }
     )
 }
 
@@ -533,6 +536,63 @@ impl Visit<'_> for Formatter {
             self.write_indent();
             self.output.push_str("end\n");
         }
+    }
+
+    fn visit_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) {
+        self.write_indent();
+        self.output.push_str("while ");
+        self.inline = true;
+        self.visit(&node.predicate());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
+        self.write_indent();
+        self.output.push_str("until ");
+        self.inline = true;
+        self.visit(&node.predicate());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
+        self.write_indent();
+        self.output.push_str("for ");
+        self.inline = true;
+        self.visit(&node.index());
+        self.output.push_str(" in ");
+        self.inline = true;
+        self.visit(&node.collection());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.visit_statements_node(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
     }
 
     fn visit_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
