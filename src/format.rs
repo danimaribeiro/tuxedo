@@ -133,10 +133,10 @@ impl Formatter {
         value: &ruby_prism::Node<'_>,
     ) {
         let inline = self.inline;
-        self.inline = false;
         if !inline {
             self.write_indent();
         }
+        self.inline = true;
         write_target(self);
         self.output.push(' ');
         self.output.push_str(op);
@@ -151,6 +151,69 @@ impl Formatter {
     fn write_bytes(&mut self, bytes: &[u8]) {
         self.output
             .push_str(std::str::from_utf8(bytes).unwrap_or(""));
+    }
+
+    /// Renders a call's argument list, including a block-pass argument
+    /// (`&:sym` / `&block`) if present. Prism stores a block-pass in the
+    /// same `block()` slot as a real `{ }`/`do...end` block, but unlike a
+    /// real block it belongs inside the argument list (comma-joined with
+    /// any positional args), not after the closing paren.
+    fn write_call_args(&mut self, node: &ruby_prism::CallNode<'_>, parenthesized: bool) {
+        let positional: Vec<_> = node
+            .arguments()
+            .map(|a| a.arguments().iter().collect())
+            .unwrap_or_default();
+        let block_pass = match node.block() {
+            Some(b @ ruby_prism::Node::BlockArgumentNode { .. }) => Some(b),
+            _ => None,
+        };
+
+        if positional.is_empty() && block_pass.is_none() && !parenthesized {
+            return;
+        }
+
+        self.output.push(if parenthesized { '(' } else { ' ' });
+        for (i, arg) in positional.iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(arg);
+        }
+        if let Some(block_pass) = &block_pass {
+            if !positional.is_empty() {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(block_pass);
+        }
+        if parenthesized {
+            self.output.push(')');
+        }
+    }
+
+    /// Renders a call's real block (`{ }` / `do...end`), if it has one —
+    /// as opposed to a block-pass argument, which write_call_args handles.
+    fn write_call_block(&mut self, node: &ruby_prism::CallNode<'_>) {
+        if let Some(block @ ruby_prism::Node::BlockNode { .. }) = node.block() {
+            self.visit(&block);
+        }
+    }
+
+    /// Writes a leaf/literal node (a symbol, a literal, a variable read, ...)
+    /// that carries no indentation or newline of its own. Most such nodes
+    /// only ever appear as a sub-expression (inline), but they can also be a
+    /// whole statement on their own (e.g. a bare `true` as a method body),
+    /// in which case they need to behave like any other statement.
+    fn write_leaf(&mut self, write: impl FnOnce(&mut Self)) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        write(self);
+        if !inline {
+            self.output.push('\n');
+        }
     }
 }
 
@@ -261,21 +324,8 @@ impl Visit<'_> for Formatter {
                     }
                 } else {
                     self.output.push_str(name_str);
-                    if let Some(args) = node.arguments() {
-                        let arguments = args.arguments();
-                        let parenthesized = node.opening_loc().is_some();
-                        self.output.push(if parenthesized { '(' } else { ' ' });
-                        for (i, arg) in arguments.iter().enumerate() {
-                            if i > 0 {
-                                self.output.push_str(", ");
-                            }
-                            self.inline = true;
-                            self.visit(&arg);
-                        }
-                        if parenthesized {
-                            self.output.push(')');
-                        }
-                    }
+                    let parenthesized = node.opening_loc().is_some();
+                    self.write_call_args(node, parenthesized);
                 }
             } else {
                 self.inline = true;
@@ -294,9 +344,7 @@ impl Visit<'_> for Formatter {
                     }
                 }
             }
-            if let Some(block) = node.block() {
-                self.visit(&block);
-            }
+            self.write_call_block(node);
             if !inline {
                 self.output.push('\n');
             }
@@ -305,21 +353,8 @@ impl Visit<'_> for Formatter {
                 self.write_indent();
             }
             self.output.push_str(name_str);
-
-            if let Some(args) = node.arguments() {
-                self.output.push(' ');
-                let arguments = args.arguments();
-                for (i, arg) in arguments.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
-                    }
-                    self.visit(&arg);
-                }
-            }
-
-            if let Some(block) = node.block() {
-                self.visit(&block);
-            }
+            self.write_call_args(node, false);
+            self.write_call_block(node);
             if !inline {
                 self.output.push('\n');
             }
@@ -332,6 +367,15 @@ impl Visit<'_> for Formatter {
 
         self.write_indent();
         self.output.push_str("def ");
+        if let Some(receiver) = node.receiver() {
+            self.inline = true;
+            self.visit(&receiver);
+            let op = node
+                .operator_loc()
+                .and_then(|l| std::str::from_utf8(l.as_slice()).ok())
+                .unwrap_or(".");
+            self.output.push_str(op);
+        }
         self.output.push_str(name_str);
 
         if let Some(params) = node.parameters() {
@@ -433,9 +477,30 @@ impl Visit<'_> for Formatter {
     }
 
     fn visit_local_variable_read_node(&mut self, node: &ruby_prism::LocalVariableReadNode<'_>) {
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+        let bytes = node.name().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    fn visit_global_variable_read_node(&mut self, node: &ruby_prism::GlobalVariableReadNode<'_>) {
+        let bytes = node.name().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    fn visit_instance_variable_read_node(
+        &mut self,
+        node: &ruby_prism::InstanceVariableReadNode<'_>,
+    ) {
+        let bytes = node.name().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    fn visit_class_variable_read_node(&mut self, node: &ruby_prism::ClassVariableReadNode<'_>) {
+        let bytes = node.name().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    fn visit_self_node(&mut self, _node: &ruby_prism::SelfNode<'_>) {
+        self.write_leaf(|f| f.output.push_str("self"));
     }
 
     fn visit_local_variable_write_node(&mut self, node: &ruby_prism::LocalVariableWriteNode<'_>) {
@@ -647,6 +712,14 @@ impl Visit<'_> for Formatter {
         }
     }
 
+    fn visit_block_argument_node(&mut self, node: &ruby_prism::BlockArgumentNode<'_>) {
+        self.output.push('&');
+        if let Some(expression) = node.expression() {
+            self.inline = true;
+            self.visit(&expression);
+        }
+    }
+
     fn visit_array_node(&mut self, node: &ruby_prism::ArrayNode<'_>) {
         let bracketed = node.opening_loc().is_some();
         if bracketed {
@@ -667,6 +740,7 @@ impl Visit<'_> for Formatter {
     fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
         self.write_indent();
         self.output.push_str("class ");
+        self.inline = true;
         self.visit(&node.constant_path());
 
         if let Some(superclass) = node.superclass() {
@@ -674,6 +748,23 @@ impl Visit<'_> for Formatter {
             self.visit(&superclass);
         }
 
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.body() {
+            self.visit(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
+    fn visit_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
+        self.write_indent();
+        self.output.push_str("module ");
+        self.inline = true;
+        self.visit(&node.constant_path());
         self.output.push('\n');
 
         self.indent += 1;
@@ -697,9 +788,8 @@ impl Visit<'_> for Formatter {
     }
 
     fn visit_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+        let bytes = node.name().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
     }
 
     fn visit_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
@@ -893,40 +983,39 @@ impl Visit<'_> for Formatter {
     }
 
     fn visit_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) {
-        self.output.push_str("true");
+        self.write_leaf(|f| f.output.push_str("true"));
     }
 
     fn visit_false_node(&mut self, _node: &ruby_prism::FalseNode<'_>) {
-        self.output.push_str("false");
+        self.write_leaf(|f| f.output.push_str("false"));
     }
 
     fn visit_nil_node(&mut self, _node: &ruby_prism::NilNode<'_>) {
-        self.output.push_str("nil");
+        self.write_leaf(|f| f.output.push_str("nil"));
     }
 
     fn visit_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) {
-        let loc = node.location();
-        let src = std::str::from_utf8(loc.as_slice()).unwrap_or("0");
-        self.output.push_str(src);
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
     }
 
     fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
-        self.output.push('"');
-        self.output
-            .push_str(std::str::from_utf8(node.unescaped()).unwrap_or(""));
-        self.output.push('"');
+        let unescaped = node.unescaped();
+        self.write_leaf(|f| {
+            f.output.push('"');
+            f.write_bytes(unescaped);
+            f.output.push('"');
+        });
     }
 
     fn visit_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {
-        let loc = node.location();
-        self.output
-            .push_str(std::str::from_utf8(loc.as_slice()).unwrap_or(""));
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
     }
 
     fn visit_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
-        let loc = node.location();
-        self.output
-            .push_str(std::str::from_utf8(loc.as_slice()).unwrap_or("0.0"));
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
     }
 
     fn visit_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) {
