@@ -2,6 +2,7 @@ use crate::config::FormatConfig;
 use ruby_prism::Visit;
 
 mod assignment;
+mod classes;
 mod collections;
 mod literals;
 mod variables;
@@ -923,60 +924,19 @@ impl Visit<'_> for Formatter {
     }
 
     fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
-        let class_line = self.line_of(node.location().start_offset());
-        self.write_indent();
-        self.output.push_str("class ");
-        self.inline = true;
-        self.visit(&node.constant_path());
-
-        if let Some(superclass) = node.superclass() {
-            self.output.push_str(" < ");
-            self.visit(&superclass);
-        }
-
-        self.output.push('\n');
-        self.emit_trailing_comment_if_same_line(class_line);
-
-        self.indent += 1;
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-        self.indent -= 1;
-
-        self.write_indent();
-        self.output.push_str("end\n");
+        self.fmt_class_node(node);
     }
 
     fn visit_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
-        self.write_indent();
-        self.output.push_str("module ");
-        self.inline = true;
-        self.visit(&node.constant_path());
-        self.output.push('\n');
-
-        self.indent += 1;
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-        self.indent -= 1;
-
-        self.write_indent();
-        self.output.push_str("end\n");
+        self.fmt_module_node(node);
     }
 
     fn visit_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
-        if let Some(parent) = node.parent() {
-            self.visit(&parent);
-            self.output.push_str("::");
-        }
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.unwrap().as_slice()).unwrap_or(""));
+        self.fmt_constant_path_node(node);
     }
 
     fn visit_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        self.fmt_constant_read_node(node);
     }
 
     fn visit_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
