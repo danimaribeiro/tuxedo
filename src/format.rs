@@ -79,18 +79,6 @@ impl Formatter {
         }
     }
 
-    fn emit_leading_comments_before(&mut self, line: usize) {
-        while self.comment_cursor < self.comments.len()
-            && self.line_of(self.comments[self.comment_cursor].start) < line
-        {
-            self.write_indent();
-            self.output
-                .push_str(&self.comments[self.comment_cursor].text);
-            self.output.push('\n');
-            self.comment_cursor += 1;
-        }
-    }
-
     fn emit_trailing_comment_if_same_line(&mut self, line: usize) {
         if self.comment_cursor < self.comments.len()
             && self.line_of(self.comments[self.comment_cursor].start) == line
@@ -217,20 +205,6 @@ impl Formatter {
     }
 }
 
-fn is_block_statement(node: &ruby_prism::Node) -> bool {
-    matches!(
-        node,
-        ruby_prism::Node::ClassNode { .. }
-            | ruby_prism::Node::DefNode { .. }
-            | ruby_prism::Node::IfNode { .. }
-            | ruby_prism::Node::UnlessNode { .. }
-            | ruby_prism::Node::CaseNode { .. }
-            | ruby_prism::Node::WhileNode { .. }
-            | ruby_prism::Node::UntilNode { .. }
-            | ruby_prism::Node::ForNode { .. }
-    )
-}
-
 impl Visit<'_> for Formatter {
     fn visit_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
         let stmts = node.body();
@@ -246,18 +220,37 @@ impl Visit<'_> for Formatter {
             return;
         }
 
-        for (i, stmt) in stmts.iter().enumerate() {
-            let start_line = self.line_of(stmt.location().start_offset());
-            self.emit_leading_comments_before(start_line);
+        let mut prev_end_line: Option<usize> = None;
 
-            if i > 0 && self.indent == 0 && is_block_statement(&stmt) {
+        for stmt in stmts.iter() {
+            let start_line = self.line_of(stmt.location().start_offset());
+
+            while self.comment_cursor < self.comments.len() {
+                let comment_line = self.line_of(self.comments[self.comment_cursor].start);
+                if comment_line >= start_line {
+                    break;
+                }
+                if prev_end_line.is_some_and(|prev| comment_line > prev + 1) {
+                    self.ensure_blank_line();
+                }
+                self.write_indent();
+                self.output
+                    .push_str(&self.comments[self.comment_cursor].text);
+                self.output.push('\n');
+                prev_end_line = Some(comment_line);
+                self.comment_cursor += 1;
+            }
+
+            if prev_end_line.is_some_and(|prev| start_line > prev + 1) {
                 self.ensure_blank_line();
             }
+
             self.inline = false;
             self.visit(&stmt);
 
             let end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
             self.emit_trailing_comment_if_same_line(end_line);
+            prev_end_line = Some(end_line);
         }
     }
 
