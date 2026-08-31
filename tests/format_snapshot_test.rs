@@ -59,7 +59,8 @@ fn format_messy_fixtures() {
 
         let reformatted = tuxedo::format(&output);
         assert_eq!(
-            output, reformatted,
+            output,
+            reformatted,
             "formatting is not idempotent for fixture: {}",
             path.display()
         );

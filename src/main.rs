@@ -186,13 +186,11 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
                 }
             }
 
-            if fix_mode {
-                if let Some(fixed) = tuxedo::fix(source) {
-                    if let Err(e) = std::fs::write(path, &fixed) {
-                        eprintln!("error: could not write {}: {e}", path.display());
-                    }
-                    return Some(fixed);
+            if fix_mode && let Some(fixed) = tuxedo::fix(source) {
+                if let Err(e) = std::fs::write(path, &fixed) {
+                    eprintln!("error: could not write {}: {e}", path.display());
                 }
+                return Some(fixed);
             }
 
             if diagnostics.is_empty() {

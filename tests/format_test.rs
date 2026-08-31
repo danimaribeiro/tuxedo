@@ -37,14 +37,16 @@ fn format_fixtures() {
         let output = tuxedo::format(&input);
 
         assert_eq!(
-            input, output,
+            input,
+            output,
             "fixture is not already formatted: {}",
             path.display()
         );
 
         let reformatted = tuxedo::format(&output);
         assert_eq!(
-            output, reformatted,
+            output,
+            reformatted,
             "formatting is not idempotent for fixture: {}",
             path.display()
         );

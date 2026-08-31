@@ -78,19 +78,25 @@ impl Visit<'_> for Formatter {
             if !inline {
                 self.write_indent();
             }
-            self.inline = true;
-            self.visit(&receiver);
-            self.output.push(' ');
-            self.output.push_str(name_str);
-            if let Some(args) = node.arguments() {
+            if name_str == "!" && node.arguments().is_none() {
+                self.output.push('!');
+                self.inline = true;
+                self.visit(&receiver);
+            } else {
+                self.inline = true;
+                self.visit(&receiver);
                 self.output.push(' ');
-                let arguments = args.arguments();
-                for (i, arg) in arguments.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
+                self.output.push_str(name_str);
+                if let Some(args) = node.arguments() {
+                    self.output.push(' ');
+                    let arguments = args.arguments();
+                    for (i, arg) in arguments.iter().enumerate() {
+                        if i > 0 {
+                            self.output.push_str(", ");
+                        }
+                        self.inline = true;
+                        self.visit(&arg);
                     }
-                    self.inline = true;
-                    self.visit(&arg);
                 }
             }
             if !inline {
@@ -161,10 +167,7 @@ impl Visit<'_> for Formatter {
         }
     }
 
-    fn visit_local_variable_read_node(
-        &mut self,
-        node: &ruby_prism::LocalVariableReadNode<'_>,
-    ) {
+    fn visit_local_variable_read_node(&mut self, node: &ruby_prism::LocalVariableReadNode<'_>) {
         let name = node.name();
         self.output
             .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
@@ -215,7 +218,8 @@ impl Visit<'_> for Formatter {
         if !is_elsif {
             self.write_indent();
         }
-        self.output.push_str(if is_elsif { "elsif " } else { "if " });
+        self.output
+            .push_str(if is_elsif { "elsif " } else { "if " });
         self.inline = true;
         self.visit(&node.predicate());
         self.inline = false;
