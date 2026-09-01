@@ -1,4 +1,5 @@
 use super::Formatter;
+use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
 impl Formatter {
@@ -187,18 +188,21 @@ impl Formatter {
         }
 
         if brace {
-            match node.body() {
+            let doc = match node.body() {
                 Some(body) => {
-                    self.output.push(' ');
                     let was_single_line = self.single_line;
                     self.single_line = true;
-                    self.inline = true;
-                    self.visit(&body);
+                    let body_doc = self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(&body);
+                    });
                     self.single_line = was_single_line;
-                    self.output.push_str(" }");
+                    Doc::text(" ").append(body_doc).append(Doc::text(" }"))
                 }
-                None => self.output.push('}'),
-            }
+                None => Doc::text("}"),
+            };
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
         } else {
             self.output.push('\n');
             self.indent += 1;
