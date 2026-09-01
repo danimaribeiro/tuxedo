@@ -1,4 +1,5 @@
 use super::Formatter;
+use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
 impl Formatter {
@@ -69,6 +70,45 @@ impl Formatter {
                     self.write_call_args(node, parenthesized);
                 }
             } else {
+                // Operator-style call (`a + b`, `a <=> b`, ...). With
+                // exactly one argument -- the overwhelmingly common case --
+                // wrap it as a Doc so an overlong line breaks after the
+                // operator with the argument indented one level, instead of
+                // always rendering flat regardless of width.
+                let single_arg = node
+                    .arguments()
+                    .map(|a| a.arguments().iter().collect::<Vec<_>>())
+                    .filter(|args| args.len() == 1)
+                    .map(|mut args| args.remove(0));
+
+                if let Some(arg) = single_arg {
+                    let receiver_doc = self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(&receiver);
+                    });
+                    let arg_doc = self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(&arg);
+                    });
+                    let nest_width = self.indent_width() + self.indent_str.len();
+                    let doc = receiver_doc
+                        .append(Doc::text(" "))
+                        .append(Doc::text(name_str.to_string()))
+                        .append(
+                            Doc::line()
+                                .append(arg_doc)
+                                .nest(nest_width as isize)
+                                .group(),
+                        );
+                    let rendered = self.render_doc_to_string(doc);
+                    self.output.push_str(&rendered);
+                    self.write_call_block(node);
+                    if !inline {
+                        self.output.push('\n');
+                    }
+                    return;
+                }
+
                 self.inline = true;
                 self.visit(&receiver);
                 self.output.push(' ');
