@@ -187,15 +187,18 @@ impl Formatter {
         }
 
         if brace {
-            if let Some(body) = node.body() {
-                self.output.push(' ');
-                let was_single_line = self.single_line;
-                self.single_line = true;
-                self.inline = true;
-                self.visit(&body);
-                self.single_line = was_single_line;
+            match node.body() {
+                Some(body) => {
+                    self.output.push(' ');
+                    let was_single_line = self.single_line;
+                    self.single_line = true;
+                    self.inline = true;
+                    self.visit(&body);
+                    self.single_line = was_single_line;
+                    self.output.push_str(" }");
+                }
+                None => self.output.push('}'),
             }
-            self.output.push_str(" }");
         } else {
             self.output.push('\n');
             self.indent += 1;

@@ -7,7 +7,7 @@
 16	spec/no_warnings_spec.rb	✅
 17	lib/thor/line_editor.rb	deferred (reflow-vs-preserve policy, not yet decided)
 19	spec/exit_condition_spec.rb	✅
-20	spec/nested_context_spec.rb	
+20	spec/nested_context_spec.rb	✅
 22	spec/encoding_spec.rb	✅
 28	spec/line_editor/basic_spec.rb	✅
 29	lib/thor/nested_context.rb	✅
