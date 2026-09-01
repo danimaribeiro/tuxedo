@@ -1,4 +1,4 @@
-use super::{Formatter, has_real_block};
+use super::{Formatter, assoc_has_real_block, has_real_block};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
@@ -81,27 +81,50 @@ impl Formatter {
     }
 
     pub(super) fn fmt_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) {
-        let elements = node.elements();
-        if elements.iter().next().is_none() {
+        let elements: Vec<_> = node.elements().iter().collect();
+        if elements.is_empty() {
             self.write_leaf(|f| f.output.push_str("{}"));
             return;
         }
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
+
+        if elements.iter().any(assoc_has_real_block) {
+            self.write_leaf(|f| {
+                f.output.push_str("{ ");
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        f.output.push_str(", ");
+                    }
+                    f.inline = true;
+                    f.visit(element);
+                }
+                f.output.push_str(" }");
+            });
+            return;
         }
-        self.output.push_str("{ ");
-        for (i, element) in elements.iter().enumerate() {
-            if i > 0 {
-                self.output.push_str(", ");
-            }
-            self.inline = true;
-            self.visit(&element);
-        }
-        self.output.push_str(" }");
-        if !inline {
-            self.output.push('\n');
-        }
+
+        self.write_leaf(|f| {
+            let leaves: Vec<_> = elements
+                .iter()
+                .map(|element| {
+                    f.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(element);
+                    })
+                })
+                .collect();
+
+            let nest_width = f.indent_width() + f.indent_str.len();
+            let doc = Doc::text("{ ")
+                .append(
+                    Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
+                        .nest(nest_width as isize)
+                        .group(),
+                )
+                .append(Doc::text(" }"));
+
+            let rendered = f.render_doc_to_string(doc);
+            f.output.push_str(&rendered);
+        });
     }
 
     pub(super) fn fmt_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
