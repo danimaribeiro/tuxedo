@@ -1,0 +1,78 @@
+1	spec/fixtures/doc/config.rb	
+2	spec/fixtures/application_helper.rb	✅
+2	spec/fixtures/application.rb	✅
+3	lib/thor/version.rb	✅
+3	spec/fixtures/doc/block_helper.rb	
+4	lib/thor/parser.rb	✅
+16	spec/no_warnings_spec.rb	
+17	lib/thor/line_editor.rb	
+19	spec/exit_condition_spec.rb	
+20	spec/nested_context_spec.rb	
+22	spec/encoding_spec.rb	
+28	spec/line_editor/basic_spec.rb	✅
+29	lib/thor/nested_context.rb	
+29	lib/thor/shell/column_printer.rb	
+29	spec/script_exit_status_spec.rb	
+37	lib/thor/line_editor/basic.rb	✅
+38	lib/thor/shell/wrapped_printer.rb	
+41	spec/shell/html_spec.rb	
+42	lib/thor/shell/terminal.rb	
+44	spec/line_editor_spec.rb	
+46	spec/shell_spec.rb	
+49	lib/thor/shell/lcs_diff.rb	
+49	spec/tree_spec.rb	
+61	lib/thor/actions/create_link.rb	✅
+63	spec/quality_spec.rb	
+70	spec/subcommand_spec.rb	
+71	spec/line_editor/readline_spec.rb	
+72	lib/thor/rake_compat.rb	
+72	spec/rake_compat_spec.rb	
+75	spec/sort_spec.rb	
+76	spec/parser/argument_spec.rb	
+76	spec/parser/arguments_spec.rb	
+81	lib/thor/shell.rb	
+84	lib/thor/shell/html.rb	
+85	spec/command_spec.rb	
+86	lib/thor/parser/argument.rb	
+88	lib/thor/line_editor/readline.rb	
+88	spec/helper.rb	
+105	lib/thor/actions/create_file.rb	✅
+106	lib/thor/error.rb	
+107	lib/thor/core_ext/hash_with_indifferent_access.rb	
+108	lib/thor/actions/directory.rb	
+114	spec/core_ext/hash_with_indifferent_access_spec.rb	
+115	spec/invocation_spec.rb	
+117	lib/thor/shell/color.rb	
+118	lib/thor/shell/table_printer.rb	
+119	spec/actions/create_link_spec.rb	
+129	spec/actions/empty_directory_spec.rb	
+143	lib/thor/actions/empty_directory.rb	
+151	lib/thor/command.rb	
+163	lib/thor/actions/inject_into_file.rb	
+178	lib/thor/invocation.rb	
+178	lib/thor/parser/option.rb	
+188	spec/actions/directory_spec.rb	
+195	lib/thor/parser/arguments.rb	
+209	spec/util_spec.rb	
+215	spec/actions/create_file_spec.rb	
+228	spec/shell/color_spec.rb	
+234	spec/register_spec.rb	
+236	spec/group_spec.rb	
+267	spec/runner_spec.rb	
+285	lib/thor/util.rb	
+292	lib/thor/group.rb	
+292	spec/parser/option_spec.rb	
+294	lib/thor/parser/options.rb	
+335	lib/thor/runner.rb	
+340	lib/thor/actions.rb	
+360	spec/base_spec.rb	
+383	spec/actions/inject_into_file_spec.rb	
+392	lib/thor/shell/basic.rb	
+407	lib/thor/actions/file_manipulation.rb	
+412	spec/actions_spec.rb	
+559	spec/parser/options_spec.rb	
+589	spec/shell/basic_spec.rb	
+680	spec/actions/file_manipulation_spec.rb	
+715	lib/thor.rb	
+826	lib/thor/base.rb	
+891	spec/thor_spec.rb	
