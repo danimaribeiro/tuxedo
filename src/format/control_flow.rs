@@ -102,6 +102,110 @@ impl Formatter {
         self.output.push_str("end\n");
     }
 
+    /// Renders `begin ... end`, including any attached `rescue`/`else`/
+    /// `ensure` clauses. Also reached with no `begin`/`end` keywords at all:
+    /// prism wraps a method/block body in a `BeginNode` whenever it has a
+    /// `rescue`/`else`/`ensure` clause (e.g. `def foo; rescue; end`), in
+    /// which case the enclosing `def`/block already writes its own
+    /// keyword/indent/`end` and this only needs to render the clauses.
+    pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
+        let has_keyword = node.begin_keyword_loc().is_some();
+        let inline = self.inline;
+
+        if has_keyword {
+            if !inline {
+                self.write_indent();
+            }
+            self.output.push_str("begin\n");
+            self.indent += 1;
+        }
+
+        if let Some(statements) = node.statements() {
+            self.fmt_statements_node(&statements);
+        }
+
+        if has_keyword {
+            self.indent -= 1;
+        }
+
+        let has_clauses = node.rescue_clause().is_some()
+            || node.else_clause().is_some()
+            || node.ensure_clause().is_some();
+        if has_clauses {
+            // rescue/else/ensure always align with the keyword that opens
+            // the body they guard. For an explicit `begin` we've already
+            // dedented back to its level above; for an implicit one (no
+            // `begin`/`end` here at all) `self.indent` is still one level
+            // deeper — whatever the enclosing def/block set it to for the
+            // body — so dedent by one to reach that keyword's own level.
+            let dedent = usize::from(!has_keyword);
+            self.indent -= dedent;
+
+            if let Some(rescue) = node.rescue_clause() {
+                self.fmt_rescue_node(&rescue);
+            }
+            if let Some(else_clause) = node.else_clause() {
+                self.write_indent();
+                self.output.push_str("else\n");
+                self.indent += 1;
+                if let Some(statements) = else_clause.statements() {
+                    self.fmt_statements_node(&statements);
+                }
+                self.indent -= 1;
+            }
+            if let Some(ensure) = node.ensure_clause() {
+                self.fmt_ensure_node(&ensure);
+            }
+
+            self.indent += dedent;
+        }
+
+        if has_keyword {
+            self.write_indent();
+            self.output.push_str("end\n");
+        }
+    }
+
+    pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
+        self.write_indent();
+        self.output.push_str("rescue");
+
+        let exceptions: Vec<_> = node.exceptions().iter().collect();
+        for (i, exception) in exceptions.iter().enumerate() {
+            self.output.push_str(if i == 0 { " " } else { ", " });
+            self.inline = true;
+            self.visit(exception);
+        }
+
+        if let Some(reference) = node.reference() {
+            self.output.push_str(" => ");
+            self.inline = true;
+            self.visit(&reference);
+        }
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(statements) = node.statements() {
+            self.fmt_statements_node(&statements);
+        }
+        self.indent -= 1;
+
+        if let Some(subsequent) = node.subsequent() {
+            self.fmt_rescue_node(&subsequent);
+        }
+    }
+
+    pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
+        self.write_indent();
+        self.output.push_str("ensure\n");
+
+        self.indent += 1;
+        if let Some(statements) = node.statements() {
+            self.fmt_statements_node(&statements);
+        }
+        self.indent -= 1;
+    }
+
     pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
         let is_modifier = node.end_keyword_loc().is_none();
 

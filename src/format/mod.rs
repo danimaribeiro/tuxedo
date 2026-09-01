@@ -223,7 +223,21 @@ impl Formatter {
         self.output.push(' ');
         let prefix_len = self.output.len() - start_len;
 
-        let extra_indent = prefix_len / self.indent_str.len();
+        // A wrapped literal (array/hash/call-args) or an `if`/`case` value
+        // should have its continuation lines/`end` align under the `=`
+        // (rubocop's Layout/EndAlignment: keyword default for a keyword
+        // value). A `do...end`/`{ }` block or an implicit/explicit `begin`
+        // manage their own body indentation and instead indent relative to
+        // the statement's own indent, ignoring how long the left-hand side
+        // is — rubocop leaves their body/`end` there rather than aligning
+        // to the assignment.
+        let skip_alignment =
+            matches!(value, ruby_prism::Node::BeginNode { .. }) || has_real_block(value);
+        let extra_indent = if skip_alignment {
+            0
+        } else {
+            prefix_len / self.indent_str.len()
+        };
         self.indent += extra_indent;
 
         self.inline = true;
@@ -654,6 +668,18 @@ impl Visit<'_> for Formatter {
 
     fn visit_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
         self.fmt_else_node(node);
+    }
+
+    fn visit_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
+        self.fmt_begin_node(node);
+    }
+
+    fn visit_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
+        self.fmt_rescue_node(node);
+    }
+
+    fn visit_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
+        self.fmt_ensure_node(node);
     }
 
     fn visit_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
