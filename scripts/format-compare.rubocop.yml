@@ -1,0 +1,24 @@
+# Rubocop config used only for scripts/format-compare.sh's baseline (see
+# that script for how it's invoked). Starts from rubocop's own defaults
+# (this file is passed via `-c`, not merged with any project's own
+# .rubocop.yml) and additionally disables AllowForAlignment on the cops
+# that default it to true.
+#
+# AllowForAlignment lets a human's manually-aligned columns (extra spaces
+# before a `=`, or between a hash rocket and its value, so a run of similar
+# lines lines up visually) stand as *not* an offense. Tuxedo doesn't
+# implement preserving that kind of alignment yet — it always collapses
+# runs of spaces to one — so comparing against rubocop's real default
+# reports every hand-aligned block as a mismatch even though rubocop itself
+# would leave it alone. Turning it off here makes the baseline match what
+# tuxedo can actually produce today, so format-compare.sh's mismatch count
+# tracks real gaps instead of this one stylistic feature repeatedly. Once
+# tuxedo implements alignment preservation, remove these overrides (or flip
+# them to explicitly `true`, rubocop's own default) so the comparison holds
+# tuxedo to the full standard again.
+Layout/ExtraSpacing:
+  AllowForAlignment: false
+Layout/SpaceAroundOperators:
+  AllowForAlignment: false
+Layout/SpaceBeforeFirstArg:
+  AllowForAlignment: false

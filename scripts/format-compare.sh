@@ -11,13 +11,15 @@
 #   test-projects/<project>/tuxedo   - source formatted by our formatter
 #   test-projects/<project>/rubocop  - source autocorrected by rubocop (Layout only)
 #
-# rubocop runs with --force-default-config, ignoring the project's own
-# .rubocop.yml. tuxedo has no per-project config for individual style
-# choices yet, so the only fair baseline is rubocop's own defaults — a
-# project's local overrides (e.g. Thor's AllCops: DisabledByDefault: true,
-# which silently turns off most Layout cops rather than customizing them)
-# would otherwise produce a misleading reference full of un-corrected,
-# never-checked code.
+# rubocop runs with `-c scripts/format-compare.rubocop.yml`, ignoring the
+# project's own .rubocop.yml. tuxedo has no per-project config for
+# individual style choices yet, so the only fair baseline is rubocop's own
+# defaults — a project's local overrides (e.g. Thor's
+# AllCops: DisabledByDefault: true, which silently turns off most Layout
+# cops rather than customizing them) would otherwise produce a misleading
+# reference full of un-corrected, never-checked code. That comparison
+# config also disables AllowForAlignment on the few cops that default it to
+# true — see the comment in that file for why.
 #
 # Follow up on a mismatch with:
 #   scripts/format-diff.sh <project> <relative/path.rb>
@@ -62,7 +64,7 @@ tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null; } 
 
 echo "Running rubocop -A (Layout cops only, default config)..."
 rubocop_log="$(mktemp)"
-rubocop_time=$( { time (cd "$BASE/rubocop" && BUNDLE_GEMFILE=/dev/null rubocop --only Layout --force-default-config -A --no-color . >"$rubocop_log" 2>&1 || true); } 2>&1 )
+rubocop_time=$( { time (cd "$BASE/rubocop" && BUNDLE_GEMFILE=/dev/null rubocop --only Layout -c "$ROOT/scripts/format-compare.rubocop.yml" -A --no-color . >"$rubocop_log" 2>&1 || true); } 2>&1 )
 if grep -q "Could not find proper version of rubocop" "$rubocop_log"; then
   echo "warning: rubocop refused to run because $PROJECT pins its own rubocop version" \
     "in Gemfile.lock (worked around with BUNDLE_GEMFILE=/dev/null, but double-check" \

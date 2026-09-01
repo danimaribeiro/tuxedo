@@ -39,14 +39,26 @@ impl Formatter {
     }
 
     pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
-        // Reproduce the literal verbatim (delimiters included) rather than
-        // reconstructing it from `unescaped()`: `unescaped()` resolves
-        // escape sequences to their actual bytes, which corrupts anything
-        // containing `\"` or `\n` — e.g. `"a\"b\nc"` would come back out as
-        // `"a"b` followed by a real newline and `c"`, which isn't even
-        // valid Ruby.
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+        if node.opening_loc().is_some() {
+            // Reproduce the literal verbatim (delimiters included) rather
+            // than reconstructing it from `unescaped()`: `unescaped()`
+            // resolves escape sequences to their actual bytes, which
+            // corrupts anything containing `\"` or `\n` — e.g. `"a\"b\nc"`
+            // would come back out as `"a"b` followed by a real newline and
+            // `c"`, which isn't even valid Ruby.
+            let bytes = node.location().as_slice();
+            self.write_leaf(|f| f.write_bytes(bytes));
+        } else {
+            // A %w()/%i() word-list element has no quote delimiters of its
+            // own in source (the location is just the bare word) — verbatim
+            // copying would drop the quotes it needs as a standalone string.
+            let unescaped = node.unescaped();
+            self.write_leaf(|f| {
+                f.output.push('"');
+                f.write_bytes(unescaped);
+                f.output.push('"');
+            });
+        }
     }
 
     pub(super) fn fmt_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {

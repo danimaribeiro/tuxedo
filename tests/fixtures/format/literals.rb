@@ -8,3 +8,4 @@ mapped = { "k" => "v" }
 empty = {}
 quoted = "she said \"hi\""
 multiline_escape = "line one\nline two"
+help_mappings = ["-h", "-?", "--help", "-D"]
