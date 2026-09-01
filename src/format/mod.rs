@@ -21,6 +21,19 @@ fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
         .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
 }
 
+/// Like `has_real_block`, but for a hash element (`AssocNode`/`AssocSplatNode`):
+/// looks at the value being assigned rather than the element itself, since a
+/// hash element is never itself a call node.
+fn assoc_has_real_block(node: &ruby_prism::Node<'_>) -> bool {
+    if let Some(assoc) = node.as_assoc_node() {
+        return has_real_block(&assoc.value());
+    }
+    if let Some(splat) = node.as_assoc_splat_node() {
+        return splat.value().is_some_and(|value| has_real_block(&value));
+    }
+    false
+}
+
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
 }
