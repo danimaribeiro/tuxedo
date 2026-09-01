@@ -11,6 +11,16 @@ mod literals;
 mod statements;
 mod variables;
 
+/// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
+/// a `&block` pass). Such a block always hard-breaks onto its own lines
+/// regardless of width, which isn't the kind of flat-or-broken choice a Doc
+/// `group` is meant to arbitrate — a list containing one is left on the
+/// existing, always-imperative rendering path instead of the Doc path.
+fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node()
+        .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
+}
+
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
 }
@@ -49,6 +59,7 @@ struct Formatter {
     inline: bool,
     single_line: bool,
     indent_str: String,
+    line_length: usize,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     line_starts: Vec<usize>,
@@ -70,6 +81,7 @@ impl Formatter {
             inline: false,
             single_line: false,
             indent_str: " ".repeat(config.indent_size),
+            line_length: config.line_length,
             comments,
             comment_cursor: 0,
             line_starts: line_starts(source),
@@ -87,6 +99,46 @@ impl Formatter {
             Ok(i) => i,
             Err(i) => i - 1,
         }
+    }
+
+    /// The display width of the current line of `output` rendered so far,
+    /// i.e. where the next character would land. Derived on demand (rather
+    /// than tracked incrementally) so there's no counter that can drift out
+    /// of sync with `output`.
+    fn current_column(&self) -> usize {
+        let line_start = self.output.rfind('\n').map_or(0, |i| i + 1);
+        unicode_width::UnicodeWidthStr::width(&self.output[line_start..])
+    }
+
+    /// The absolute column the current indent level starts at, i.e. how many
+    /// spaces `write_indent` would emit right now. A `Doc` rendered via
+    /// `render_doc_to_string` is laid out as if starting fresh at column 0,
+    /// so any construct that nests its wrapped continuation lines needs to
+    /// add this in as the baseline — otherwise a wrapped Doc's continuation
+    /// lines would ignore how deeply the surrounding code is already
+    /// indented and dedent back toward the left margin.
+    fn indent_width(&self) -> usize {
+        self.indent * self.indent_str.len()
+    }
+
+    /// Renders a `Doc` value to a string, using the width still available on
+    /// the current output line before `line_length` is hit.
+    fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
+        let width = self.line_length.saturating_sub(self.current_column());
+        doc.pretty(width).to_string()
+    }
+
+    /// Captures whatever `render` writes to `self.output` into an owned
+    /// string, restoring the real `output` afterwards, and wraps the capture
+    /// as an opaque `Doc::text` leaf. This is how content that hasn't been
+    /// ported to build `Doc` values natively (i.e. everything, today) still
+    /// renders correctly inside a `Doc`-based construct: it's rendered once,
+    /// the normal way, and treated as an unsplittable block of text.
+    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
+        let saved = std::mem::take(&mut self.output);
+        render(self);
+        let captured = std::mem::replace(&mut self.output, saved);
+        pretty::RcDoc::text(captured)
     }
 
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
@@ -192,6 +244,45 @@ impl Formatter {
         };
 
         if positional.is_empty() && block_pass.is_none() && !parenthesized {
+            return;
+        }
+
+        // Doc-based wrapping only applies to the parenthesized case — Ruby
+        // has no clean multi-line continuation for a bare command call like
+        // `puts a, b, c` — and only when no argument is itself a call with a
+        // real block (see `has_real_block`).
+        let has_args = !positional.is_empty() || block_pass.is_some();
+        if parenthesized && has_args && !positional.iter().any(has_real_block) {
+            let mut leaves: Vec<_> = positional
+                .iter()
+                .map(|arg| {
+                    self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(arg);
+                    })
+                })
+                .collect();
+            if let Some(block_pass) = &block_pass {
+                leaves.push(self.capture_as_doc(|f| {
+                    f.inline = true;
+                    f.visit(block_pass);
+                }));
+            }
+
+            let nest_width = self.indent_width() + self.indent_str.len();
+            let doc = pretty::RcDoc::text("(")
+                .append(
+                    pretty::RcDoc::intersperse(
+                        leaves,
+                        pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
+                    )
+                    .nest(nest_width as isize)
+                    .group(),
+                )
+                .append(pretty::RcDoc::text(")"));
+
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
             return;
         }
 
