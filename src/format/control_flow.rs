@@ -10,6 +10,10 @@ impl Formatter {
 
         if is_ternary {
             // Ternary: predicate ? true_branch : false_branch
+            let inline = self.inline;
+            if !inline {
+                self.write_indent();
+            }
             self.inline = true;
             self.visit(&node.predicate());
             self.output.push_str(" ? ");
@@ -34,6 +38,9 @@ impl Formatter {
                     self.inline = true;
                     self.visit(&stmt);
                 }
+            }
+            if !inline {
+                self.output.push('\n');
             }
             return;
         }
@@ -73,6 +80,8 @@ impl Formatter {
         self.visit(&node.predicate());
         self.inline = false;
         self.output.push('\n');
+        let header_line = self.line_of(node.predicate().location().start_offset());
+        self.emit_trailing_comment_if_same_line(header_line);
 
         self.indent += 1;
         if let Some(body) = node.statements() {

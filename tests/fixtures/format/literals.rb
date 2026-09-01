@@ -6,3 +6,5 @@ exclusive = 1...5
 config = { host: "localhost", port: 80 }
 mapped = { "k" => "v" }
 empty = {}
+quoted = "she said \"hi\""
+multiline_escape = "line one\nline two"

@@ -630,6 +630,18 @@ impl Visit<'_> for Formatter {
         self.fmt_multi_write_node(node);
     }
 
+    fn visit_index_or_write_node(&mut self, node: &ruby_prism::IndexOrWriteNode<'_>) {
+        self.fmt_index_or_write_node(node);
+    }
+
+    fn visit_index_and_write_node(&mut self, node: &ruby_prism::IndexAndWriteNode<'_>) {
+        self.fmt_index_and_write_node(node);
+    }
+
+    fn visit_index_operator_write_node(&mut self, node: &ruby_prism::IndexOperatorWriteNode<'_>) {
+        self.fmt_index_operator_write_node(node);
+    }
+
     fn visit_local_variable_target_node(&mut self, node: &ruby_prism::LocalVariableTargetNode<'_>) {
         self.fmt_local_variable_target_node(node);
     }
@@ -652,6 +664,10 @@ impl Visit<'_> for Formatter {
 
     fn visit_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
         self.fmt_module_node(node);
+    }
+
+    fn visit_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'_>) {
+        self.fmt_singleton_class_node(node);
     }
 
     fn visit_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
@@ -740,6 +756,14 @@ impl Visit<'_> for Formatter {
 
     fn visit_regular_expression_node(&mut self, node: &ruby_prism::RegularExpressionNode<'_>) {
         self.fmt_regular_expression_node(node);
+    }
+
+    fn visit_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) {
+        self.fmt_source_file_node(node);
+    }
+
+    fn visit_source_line_node(&mut self, node: &ruby_prism::SourceLineNode<'_>) {
+        self.fmt_source_line_node(node);
     }
 
     fn visit_interpolated_string_node(&mut self, node: &ruby_prism::InterpolatedStringNode<'_>) {

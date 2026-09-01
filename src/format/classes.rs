@@ -44,6 +44,25 @@ impl Formatter {
         self.output.push_str("end\n");
     }
 
+    pub(super) fn fmt_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'_>) {
+        let header_line = self.line_of(node.location().start_offset());
+        self.write_indent();
+        self.output.push_str("class << ");
+        self.inline = true;
+        self.visit(&node.expression());
+        self.output.push('\n');
+        self.emit_trailing_comment_if_same_line(header_line);
+
+        self.indent += 1;
+        if let Some(body) = node.body() {
+            self.visit(&body);
+        }
+        self.indent -= 1;
+
+        self.write_indent();
+        self.output.push_str("end\n");
+    }
+
     pub(super) fn fmt_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
         if let Some(parent) = node.parent() {
             self.visit(&parent);

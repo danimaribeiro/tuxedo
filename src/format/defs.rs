@@ -27,6 +27,8 @@ impl Formatter {
         }
 
         self.output.push('\n');
+        let header_line = self.line_of(node.location().start_offset());
+        self.emit_trailing_comment_if_same_line(header_line);
 
         self.indent += 1;
         if let Some(body) = node.body() {

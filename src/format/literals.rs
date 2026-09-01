@@ -39,12 +39,14 @@ impl Formatter {
     }
 
     pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
-        let unescaped = node.unescaped();
-        self.write_leaf(|f| {
-            f.output.push('"');
-            f.write_bytes(unescaped);
-            f.output.push('"');
-        });
+        // Reproduce the literal verbatim (delimiters included) rather than
+        // reconstructing it from `unescaped()`: `unescaped()` resolves
+        // escape sequences to their actual bytes, which corrupts anything
+        // containing `\"` or `\n` — e.g. `"a\"b\nc"` would come back out as
+        // `"a"b` followed by a real newline and `c"`, which isn't even
+        // valid Ruby.
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
     }
 
     pub(super) fn fmt_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {
@@ -53,6 +55,16 @@ impl Formatter {
     }
 
     pub(super) fn fmt_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    pub(super) fn fmt_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) {
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    pub(super) fn fmt_source_line_node(&mut self, node: &ruby_prism::SourceLineNode<'_>) {
         let bytes = node.location().as_slice();
         self.write_leaf(|f| f.write_bytes(bytes));
     }
