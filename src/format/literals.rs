@@ -1,6 +1,26 @@
 use super::Formatter;
+use pretty::RcDoc as Doc;
+use ruby_prism::Visit;
 
 impl Formatter {
+    pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {
+        self.write_leaf(|f| {
+            let inner = match node.body() {
+                Some(body) => f.capture_as_doc(|f| {
+                    let was_single_line = f.single_line;
+                    f.single_line = true;
+                    f.inline = true;
+                    f.visit(&body);
+                    f.single_line = was_single_line;
+                }),
+                None => Doc::nil(),
+            };
+            let doc = Doc::text("(").append(inner).append(Doc::text(")"));
+            let rendered = f.render_doc_to_string(doc);
+            f.output.push_str(&rendered);
+        });
+    }
+
     pub(super) fn fmt_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) {
         self.write_leaf(|f| f.output.push_str("true"));
     }

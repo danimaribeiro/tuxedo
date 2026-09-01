@@ -11,7 +11,7 @@
 22	spec/encoding_spec.rb	✅
 28	spec/line_editor/basic_spec.rb	✅
 29	lib/thor/nested_context.rb	✅
-29	lib/thor/shell/column_printer.rb	
+29	lib/thor/shell/column_printer.rb	needs Layout/EmptyLineAfterGuardClause-equivalent lint rule (out of scope for format)
 29	spec/script_exit_status_spec.rb	
 37	lib/thor/line_editor/basic.rb	✅
 38	lib/thor/shell/wrapped_printer.rb	

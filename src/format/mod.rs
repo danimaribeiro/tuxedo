@@ -769,6 +769,10 @@ impl Visit<'_> for Formatter {
         self.fmt_hash_node(node);
     }
 
+    fn visit_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {
+        self.fmt_parentheses_node(node);
+    }
+
     fn visit_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
         self.fmt_assoc_node(node);
     }
