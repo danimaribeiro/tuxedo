@@ -25,6 +25,8 @@ a, b = 1, 2
 a, *b = [1, 2, 3]
 *a, b = [1, 2, 3]
 a, b = compute
+a, b, = compute
+a, *, b = compute
 
 def tally
   total = 0

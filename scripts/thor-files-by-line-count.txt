@@ -1,14 +1,14 @@
-1	spec/fixtures/doc/config.rb	
+1	spec/fixtures/doc/config.rb	N/A (ERB template, not Ruby)
 2	spec/fixtures/application_helper.rb	✅
 2	spec/fixtures/application.rb	✅
 3	lib/thor/version.rb	✅
-3	spec/fixtures/doc/block_helper.rb	
+3	spec/fixtures/doc/block_helper.rb	N/A (ERB template, not Ruby)
 4	lib/thor/parser.rb	✅
-16	spec/no_warnings_spec.rb	
+16	spec/no_warnings_spec.rb	✅
 17	lib/thor/line_editor.rb	
 19	spec/exit_condition_spec.rb	
 20	spec/nested_context_spec.rb	
-22	spec/encoding_spec.rb	
+22	spec/encoding_spec.rb	✅
 28	spec/line_editor/basic_spec.rb	✅
 29	lib/thor/nested_context.rb	
 29	lib/thor/shell/column_printer.rb	
@@ -20,7 +20,7 @@
 44	spec/line_editor_spec.rb	
 46	spec/shell_spec.rb	
 49	lib/thor/shell/lcs_diff.rb	
-49	spec/tree_spec.rb	
+49	spec/tree_spec.rb	✅
 61	lib/thor/actions/create_link.rb	✅
 63	spec/quality_spec.rb	
 70	spec/subcommand_spec.rb	

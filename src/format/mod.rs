@@ -712,6 +712,25 @@ impl Visit<'_> for Formatter {
         self.fmt_symbol_node(node);
     }
 
+    fn visit_regular_expression_node(&mut self, node: &ruby_prism::RegularExpressionNode<'_>) {
+        self.fmt_regular_expression_node(node);
+    }
+
+    fn visit_interpolated_string_node(&mut self, node: &ruby_prism::InterpolatedStringNode<'_>) {
+        self.fmt_interpolated_string_node(node);
+    }
+
+    fn visit_interpolated_symbol_node(&mut self, node: &ruby_prism::InterpolatedSymbolNode<'_>) {
+        self.fmt_interpolated_symbol_node(node);
+    }
+
+    fn visit_interpolated_regular_expression_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedRegularExpressionNode<'_>,
+    ) {
+        self.fmt_interpolated_regular_expression_node(node);
+    }
+
     fn visit_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
         self.fmt_float_node(node);
     }

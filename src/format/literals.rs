@@ -36,4 +36,87 @@ impl Formatter {
         let bytes = node.location().as_slice();
         self.write_leaf(|f| f.write_bytes(bytes));
     }
+
+    pub(super) fn fmt_regular_expression_node(
+        &mut self,
+        node: &ruby_prism::RegularExpressionNode<'_>,
+    ) {
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    pub(super) fn fmt_interpolated_string_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedStringNode<'_>,
+    ) {
+        let opening = node.opening_loc().map(|loc| loc.as_slice());
+        let closing = node.closing_loc().map(|loc| loc.as_slice());
+        let parts = node.parts();
+        self.write_leaf(|f| {
+            if let Some(opening) = opening {
+                f.write_bytes(opening);
+            }
+            f.fmt_interpolated_parts(&parts);
+            if let Some(closing) = closing {
+                f.write_bytes(closing);
+            }
+        });
+    }
+
+    pub(super) fn fmt_interpolated_symbol_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedSymbolNode<'_>,
+    ) {
+        let opening = node.opening_loc().map(|loc| loc.as_slice());
+        let closing = node.closing_loc().map(|loc| loc.as_slice());
+        let parts = node.parts();
+        self.write_leaf(|f| {
+            if let Some(opening) = opening {
+                f.write_bytes(opening);
+            }
+            f.fmt_interpolated_parts(&parts);
+            if let Some(closing) = closing {
+                f.write_bytes(closing);
+            }
+        });
+    }
+
+    pub(super) fn fmt_interpolated_regular_expression_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedRegularExpressionNode<'_>,
+    ) {
+        let opening = node.opening_loc().as_slice();
+        let closing = node.closing_loc().as_slice();
+        let parts = node.parts();
+        self.write_leaf(|f| {
+            f.write_bytes(opening);
+            f.fmt_interpolated_parts(&parts);
+            f.write_bytes(closing);
+        });
+    }
+
+    /// Renders the parts of an interpolated string/symbol/regexp literal:
+    /// literal text segments are copied verbatim from source (preserving
+    /// their original escaping) and `#{ }`/`#@ivar` segments are rendered
+    /// inline, collapsing any internal statements onto one line the way a
+    /// `{ }` block body does.
+    pub(super) fn fmt_interpolated_parts(&mut self, parts: &ruby_prism::NodeList<'_>) {
+        for part in parts.iter() {
+            if let Some(string) = part.as_string_node() {
+                self.write_bytes(string.content_loc().as_slice());
+            } else if let Some(embedded) = part.as_embedded_statements_node() {
+                self.output.push_str("#{");
+                if let Some(statements) = embedded.statements() {
+                    let was_single_line = self.single_line;
+                    self.single_line = true;
+                    self.inline = true;
+                    self.fmt_statements_node(&statements);
+                    self.single_line = was_single_line;
+                }
+                self.output.push('}');
+            } else {
+                self.write_bytes(part.location().as_slice());
+            }
+        }
+    }
 }

@@ -195,11 +195,21 @@ impl Formatter {
             self.visit(&target);
         }
         if let Some(rest) = node.rest() {
-            if !first {
-                self.output.push_str(", ");
+            // A bare trailing comma (`a, b, = expr`) parses as an
+            // `ImplicitRestNode` with nothing following it — it should stay
+            // a bare comma, not grow an explicit `*` (that's only correct
+            // for an actual anonymous splat target like `a, *, b = expr`,
+            // which parses as a `SplatNode` instead and is handled by the
+            // `visit` below).
+            if matches!(rest, ruby_prism::Node::ImplicitRestNode { .. }) {
+                self.output.push(',');
+            } else {
+                if !first {
+                    self.output.push_str(", ");
+                }
+                self.visit(&rest);
             }
             first = false;
-            self.visit(&rest);
         }
         for target in rights.iter() {
             if !first {
