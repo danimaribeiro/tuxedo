@@ -26,7 +26,7 @@
 70	spec/subcommand_spec.rb	
 71	spec/line_editor/readline_spec.rb	
 72	lib/thor/rake_compat.rb	
-72	spec/rake_compat_spec.rb	
+72	spec/rake_compat_spec.rb	✅
 75	spec/sort_spec.rb	
 76	spec/parser/argument_spec.rb	
 76	spec/parser/arguments_spec.rb	
@@ -41,7 +41,7 @@
 107	lib/thor/core_ext/hash_with_indifferent_access.rb	
 108	lib/thor/actions/directory.rb	
 114	spec/core_ext/hash_with_indifferent_access_spec.rb	
-115	spec/invocation_spec.rb	
+115	spec/invocation_spec.rb	✅
 117	lib/thor/shell/color.rb	✅
 118	lib/thor/shell/table_printer.rb	
 119	spec/actions/create_link_spec.rb	
