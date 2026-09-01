@@ -49,7 +49,6 @@ struct Formatter {
     inline: bool,
     single_line: bool,
     indent_str: String,
-    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
     line_length: usize,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
@@ -96,15 +95,24 @@ impl Formatter {
     /// i.e. where the next character would land. Derived on demand (rather
     /// than tracked incrementally) so there's no counter that can drift out
     /// of sync with `output`.
-    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
     fn current_column(&self) -> usize {
         let line_start = self.output.rfind('\n').map_or(0, |i| i + 1);
         unicode_width::UnicodeWidthStr::width(&self.output[line_start..])
     }
 
+    /// The absolute column the current indent level starts at, i.e. how many
+    /// spaces `write_indent` would emit right now. A `Doc` rendered via
+    /// `render_doc_to_string` is laid out as if starting fresh at column 0,
+    /// so any construct that nests its wrapped continuation lines needs to
+    /// add this in as the baseline — otherwise a wrapped Doc's continuation
+    /// lines would ignore how deeply the surrounding code is already
+    /// indented and dedent back toward the left margin.
+    fn indent_width(&self) -> usize {
+        self.indent * self.indent_str.len()
+    }
+
     /// Renders a `Doc` value to a string, using the width still available on
     /// the current output line before `line_length` is hit.
-    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
     fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
         let width = self.line_length.saturating_sub(self.current_column());
         doc.pretty(width).to_string()
@@ -116,7 +124,6 @@ impl Formatter {
     /// ported to build `Doc` values natively (i.e. everything, today) still
     /// renders correctly inside a `Doc`-based construct: it's rendered once,
     /// the normal way, and treated as an unsplittable block of text.
-    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
     fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
         let saved = std::mem::take(&mut self.output);
         render(self);

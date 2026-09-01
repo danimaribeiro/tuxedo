@@ -1,5 +1,16 @@
 use super::Formatter;
+use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
+
+/// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
+/// a `&block` pass). Such a block always hard-breaks onto its own lines
+/// regardless of width, which isn't the kind of flat-or-broken choice a Doc
+/// `group` is meant to arbitrate — a list containing one is left on the
+/// existing, always-imperative rendering path instead of the Doc path.
+fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node()
+        .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
+}
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {
@@ -19,21 +30,50 @@ impl Formatter {
     }
 
     pub(super) fn fmt_array_node(&mut self, node: &ruby_prism::ArrayNode<'_>) {
-        self.write_leaf(|f| {
-            let bracketed = node.opening_loc().is_some();
-            if bracketed {
-                f.output.push('[');
-            }
-            for (i, element) in node.elements().iter().enumerate() {
-                if i > 0 {
-                    f.output.push_str(", ");
+        let bracketed = node.opening_loc().is_some();
+        let elements: Vec<_> = node.elements().iter().collect();
+
+        if !bracketed || elements.is_empty() || elements.iter().any(has_real_block) {
+            self.write_leaf(|f| {
+                if bracketed {
+                    f.output.push('[');
                 }
-                f.inline = true;
-                f.visit(&element);
-            }
-            if bracketed {
-                f.output.push(']');
-            }
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        f.output.push_str(", ");
+                    }
+                    f.inline = true;
+                    f.visit(element);
+                }
+                if bracketed {
+                    f.output.push(']');
+                }
+            });
+            return;
+        }
+
+        self.write_leaf(|f| {
+            let leaves: Vec<_> = elements
+                .iter()
+                .map(|element| {
+                    f.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(element);
+                    })
+                })
+                .collect();
+
+            let nest_width = f.indent_width() + f.indent_str.len();
+            let doc = Doc::text("[")
+                .append(
+                    Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
+                        .nest(nest_width as isize)
+                        .group(),
+                )
+                .append(Doc::text("]"));
+
+            let rendered = f.render_doc_to_string(doc);
+            f.output.push_str(&rendered);
         });
     }
 
