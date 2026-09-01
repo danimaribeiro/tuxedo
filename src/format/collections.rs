@@ -1,16 +1,6 @@
-use super::Formatter;
+use super::{Formatter, has_real_block};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
-
-/// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
-/// a `&block` pass). Such a block always hard-breaks onto its own lines
-/// regardless of width, which isn't the kind of flat-or-broken choice a Doc
-/// `group` is meant to arbitrate — a list containing one is left on the
-/// existing, always-imperative rendering path instead of the Doc path.
-fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
-    node.as_call_node()
-        .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
-}
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {

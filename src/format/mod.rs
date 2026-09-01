@@ -11,6 +11,16 @@ mod literals;
 mod statements;
 mod variables;
 
+/// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
+/// a `&block` pass). Such a block always hard-breaks onto its own lines
+/// regardless of width, which isn't the kind of flat-or-broken choice a Doc
+/// `group` is meant to arbitrate — a list containing one is left on the
+/// existing, always-imperative rendering path instead of the Doc path.
+fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node()
+        .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
+}
+
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
 }
@@ -234,6 +244,45 @@ impl Formatter {
         };
 
         if positional.is_empty() && block_pass.is_none() && !parenthesized {
+            return;
+        }
+
+        // Doc-based wrapping only applies to the parenthesized case — Ruby
+        // has no clean multi-line continuation for a bare command call like
+        // `puts a, b, c` — and only when no argument is itself a call with a
+        // real block (see `has_real_block`).
+        let has_args = !positional.is_empty() || block_pass.is_some();
+        if parenthesized && has_args && !positional.iter().any(has_real_block) {
+            let mut leaves: Vec<_> = positional
+                .iter()
+                .map(|arg| {
+                    self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(arg);
+                    })
+                })
+                .collect();
+            if let Some(block_pass) = &block_pass {
+                leaves.push(self.capture_as_doc(|f| {
+                    f.inline = true;
+                    f.visit(block_pass);
+                }));
+            }
+
+            let nest_width = self.indent_width() + self.indent_str.len();
+            let doc = pretty::RcDoc::text("(")
+                .append(
+                    pretty::RcDoc::intersperse(
+                        leaves,
+                        pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
+                    )
+                    .nest(nest_width as isize)
+                    .group(),
+                )
+                .append(pretty::RcDoc::text(")"));
+
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
             return;
         }
 
