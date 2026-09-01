@@ -49,6 +49,8 @@ struct Formatter {
     inline: bool,
     single_line: bool,
     indent_str: String,
+    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
+    line_length: usize,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     line_starts: Vec<usize>,
@@ -70,6 +72,7 @@ impl Formatter {
             inline: false,
             single_line: false,
             indent_str: " ".repeat(config.indent_size),
+            line_length: config.line_length,
             comments,
             comment_cursor: 0,
             line_starts: line_starts(source),
@@ -87,6 +90,38 @@ impl Formatter {
             Ok(i) => i,
             Err(i) => i - 1,
         }
+    }
+
+    /// The display width of the current line of `output` rendered so far,
+    /// i.e. where the next character would land. Derived on demand (rather
+    /// than tracked incrementally) so there's no counter that can drift out
+    /// of sync with `output`.
+    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
+    fn current_column(&self) -> usize {
+        let line_start = self.output.rfind('\n').map_or(0, |i| i + 1);
+        unicode_width::UnicodeWidthStr::width(&self.output[line_start..])
+    }
+
+    /// Renders a `Doc` value to a string, using the width still available on
+    /// the current output line before `line_length` is hit.
+    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
+    fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
+        let width = self.line_length.saturating_sub(self.current_column());
+        doc.pretty(width).to_string()
+    }
+
+    /// Captures whatever `render` writes to `self.output` into an owned
+    /// string, restoring the real `output` afterwards, and wraps the capture
+    /// as an opaque `Doc::text` leaf. This is how content that hasn't been
+    /// ported to build `Doc` values natively (i.e. everything, today) still
+    /// renders correctly inside a `Doc`-based construct: it's rendered once,
+    /// the normal way, and treated as an unsplittable block of text.
+    #[allow(dead_code)] // wired up by the array-literal Doc pilot, next commit
+    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
+        let saved = std::mem::take(&mut self.output);
+        render(self);
+        let captured = std::mem::replace(&mut self.output, saved);
+        pretty::RcDoc::text(captured)
     }
 
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
