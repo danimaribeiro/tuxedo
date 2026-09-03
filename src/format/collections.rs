@@ -154,14 +154,33 @@ impl Formatter {
 
     pub(super) fn fmt_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) {
         let elements: Vec<_> = node.elements().iter().collect();
+        self.fmt_hash_elements(&elements, true);
+    }
+
+    /// Bare keyword arguments at a call site (`foo(a, k: 1, j: 2)`). Prism
+    /// parses these as a `KeywordHashNode`, *not* a `HashNode` — they are
+    /// the same comma-joined pairs but carry no braces of their own.
+    pub(super) fn fmt_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) {
+        let elements: Vec<_> = node.elements().iter().collect();
+        self.fmt_hash_elements(&elements, false);
+    }
+
+    /// Renders a run of `key => value` / `key: value` pairs, optionally
+    /// wrapped in `{ }`. Shared by braced hash literals and bare keyword
+    /// argument lists so the two can never drift apart on separators.
+    fn fmt_hash_elements(&mut self, elements: &[ruby_prism::Node<'_>], braced: bool) {
         if elements.is_empty() {
-            self.write_leaf(|f| f.output.push_str("{}"));
+            if braced {
+                self.write_leaf(|f| f.output.push_str("{}"));
+            }
             return;
         }
 
         if elements.iter().any(assoc_has_real_block) {
             self.write_leaf(|f| {
-                f.output.push_str("{ ");
+                if braced {
+                    f.output.push_str("{ ");
+                }
                 for (i, element) in elements.iter().enumerate() {
                     if i > 0 {
                         f.output.push_str(", ");
@@ -169,7 +188,9 @@ impl Formatter {
                     f.inline = true;
                     f.visit(element);
                 }
-                f.output.push_str(" }");
+                if braced {
+                    f.output.push_str(" }");
+                }
             });
             return;
         }
@@ -186,17 +207,27 @@ impl Formatter {
                 .collect();
 
             let nest_width = f.indent_width() + f.indent_str.len();
-            let doc = Doc::text("{ ")
-                .append(
-                    Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
-                        .nest(nest_width as isize)
-                        .group(),
-                )
-                .append(Doc::text(" }"));
+            let mut doc = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
+                .nest(nest_width as isize)
+                .group();
+            if braced {
+                doc = Doc::text("{ ").append(doc).append(Doc::text(" }"));
+            }
 
             let rendered = f.render_doc_to_string(doc);
             f.output.push_str(&rendered);
         });
+    }
+
+    /// A double-splat entry inside a hash literal or keyword argument list
+    /// (`{ a: 1, **rest }`, `foo(**opts)`). The bare `**` form used to
+    /// forward an anonymous kwrest has no value.
+    pub(super) fn fmt_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) {
+        self.write_bytes(node.operator_loc().as_slice());
+        if let Some(value) = node.value() {
+            self.inline = true;
+            self.visit(&value);
+        }
     }
 
     pub(super) fn fmt_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {

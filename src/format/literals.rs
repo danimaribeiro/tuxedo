@@ -89,6 +89,52 @@ impl Formatter {
         self.write_leaf(|f| f.write_bytes(bytes));
     }
 
+    /// `$1`, `$2`, ... — a regexp capture-group reference. Copied verbatim.
+    pub(super) fn fmt_numbered_reference_read_node(
+        &mut self,
+        node: &ruby_prism::NumberedReferenceReadNode<'_>,
+    ) {
+        let bytes = node.as_node().location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    /// `$&`, `$\``, `$'`, `$+` — a regexp back-reference. Copied verbatim.
+    pub(super) fn fmt_back_reference_read_node(
+        &mut self,
+        node: &ruby_prism::BackReferenceReadNode<'_>,
+    ) {
+        let bytes = node.as_node().location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    /// A command literal (`` `stty size` ``, `%x{ls}`) with no
+    /// interpolation. The body is shell text, so it is copied verbatim.
+    pub(super) fn fmt_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) {
+        let opening = node.opening_loc().as_slice();
+        let content = node.content_loc().as_slice();
+        let closing = node.closing_loc().as_slice();
+        self.write_leaf(|f| {
+            f.write_bytes(opening);
+            f.write_bytes(content);
+            f.write_bytes(closing);
+        });
+    }
+
+    /// A command literal containing `#{}` interpolation.
+    pub(super) fn fmt_interpolated_x_string_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedXStringNode<'_>,
+    ) {
+        let opening = node.opening_loc().as_slice();
+        let closing = node.closing_loc().as_slice();
+        let parts = node.parts();
+        self.write_leaf(|f| {
+            f.write_bytes(opening);
+            f.fmt_interpolated_parts(&parts);
+            f.write_bytes(closing);
+        });
+    }
+
     pub(super) fn fmt_interpolated_string_node(
         &mut self,
         node: &ruby_prism::InterpolatedStringNode<'_>,

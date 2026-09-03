@@ -646,6 +646,44 @@ impl Visit<'_> for Formatter {
         self.fmt_local_variable_target_node(node);
     }
 
+    fn visit_instance_variable_target_node(
+        &mut self,
+        node: &ruby_prism::InstanceVariableTargetNode<'_>,
+    ) {
+        self.fmt_instance_variable_target_node(node);
+    }
+
+    fn visit_class_variable_target_node(&mut self, node: &ruby_prism::ClassVariableTargetNode<'_>) {
+        self.fmt_class_variable_target_node(node);
+    }
+
+    fn visit_global_variable_target_node(
+        &mut self,
+        node: &ruby_prism::GlobalVariableTargetNode<'_>,
+    ) {
+        self.fmt_global_variable_target_node(node);
+    }
+
+    fn visit_constant_target_node(&mut self, node: &ruby_prism::ConstantTargetNode<'_>) {
+        self.fmt_constant_target_node(node);
+    }
+
+    fn visit_constant_path_target_node(&mut self, node: &ruby_prism::ConstantPathTargetNode<'_>) {
+        self.fmt_constant_path_target_node(node);
+    }
+
+    fn visit_call_target_node(&mut self, node: &ruby_prism::CallTargetNode<'_>) {
+        self.fmt_call_target_node(node);
+    }
+
+    fn visit_index_target_node(&mut self, node: &ruby_prism::IndexTargetNode<'_>) {
+        self.fmt_index_target_node(node);
+    }
+
+    fn visit_multi_target_node(&mut self, node: &ruby_prism::MultiTargetNode<'_>) {
+        self.fmt_multi_target_node(node);
+    }
+
     fn visit_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {
         self.fmt_splat_node(node);
     }
@@ -793,11 +831,38 @@ impl Visit<'_> for Formatter {
         self.fmt_hash_node(node);
     }
 
+    fn visit_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) {
+        self.fmt_keyword_hash_node(node);
+    }
+
+    fn visit_numbered_reference_read_node(
+        &mut self,
+        node: &ruby_prism::NumberedReferenceReadNode<'_>,
+    ) {
+        self.fmt_numbered_reference_read_node(node);
+    }
+
+    fn visit_back_reference_read_node(&mut self, node: &ruby_prism::BackReferenceReadNode<'_>) {
+        self.fmt_back_reference_read_node(node);
+    }
+
+    fn visit_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) {
+        self.fmt_x_string_node(node);
+    }
+
+    fn visit_interpolated_x_string_node(&mut self, node: &ruby_prism::InterpolatedXStringNode<'_>) {
+        self.fmt_interpolated_x_string_node(node);
+    }
+
     fn visit_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {
         self.fmt_parentheses_node(node);
     }
 
     fn visit_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
         self.fmt_assoc_node(node);
+    }
+
+    fn visit_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) {
+        self.fmt_assoc_splat_node(node);
     }
 }

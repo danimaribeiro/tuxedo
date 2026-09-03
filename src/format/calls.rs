@@ -212,13 +212,21 @@ impl Formatter {
         }
         self.output.push_str("yield");
         if let Some(args) = node.arguments() {
-            self.output.push(' ');
+            // Parens around yield's arguments are load-bearing, not
+            // decorative: `cond ? yield(x) : y` is valid Ruby while
+            // `cond ? yield x : y` is a syntax error. Keep whichever form
+            // the source used.
+            let parenthesized = node.lparen_loc().is_some();
+            self.output.push(if parenthesized { '(' } else { ' ' });
             for (i, arg) in args.arguments().iter().enumerate() {
                 if i > 0 {
                     self.output.push_str(", ");
                 }
                 self.inline = true;
                 self.visit(&arg);
+            }
+            if parenthesized {
+                self.output.push(')');
             }
         }
         if !inline {

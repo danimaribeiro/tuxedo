@@ -184,17 +184,39 @@ impl Formatter {
             self.write_indent();
         }
 
-        let lefts = node.lefts();
-        let rights = node.rights();
+        self.write_multi_targets(node.lefts(), node.rest(), node.rights());
+
+        self.output.push_str(" = ");
+        self.inline = true;
+        self.visit(&node.value());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// Emits a comma-joined multiple-assignment target list
+    /// (`a, @b, (c, d), *rest`). Shared by `MultiWriteNode` and by the
+    /// nested `MultiTargetNode` that a parenthesized group parses as.
+    ///
+    /// Every target is visited with `inline` set: a target list is always
+    /// one run of text, so leaf targets must not take the `write_leaf`
+    /// indent-and-newline path meant for statements.
+    fn write_multi_targets(
+        &mut self,
+        lefts: ruby_prism::NodeList<'_>,
+        rest: Option<ruby_prism::Node<'_>>,
+        rights: ruby_prism::NodeList<'_>,
+    ) {
         let mut first = true;
         for target in lefts.iter() {
             if !first {
                 self.output.push_str(", ");
             }
             first = false;
+            self.inline = true;
             self.visit(&target);
         }
-        if let Some(rest) = node.rest() {
+        if let Some(rest) = rest {
             // A bare trailing comma (`a, b, = expr`) parses as an
             // `ImplicitRestNode` with nothing following it — it should stay
             // a bare comma, not grow an explicit `*` (that's only correct
@@ -207,6 +229,7 @@ impl Formatter {
                 if !first {
                     self.output.push_str(", ");
                 }
+                self.inline = true;
                 self.visit(&rest);
             }
             first = false;
@@ -216,14 +239,8 @@ impl Formatter {
                 self.output.push_str(", ");
             }
             first = false;
+            self.inline = true;
             self.visit(&target);
-        }
-
-        self.output.push_str(" = ");
-        self.inline = true;
-        self.visit(&node.value());
-        if !inline {
-            self.output.push('\n');
         }
     }
 
@@ -232,6 +249,83 @@ impl Formatter {
         node: &ruby_prism::LocalVariableTargetNode<'_>,
     ) {
         self.write_bytes(node.name().as_slice());
+    }
+
+    pub(super) fn fmt_instance_variable_target_node(
+        &mut self,
+        node: &ruby_prism::InstanceVariableTargetNode<'_>,
+    ) {
+        self.write_bytes(node.name().as_slice());
+    }
+
+    pub(super) fn fmt_class_variable_target_node(
+        &mut self,
+        node: &ruby_prism::ClassVariableTargetNode<'_>,
+    ) {
+        self.write_bytes(node.name().as_slice());
+    }
+
+    pub(super) fn fmt_global_variable_target_node(
+        &mut self,
+        node: &ruby_prism::GlobalVariableTargetNode<'_>,
+    ) {
+        self.write_bytes(node.name().as_slice());
+    }
+
+    pub(super) fn fmt_constant_target_node(&mut self, node: &ruby_prism::ConstantTargetNode<'_>) {
+        self.write_bytes(node.name().as_slice());
+    }
+
+    pub(super) fn fmt_constant_path_target_node(
+        &mut self,
+        node: &ruby_prism::ConstantPathTargetNode<'_>,
+    ) {
+        // `parent` is absent for a cbase path (`::Foo, x = ...`), where the
+        // leading `::` delimiter is the whole prefix.
+        if let Some(parent) = node.parent() {
+            self.inline = true;
+            self.visit(&parent);
+        }
+        self.write_bytes(node.delimiter_loc().as_slice());
+        self.write_bytes(node.name_loc().as_slice());
+    }
+
+    pub(super) fn fmt_call_target_node(&mut self, node: &ruby_prism::CallTargetNode<'_>) {
+        self.inline = true;
+        self.visit(&node.receiver());
+        self.write_bytes(node.call_operator_loc().as_slice());
+        // `name()` is the attribute-writer name Prism synthesizes (`a=`);
+        // the source spelling of the message is `message_loc`.
+        self.write_bytes(node.message_loc().as_slice());
+    }
+
+    pub(super) fn fmt_index_target_node(&mut self, node: &ruby_prism::IndexTargetNode<'_>) {
+        self.inline = true;
+        self.visit(&node.receiver());
+        self.write_bytes(node.opening_loc().as_slice());
+        if let Some(arguments) = node.arguments() {
+            for (i, argument) in arguments.arguments().iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(", ");
+                }
+                self.inline = true;
+                self.visit(&argument);
+            }
+        }
+        self.write_bytes(node.closing_loc().as_slice());
+    }
+
+    /// A parenthesized destructuring group nested inside a larger target
+    /// list (`a, (b, c) = 1, [2, 3]`).
+    pub(super) fn fmt_multi_target_node(&mut self, node: &ruby_prism::MultiTargetNode<'_>) {
+        let parenthesized = node.lparen_loc().is_some();
+        if parenthesized {
+            self.output.push('(');
+        }
+        self.write_multi_targets(node.lefts(), node.rest(), node.rights());
+        if parenthesized {
+            self.output.push(')');
+        }
     }
 
     pub(super) fn fmt_index_or_write_node(&mut self, node: &ruby_prism::IndexOrWriteNode<'_>) {
