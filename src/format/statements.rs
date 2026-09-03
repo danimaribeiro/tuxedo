@@ -43,9 +43,15 @@ impl Formatter {
             }
 
             self.inline = false;
+            self.heredoc_end_line = None;
             self.visit(&stmt);
 
-            let end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
+            // A heredoc's node ends at its opening tag, so a statement
+            // carrying one really ends at its terminator line.
+            let mut end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
+            if let Some(heredoc_line) = self.heredoc_end_line.take() {
+                end_line = end_line.max(heredoc_line);
+            }
             self.emit_trailing_comment_if_same_line(end_line);
             prev_end_line = Some(end_line);
         }

@@ -45,6 +45,7 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
     let mut formatter = Formatter::new(source, &parsed, config);
     formatter.visit(&node);
     formatter.flush_remaining_comments();
+    formatter.splice_heredoc_bodies();
     let trimmed = formatter.output.trim_end_matches('\n');
     let mut result = trimmed.to_string();
     result.push('\n');
@@ -76,7 +77,24 @@ struct Formatter {
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     line_starts: Vec<usize>,
+    source: String,
+    /// Verbatim heredoc bodies, indexed by the marker written into
+    /// `output` after each opening tag. See `write_heredoc` and
+    /// `splice_heredoc_bodies`.
+    pending_heredocs: Vec<String>,
+    /// Source line of the last heredoc terminator emitted. Prism ends a
+    /// heredoc node at its opening tag, not its terminator, so a statement
+    /// containing one looks far shorter than it is — which made the
+    /// blank-line preservation in `fmt_statements_node` see a multi-line
+    /// gap where the source had none.
+    heredoc_end_line: Option<usize>,
 }
+
+/// Delimiters of the placeholder that stands in for a heredoc body between
+/// `write_heredoc` and `splice_heredoc_bodies`. Unicode private-use
+/// characters, which cannot appear in Ruby source that Prism accepted.
+const HEREDOC_MARK_START: char = '\u{E000}';
+const HEREDOC_MARK_END: char = '\u{E001}';
 
 impl Formatter {
     fn new(source: &str, parsed: &ruby_prism::ParseResult<'_>, config: &FormatConfig) -> Self {
@@ -98,6 +116,9 @@ impl Formatter {
             comments,
             comment_cursor: 0,
             line_starts: line_starts(source),
+            source: source.to_string(),
+            pending_heredocs: Vec::new(),
+            heredoc_end_line: None,
         }
     }
 
@@ -346,6 +367,119 @@ impl Formatter {
     /// only ever appear as a sub-expression (inline), but they can also be a
     /// whole statement on their own (e.g. a bare `true` as a method body),
     /// in which case they need to behave like any other statement.
+    /// True if a string-ish literal's opening delimiter marks a heredoc
+    /// (`<<~SQL`, `<<-EOS`, `<<EOS`, `<<'EOS'`) rather than a normal quote.
+    fn is_heredoc_opening(opening: &[u8]) -> bool {
+        opening.starts_with(b"<<")
+    }
+
+    /// Emits a heredoc: the opening tag goes here, inline, but the body is
+    /// deferred.
+    ///
+    /// A heredoc is the one Ruby construct whose text does not live where
+    /// its node sits. `foo(<<~SQL, x)` means "emit `<<~SQL`, keep
+    /// formatting the rest of *this* line, then dump the body on the lines
+    /// that follow". The emitter is otherwise strictly linear, so writing
+    /// the body at the point the node is visited is what produced
+    /// `z = <<-FOO  hi` — the body pulled onto the opening line.
+    ///
+    /// Rather than teach all 39 newline sites to flush a queue, we record
+    /// where in `output` the tag landed and splice the bodies in once, at
+    /// the end, in `splice_heredoc_bodies`.
+    ///
+    /// `body` is copied verbatim, byte for byte. A heredoc body is opaque
+    /// text, not code: its leading whitespace is data (re-indenting inside
+    /// a `<<-SQL` changes the SQL), so it is never reformatted, and never
+    /// re-indented — not even for `<<~`, where Ruby itself strips the
+    /// margin at runtime.
+    fn write_heredoc(&mut self, opening: &[u8], body: String, body_end: usize) {
+        let terminator_line = self.line_of(body_end.saturating_sub(1));
+        self.heredoc_end_line = Some(
+            self.heredoc_end_line
+                .map_or(terminator_line, |seen| seen.max(terminator_line)),
+        );
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.write_bytes(opening);
+        let index = self.pending_heredocs.len();
+        self.pending_heredocs.push(body);
+        // A marker rather than an offset into `output`: argument lists are
+        // rendered into a detached buffer by `capture_as_doc`, so an
+        // offset taken there points into that temporary and not into the
+        // final output. A marker travels with the text wherever it is
+        // spliced.
+        self.output.push(HEREDOC_MARK_START);
+        self.output.push_str(&index.to_string());
+        self.output.push(HEREDOC_MARK_END);
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// Splices every deferred heredoc body into `output`, each one just
+    /// after the newline ending the line its opening tag landed on.
+    ///
+    /// Walks in reverse offset order so that earlier splices cannot shift
+    /// the offsets of the ones still to be placed. Two heredocs opened on
+    /// the same line (`foo(<<~A, <<~B)`) therefore end up in source order:
+    /// B's body is inserted at the line's end first, then A's is inserted
+    /// at that same index, pushing B's after it.
+    fn splice_heredoc_bodies(&mut self) {
+        if self.pending_heredocs.is_empty() {
+            return;
+        }
+        let bodies = std::mem::take(&mut self.pending_heredocs);
+        let rendered = std::mem::take(&mut self.output);
+
+        let mut out = String::with_capacity(rendered.len());
+        let mut queued: Vec<usize> = Vec::new();
+        let mut chars = rendered.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                HEREDOC_MARK_START => {
+                    let mut digits = String::new();
+                    for d in chars.by_ref() {
+                        if d == HEREDOC_MARK_END {
+                            break;
+                        }
+                        digits.push(d);
+                    }
+                    if let Ok(index) = digits.parse::<usize>() {
+                        queued.push(index);
+                    }
+                }
+                '\n' => {
+                    out.push('\n');
+                    // Bodies land after the line their tag closed, in the
+                    // order the tags appeared on it: `foo(<<~A, <<~B)`
+                    // emits A's body then B's.
+                    for index in queued.drain(..) {
+                        out.push_str(&bodies[index]);
+                    }
+                }
+                _ => out.push(c),
+            }
+        }
+        if !queued.is_empty() {
+            out.push('\n');
+            for index in queued.drain(..) {
+                out.push_str(&bodies[index]);
+            }
+        }
+        self.output = out;
+    }
+
+    /// The verbatim source of a heredoc body, from `body_start` through the
+    /// end of its terminator line.
+    fn heredoc_body(&self, body_start: usize, body_end: usize) -> String {
+        self.source
+            .get(body_start..body_end)
+            .unwrap_or_default()
+            .to_string()
+    }
+
     fn write_leaf(&mut self, write: impl FnOnce(&mut Self)) {
         let inline = self.inline;
         if !inline {

@@ -39,6 +39,22 @@ impl Formatter {
     }
 
     pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
+        if let Some(opening) = node.opening_loc()
+            && Self::is_heredoc_opening(opening.as_slice())
+        {
+            // A heredoc with no interpolation. Body runs from the start of
+            // its content through the end of the terminator line.
+            let closing = node.closing_loc();
+            let body_start = node.content_loc().start_offset();
+            let body_end = closing
+                .as_ref()
+                .map_or(node.content_loc().end_offset(), |c| c.end_offset());
+            let body = self.heredoc_body(body_start, body_end);
+            let opening = opening.as_slice().to_vec();
+            self.write_heredoc(&opening, body, body_end);
+            return;
+        }
+
         if node.opening_loc().is_some() {
             // Reproduce the literal verbatim (delimiters included) rather
             // than reconstructing it from `unescaped()`: `unescaped()`
@@ -142,6 +158,29 @@ impl Formatter {
         let opening = node.opening_loc().map(|loc| loc.as_slice());
         let closing = node.closing_loc().map(|loc| loc.as_slice());
         let parts = node.parts();
+
+        if let Some(opening_loc) = node.opening_loc()
+            && Self::is_heredoc_opening(opening_loc.as_slice())
+        {
+            // A heredoc containing `#{}`. The body starts at the first
+            // part; an empty heredoc has no parts, in which case the body
+            // is just the terminator line.
+            let closing_loc = node.closing_loc();
+            let parts_list = node.parts();
+            let body_start = parts_list
+                .iter()
+                .next()
+                .map(|part| part.location().start_offset())
+                .or_else(|| closing_loc.as_ref().map(|c| c.start_offset()));
+            let body_end = closing_loc.as_ref().map_or(0, |c| c.end_offset());
+            let body = match (body_start, closing_loc.as_ref()) {
+                (Some(start), Some(closing)) => self.heredoc_body(start, closing.end_offset()),
+                _ => String::new(),
+            };
+            let opening_bytes = opening_loc.as_slice().to_vec();
+            self.write_heredoc(&opening_bytes, body, body_end);
+            return;
+        }
 
         // No delimiters of its own means this isn't one literal at all —
         // it's Ruby's implicit concatenation of adjacent literals
