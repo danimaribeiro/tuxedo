@@ -110,6 +110,12 @@ cp -r "$OUT" "$TWICE"
 unstable=0
 while IFS= read -r -d '' file; do
   rel="${file#"$OUT"/}"
+  # Same exclusion as the parse check: a file that was never Ruby (an ERB
+  # template under a .rb name) is not something we can be stable on, and
+  # holding the formatter to it just adds permanent noise.
+  if ! ruby -c "$SRC/$rel" >/dev/null 2>&1; then
+    continue
+  fi
   if ! diff -q "$OUT/$rel" "$TWICE/$rel" >/dev/null 2>&1; then
     echo "  UNSTABLE: $rel"
     unstable=$((unstable + 1))

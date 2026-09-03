@@ -64,13 +64,30 @@ impl Formatter {
     }
 
     pub(super) fn fmt_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
-        if let Some(parent) = node.parent() {
-            self.visit(&parent);
-            self.output.push_str("::");
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
         }
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.unwrap().as_slice()).unwrap_or(""));
+
+        if let Some(parent) = node.parent() {
+            // Without this the parent is written as a statement: as the
+            // body of `def f; Thor::DynamicCommand; end` it took
+            // fmt_constant_read_node's write_leaf path and came out as
+            // `Thor` on its own line followed by `::DynamicCommand`, which
+            // is still valid Ruby and a different constant lookup.
+            self.inline = true;
+            self.visit(&parent);
+        }
+        // `parent` is absent for a cbase path (`::Top`), where the leading
+        // `::` is the whole prefix. Taking the delimiter from source rather
+        // than hardcoding it after a parent keeps that case: `::Top` and
+        // `Top` are different lookups.
+        self.write_bytes(node.delimiter_loc().as_slice());
+        self.write_bytes(node.name_loc().as_slice());
+
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
