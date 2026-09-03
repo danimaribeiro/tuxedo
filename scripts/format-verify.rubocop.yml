@@ -1,0 +1,74 @@
+# Rubocop config used only for scripts/format-verify.sh (see that script).
+#
+# Unlike scripts/format-compare.rubocop.yml — which approximates rubocop's
+# stock behaviour so the two tools' *output* can be diffed — this file
+# describes the layout Tuxedo is actually aiming for: consistent formatting
+# optimized for diff quality. It is a specification, not a baseline.
+#
+# Two properties, both deliberate:
+#
+#   1. All-or-nothing expansion. A collection either fits on one line or
+#      every element gets its own line. Rubocop's defaults bin-pack (fill
+#      as many elements per line as the column limit allows), which makes
+#      adding or removing one element reflow an arbitrary number of
+#      unrelated lines. The six `*LineBreak`/`*LineBreaks` cops below are
+#      what forbid packing; all six ship disabled by default.
+#
+#   2. Block indentation. When a collection expands, the bracket sits alone
+#      on its own line and the elements sit at a fixed indent from the
+#      start of the statement — not aligned under the opening bracket.
+#      Bracket alignment makes the *name* of the thing control the
+#      indentation of every element, so renaming a variable reindents the
+#      whole literal.
+#
+# Note there is deliberately no trailing comma on the last element:
+# rubocop's `Style/TrailingCommaIn*` defaults to `no_comma`, and this file
+# does not override it (it is a Style cop anyway, outside the Layout
+# department this config is used with).
+#
+# This config is passed via `-c`, so it starts from rubocop's own defaults
+# and ignores whatever .rubocop.yml the project under test ships.
+
+# --- 1. All-or-nothing expansion: no bin-packing ---
+Layout/FirstArrayElementLineBreak:
+  Enabled: true
+Layout/FirstHashElementLineBreak:
+  Enabled: true
+Layout/FirstMethodArgumentLineBreak:
+  Enabled: true
+Layout/MultilineArrayLineBreaks:
+  Enabled: true
+Layout/MultilineHashKeyLineBreaks:
+  Enabled: true
+Layout/MultilineMethodArgumentLineBreaks:
+  Enabled: true
+
+# --- 2. Block indentation: bracket on its own line, fixed indent ---
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+Layout/ArrayAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+Layout/MultilineArrayBraceLayout:
+  EnforcedStyle: new_line
+Layout/MultilineHashBraceLayout:
+  EnforcedStyle: new_line
+Layout/MultilineMethodCallBraceLayout:
+  EnforcedStyle: new_line
+
+# --- Carried over from format-compare.rubocop.yml ---
+# Tuxedo does not preserve hand-aligned columns yet; it always collapses
+# runs of spaces to one. Leaving AllowForAlignment on would report every
+# hand-aligned block as an offense against a feature Tuxedo has not
+# implemented. Remove these once alignment preservation lands.
+Layout/ExtraSpacing:
+  AllowForAlignment: false
+Layout/SpaceAroundOperators:
+  AllowForAlignment: false
+Layout/SpaceBeforeFirstArg:
+  AllowForAlignment: false
