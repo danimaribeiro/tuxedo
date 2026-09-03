@@ -642,6 +642,18 @@ impl Visit<'_> for Formatter {
         self.fmt_index_operator_write_node(node);
     }
 
+    fn visit_call_operator_write_node(&mut self, node: &ruby_prism::CallOperatorWriteNode<'_>) {
+        self.fmt_call_operator_write_node(node);
+    }
+
+    fn visit_call_or_write_node(&mut self, node: &ruby_prism::CallOrWriteNode<'_>) {
+        self.fmt_call_or_write_node(node);
+    }
+
+    fn visit_call_and_write_node(&mut self, node: &ruby_prism::CallAndWriteNode<'_>) {
+        self.fmt_call_and_write_node(node);
+    }
+
     fn visit_local_variable_target_node(&mut self, node: &ruby_prism::LocalVariableTargetNode<'_>) {
         self.fmt_local_variable_target_node(node);
     }

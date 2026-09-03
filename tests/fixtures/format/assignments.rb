@@ -27,6 +27,16 @@ a, *b = [1, 2, 3]
 a, b = compute
 a, b, = compute
 a, *, b = compute
+@a, @b = 1, 2
+@@x, @@y = 1, 2
+$p, $q = 1, 2
+First, Second = 1, 2
+Config::Left, Config::Right = 1, 2
+obj.left, obj.right = 1, 2
+h[:a], h[:b] = 1, 2
+h["k"], other = 1, 2
+first, (second, third) = 1, [2, 3]
+first, (second, (third, fourth)) = 1, [2, [3, 4]]
 
 def tally
   total = 0

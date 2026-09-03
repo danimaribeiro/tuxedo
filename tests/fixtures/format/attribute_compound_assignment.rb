@@ -1,0 +1,9 @@
+shell.padding += 1
+shell.padding -= 1
+obj.count *= 2
+obj.count /= 2
+obj.flag ||= true
+obj.flag &&= false
+a.b.c += 1
+obj&.a += 1
+self.total += n

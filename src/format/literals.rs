@@ -142,6 +142,30 @@ impl Formatter {
         let opening = node.opening_loc().map(|loc| loc.as_slice());
         let closing = node.closing_loc().map(|loc| loc.as_slice());
         let parts = node.parts();
+
+        // No delimiters of its own means this isn't one literal at all —
+        // it's Ruby's implicit concatenation of adjacent literals
+        // (`"foo" "bar"`, or the same split over lines with a trailing
+        // `\`). Prism models both as an InterpolatedStringNode, but the
+        // parts here are *complete* literals carrying their own quotes,
+        // not the bare fragments that sit between `#{}` holes inside a
+        // single pair of quotes. Emitting their contents the way
+        // `fmt_interpolated_parts` does would strip every quote and turn
+        // `x = "foo" "bar"` into `x = foobar` — still valid Ruby, and a
+        // completely different program. Copy each part verbatim instead.
+        if opening.is_none() {
+            let locations: Vec<_> = parts.iter().map(|part| part.location()).collect();
+            self.write_leaf(|f| {
+                for (i, location) in locations.iter().enumerate() {
+                    if i > 0 {
+                        f.output.push(' ');
+                    }
+                    f.write_bytes(location.as_slice());
+                }
+            });
+            return;
+        }
+
         self.write_leaf(|f| {
             if let Some(opening) = opening {
                 f.write_bytes(opening);

@@ -244,6 +244,82 @@ impl Formatter {
         }
     }
 
+    pub(super) fn fmt_call_operator_write_node(
+        &mut self,
+        node: &ruby_prism::CallOperatorWriteNode<'_>,
+    ) {
+        let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
+        self.write_call_write(
+            node.receiver(),
+            node.call_operator_loc(),
+            node.message_loc(),
+            op,
+            &node.value(),
+        );
+    }
+
+    pub(super) fn fmt_call_or_write_node(&mut self, node: &ruby_prism::CallOrWriteNode<'_>) {
+        self.write_call_write(
+            node.receiver(),
+            node.call_operator_loc(),
+            node.message_loc(),
+            "||=",
+            &node.value(),
+        );
+    }
+
+    pub(super) fn fmt_call_and_write_node(&mut self, node: &ruby_prism::CallAndWriteNode<'_>) {
+        self.write_call_write(
+            node.receiver(),
+            node.call_operator_loc(),
+            node.message_loc(),
+            "&&=",
+            &node.value(),
+        );
+    }
+
+    /// Shared renderer for `receiver.attr op= value` (`CallOrWriteNode`,
+    /// `CallAndWriteNode`, `CallOperatorWriteNode`) — the attribute-writer
+    /// counterpart to `write_index_write`.
+    ///
+    /// The message is taken from `message_loc` rather than `write_name`,
+    /// which is the writer name Prism synthesizes (`padding=`) and not what
+    /// the source says.
+    fn write_call_write(
+        &mut self,
+        receiver: Option<ruby_prism::Node<'_>>,
+        call_operator: Option<ruby_prism::Location<'_>>,
+        message: Option<ruby_prism::Location<'_>>,
+        op: &str,
+        value: &ruby_prism::Node<'_>,
+    ) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+
+        if let Some(receiver) = receiver {
+            self.inline = true;
+            self.visit(&receiver);
+        }
+        if let Some(call_operator) = call_operator {
+            self.write_bytes(call_operator.as_slice());
+        }
+        if let Some(message) = message {
+            self.write_bytes(message.as_slice());
+        }
+        self.output.push(' ');
+        self.output.push_str(op);
+        self.output.push(' ');
+
+        self.inline = true;
+        self.visit(value);
+
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
     pub(super) fn fmt_local_variable_target_node(
         &mut self,
         node: &ruby_prism::LocalVariableTargetNode<'_>,
