@@ -170,11 +170,82 @@ impl Formatter {
     }
 
     pub(super) fn fmt_block_parameters_node(&mut self, node: &ruby_prism::BlockParametersNode<'_>) {
-        self.output.push('|');
+        // A lambda's parameters are parenthesized (`->(x) { }`) while a
+        // block's are pipe-delimited (`{ |x| }`), and both are this node
+        // type — so take the delimiters from source rather than assuming
+        // pipes.
+        let opening = node.opening_loc().map(|loc| loc.as_slice().to_vec());
+        let closing = node.closing_loc().map(|loc| loc.as_slice().to_vec());
+
+        match &opening {
+            Some(bytes) => self.write_bytes(bytes),
+            None => self.output.push('|'),
+        }
         if let Some(params) = node.parameters() {
             self.fmt_parameters_node(&params);
         }
-        self.output.push('|');
+        match &closing {
+            Some(bytes) => self.write_bytes(bytes),
+            None => self.output.push('|'),
+        }
+    }
+
+    /// A lambda literal (`->(x) { x + 1 }`, `-> { 42 }`, `->(x) do ... end`).
+    ///
+    /// Structurally a block with an arrow in front, so the body is rendered
+    /// the same way `fmt_block_node` does it — but it is its own node type,
+    /// and without this it fell through to Prism's default visitor, which
+    /// emitted the parameters in block form and dropped the `->`, the
+    /// parens and the braces entirely: `->(_) { block.call }` came out as
+    /// `|_| block.call`.
+    pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+
+        let operator = node.operator_loc().as_slice().to_vec();
+        self.write_bytes(&operator);
+        if let Some(parameters) = node.parameters() {
+            self.inline = true;
+            self.visit(&parameters);
+        }
+
+        let brace = node.opening_loc().as_slice() == b"{";
+        self.output.push(' ');
+        self.output.push_str(if brace { "{" } else { "do" });
+
+        if brace {
+            let doc = match node.body() {
+                Some(body) => {
+                    let was_single_line = self.single_line;
+                    self.single_line = true;
+                    let body_doc = self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(&body);
+                    });
+                    self.single_line = was_single_line;
+                    Doc::text(" ").append(body_doc).append(Doc::text(" }"))
+                }
+                None => Doc::text("}"),
+            };
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+            if let Some(body) = node.body() {
+                self.inline = false;
+                self.visit(&body);
+            }
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
+
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
