@@ -21,3 +21,5 @@ Tempfile.open(
 ) do |temp|
   temp.write content
 end
+
+PASS_NOT_FOUND = Class.new { def self.action(_); self; end; def self.call(_); [404, {}, []]; end }

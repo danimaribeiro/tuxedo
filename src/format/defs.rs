@@ -5,6 +5,17 @@ use ruby_prism::Visit;
 impl Formatter {
     pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
         let inline = self.inline;
+        // Set by fmt_block_node when rendering a brace block's body flat
+        // (`{ ... }`). A hardcoded '\n' after the signature (below) broke
+        // that flatness regardless of indent bookkeeping, and whether "end"
+        // ended up separated from the body at all then depended on
+        // whatever self.indent's numeric value happened to be (0 at true
+        // top level renders no separating spaces at all) -- `Class.new {
+        // def self.a; self; end }` could come out as literal `selfend }`,
+        // a syntax error. Joining with "; " instead, like
+        // fmt_statements_node/fmt_begin_node already do in this mode, is
+        // correct regardless of indent depth.
+        let single_line = self.single_line;
         let name = node.name();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
 
@@ -27,18 +38,26 @@ impl Formatter {
             self.write_bracketed_parameters("(", &params, ")");
         }
 
-        self.output.push('\n');
-        let header_line = self.line_of(node.location().start_offset());
-        self.emit_trailing_comment_if_same_line(header_line);
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            let header_line = self.line_of(node.location().start_offset());
+            self.emit_trailing_comment_if_same_line(header_line);
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.body() {
             self.visit(&body);
         }
-        self.indent -= 1;
 
-        self.write_indent();
-        self.output.push_str("end");
+        if single_line {
+            self.output.push_str("; end");
+        } else {
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
         if !inline {
             self.output.push('\n');
         }
