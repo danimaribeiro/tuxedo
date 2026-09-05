@@ -3,6 +3,7 @@ module Greeter
     def self.available?
       true
     end
+
     def hello
       self
     end

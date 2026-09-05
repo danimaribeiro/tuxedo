@@ -2,6 +2,7 @@ class Foo
   def ==(other)
     true
   end
+
   alias eql? ==
 end
 
