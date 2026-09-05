@@ -21,6 +21,26 @@ fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
         .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
 }
 
+/// True for a node whose formatter lays out its own multi-line body
+/// imperatively (via `self.indent`/`write_indent`) rather than through a
+/// composable `Doc` -- an `if`/`case`/`begin`, or a call with a real block.
+/// Such a node can't be safely captured with `capture_as_doc` and then
+/// nested inside a `Doc::line()`-driven wrapper: the wrapper only shifts the
+/// break immediately before the captured text, not the raw newlines already
+/// baked into it, so only the first line would move.
+pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
+    matches!(
+        node,
+        ruby_prism::Node::IfNode { .. }
+            | ruby_prism::Node::UnlessNode { .. }
+            | ruby_prism::Node::CaseNode { .. }
+            | ruby_prism::Node::CaseMatchNode { .. }
+            | ruby_prism::Node::WhileNode { .. }
+            | ruby_prism::Node::UntilNode { .. }
+            | ruby_prism::Node::BeginNode { .. }
+    ) || has_real_block(node)
+}
+
 /// Like `has_real_block`, but for a hash element (`AssocNode`/`AssocSplatNode`):
 /// looks at the value being assigned rather than the element itself, since a
 /// hash element is never itself a call node.
@@ -162,6 +182,45 @@ impl Formatter {
         doc.pretty(width).to_string()
     }
 
+    /// Renders a bracketed, comma-or-other-separated group (array literal,
+    /// hash literal, parenthesized call argument list, ...) as a single Doc
+    /// group implementing Tuxedo's block-indentation spec: either the whole
+    /// thing fits on one line, or the opening bracket sits alone, every
+    /// element gets a fixed indent one level deeper than the current
+    /// statement, and the closing bracket sits alone back at the statement's
+    /// own indent -- never aligned under the opening bracket, so renaming
+    /// the assignment target can't reindent the body.
+    ///
+    /// `open_sep`/`close_sep` are `Doc::line()` (renders as a space when the
+    /// group stays flat -- hash braces: `{ a: 1 }`) or `Doc::line_()`
+    /// (renders as nothing when flat -- arrays/call args: `[1, 2]`,
+    /// `(1, 2)`), passed in so callers control the flat-mode spacing while
+    /// sharing the same broken-mode layout.
+    fn wrap_bracketed_group(
+        &mut self,
+        open: &str,
+        open_sep: pretty::RcDoc<'static, ()>,
+        body: pretty::RcDoc<'static, ()>,
+        close_sep: pretty::RcDoc<'static, ()>,
+        close: &str,
+    ) -> String {
+        let indent_width = self.indent_width();
+        let nest_width = indent_width + self.indent_str.len();
+        // The closing token must be nested *together with* close_sep, not
+        // appended after the nest ends -- `pretty`'s nest only applies the
+        // indent to a line break whose subsequent content is still inside
+        // the same nested subtree.
+        let doc = pretty::RcDoc::text(open.to_string())
+            .append(open_sep.append(body).nest(nest_width as isize))
+            .append(
+                close_sep
+                    .append(pretty::RcDoc::text(close.to_string()))
+                    .nest(indent_width as isize),
+            )
+            .group();
+        self.render_doc_to_string(doc)
+    }
+
     /// Captures whatever `render` writes to `self.output` into an owned
     /// string, restoring the real `output` afterwards, and wraps the capture
     /// as an opaque `Doc::text` leaf. This is how content that hasn't been
@@ -244,17 +303,21 @@ impl Formatter {
         self.output.push(' ');
         let prefix_len = self.output.len() - start_len;
 
-        // A wrapped literal (array/hash/call-args) or an `if`/`case` value
-        // should have its continuation lines/`end` align under the `=`
-        // (rubocop's Layout/EndAlignment: keyword default for a keyword
-        // value). A `do...end`/`{ }` block, a lambda literal, or an
-        // implicit/explicit `begin` manage their own body indentation and instead indent relative to
-        // the statement's own indent, ignoring how long the left-hand side
-        // is — rubocop leaves their body/`end` there rather than aligning
-        // to the assignment.
+        // An `if`/`case` value should have its continuation lines/`end`
+        // align under the `=` (rubocop's Layout/EndAlignment: keyword
+        // default for a keyword value). Everything else -- a wrapped
+        // array/hash/call-args literal (block-indented at a fixed depth
+        // regardless of the assignment target's length), a `do...end`/`{ }`
+        // block, a lambda literal, or an implicit/explicit `begin` --
+        // manages its own body indentation relative to the statement's own
+        // indent instead.
         let skip_alignment = matches!(
             value,
-            ruby_prism::Node::BeginNode { .. } | ruby_prism::Node::LambdaNode { .. }
+            ruby_prism::Node::BeginNode { .. }
+                | ruby_prism::Node::LambdaNode { .. }
+                | ruby_prism::Node::ArrayNode { .. }
+                | ruby_prism::Node::HashNode { .. }
+                | ruby_prism::Node::CallNode { .. }
         ) || has_real_block(value);
         let extra_indent = if skip_alignment {
             0
@@ -319,19 +382,17 @@ impl Formatter {
                 }));
             }
 
-            let nest_width = self.indent_width() + self.indent_str.len();
-            let doc = pretty::RcDoc::text("(")
-                .append(
-                    pretty::RcDoc::intersperse(
-                        leaves,
-                        pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
-                    )
-                    .nest(nest_width as isize)
-                    .group(),
-                )
-                .append(pretty::RcDoc::text(")"));
-
-            let rendered = self.render_doc_to_string(doc);
+            let body = pretty::RcDoc::intersperse(
+                leaves,
+                pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
+            );
+            let rendered = self.wrap_bracketed_group(
+                "(",
+                pretty::RcDoc::line_(),
+                body,
+                pretty::RcDoc::line_(),
+                ")",
+            );
             self.output.push_str(&rendered);
             return;
         }

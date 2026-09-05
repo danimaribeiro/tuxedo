@@ -1,4 +1,4 @@
-use super::Formatter;
+use super::{Formatter, manages_own_indentation};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
@@ -75,11 +75,20 @@ impl Formatter {
                 // wrap it as a Doc so an overlong line breaks after the
                 // operator with the argument indented one level, instead of
                 // always rendering flat regardless of width.
+                // Excludes an argument that renders its own multi-line body
+                // imperatively (if/case/begin/a block-call): capture_as_doc
+                // bakes in absolute indentation for such a body's *internal*
+                // lines (from `self.indent` at capture time), but the Doc
+                // wrapper below only nests the break right before the
+                // captured text, not the raw newlines inside it -- so a
+                // multi-line body's first line would shift by `nest_width`
+                // while its `else`/`end` stayed put, misaligning them.
                 let single_arg = node
                     .arguments()
                     .map(|a| a.arguments().iter().collect::<Vec<_>>())
                     .filter(|args| args.len() == 1)
-                    .map(|mut args| args.remove(0));
+                    .map(|mut args| args.remove(0))
+                    .filter(|arg| !manages_own_indentation(arg));
 
                 if let Some(arg) = single_arg {
                     let receiver_doc = self.capture_as_doc(|f| {
@@ -126,7 +135,7 @@ impl Formatter {
                 }
             }
             self.write_call_block(node);
-            if !inline {
+            if !inline && !self.output.ends_with('\n') {
                 self.output.push('\n');
             }
         } else {

@@ -61,16 +61,8 @@ impl Formatter {
                 })
                 .collect();
 
-            let nest_width = f.indent_width() + f.indent_str.len();
-            let doc = Doc::text("[")
-                .append(
-                    Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
-                        .nest(nest_width as isize)
-                        .group(),
-                )
-                .append(Doc::text("]"));
-
-            let rendered = f.render_doc_to_string(doc);
+            let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
+            let rendered = f.wrap_bracketed_group("[", Doc::line_(), body, Doc::line_(), "]");
             f.output.push_str(&rendered);
         });
     }
@@ -101,18 +93,11 @@ impl Formatter {
                 .map(|element| f.fmt_percent_array_word(element))
                 .collect();
 
-            let nest_width = f.indent_width() + f.indent_str.len();
             let opening = String::from_utf8_lossy(&opening).into_owned();
             let closing = String::from_utf8_lossy(&closing).into_owned();
-            let doc = Doc::text(opening)
-                .append(
-                    Doc::intersperse(leaves, Doc::line())
-                        .nest(nest_width as isize)
-                        .group(),
-                )
-                .append(Doc::text(closing));
-
-            let rendered = f.render_doc_to_string(doc);
+            let body = Doc::intersperse(leaves, Doc::line());
+            let rendered =
+                f.wrap_bracketed_group(&opening, Doc::line_(), body, Doc::line_(), &closing);
             f.output.push_str(&rendered);
         });
     }
@@ -206,15 +191,17 @@ impl Formatter {
                 })
                 .collect();
 
-            let nest_width = f.indent_width() + f.indent_str.len();
-            let mut doc = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()))
-                .nest(nest_width as isize)
-                .group();
-            if braced {
-                doc = Doc::text("{ ").append(doc).append(Doc::text(" }"));
-            }
-
-            let rendered = f.render_doc_to_string(doc);
+            let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
+            let rendered = if braced {
+                f.wrap_bracketed_group("{", Doc::line(), body, Doc::line(), "}")
+            } else {
+                // Bare keyword args at a call site with no braces of its own
+                // to anchor a leading/trailing break on -- just a group, no
+                // bracket padding.
+                let nest_width = f.indent_width() + f.indent_str.len();
+                let doc = body.nest(nest_width as isize).group();
+                f.render_doc_to_string(doc)
+            };
             f.output.push_str(&rendered);
         });
     }
