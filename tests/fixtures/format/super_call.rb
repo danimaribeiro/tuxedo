@@ -14,4 +14,16 @@ class Child < Parent
   def with_block(&block)
     super(a, &block)
   end
+
+  def overlong_arguments(name)
+    super(
+      name.to_s,
+      description,
+      long_description,
+      wrap_long_description,
+      usage,
+      options_or_default,
+      options_relation_or_default
+    )
+  end
 end

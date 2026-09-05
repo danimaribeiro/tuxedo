@@ -21,9 +21,7 @@ impl Formatter {
         self.output.push_str(name_str);
 
         if let Some(params) = node.parameters() {
-            self.output.push('(');
-            self.fmt_parameters_node(&params);
-            self.output.push(')');
+            self.write_bracketed_parameters("(", &params, ")");
         }
 
         self.output.push('\n');
@@ -130,43 +128,69 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) {
-        let mut wrote_any = false;
-        let mut sep = |formatter: &mut Self| {
-            if wrote_any {
-                formatter.output.push_str(", ");
-            }
-            wrote_any = true;
+    /// Collects a parameter list's entries as a `Doc` leaf per parameter, in
+    /// declaration order (requireds, optionals, rest, posts, keywords,
+    /// keyword-rest, block) -- shared by `fmt_parameters_node` (which joins
+    /// them as flat text, for contexts that never wrap) and
+    /// `write_bracketed_parameters` (which wraps them all-or-nothing, block
+    /// indented, like a call's argument list).
+    fn parameter_leaves(&mut self, node: &ruby_prism::ParametersNode<'_>) -> Vec<Doc<'static, ()>> {
+        let mut leaves = Vec::new();
+        let mut push = |formatter: &mut Self, visit: &dyn Fn(&mut Self)| {
+            leaves.push(formatter.capture_as_doc(|f| {
+                f.inline = true;
+                visit(f);
+            }));
         };
 
         for param in node.requireds().iter() {
-            sep(self);
-            self.visit(&param);
+            push(self, &|f| f.visit(&param));
         }
         for param in node.optionals().iter() {
-            sep(self);
-            self.visit(&param);
+            push(self, &|f| f.visit(&param));
         }
         if let Some(rest) = node.rest() {
-            sep(self);
-            self.visit(&rest);
+            push(self, &|f| f.visit(&rest));
         }
         for param in node.posts().iter() {
-            sep(self);
-            self.visit(&param);
+            push(self, &|f| f.visit(&param));
         }
         for param in node.keywords().iter() {
-            sep(self);
-            self.visit(&param);
+            push(self, &|f| f.visit(&param));
         }
         if let Some(keyword_rest) = node.keyword_rest() {
-            sep(self);
-            self.visit(&keyword_rest);
+            push(self, &|f| f.visit(&keyword_rest));
         }
         if let Some(block) = node.block() {
-            sep(self);
-            self.fmt_block_parameter_node(&block);
+            push(self, &|f| f.fmt_block_parameter_node(&block));
         }
+        leaves
+    }
+
+    pub(super) fn fmt_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) {
+        let leaves = self.parameter_leaves(node);
+        for (i, leaf) in leaves.into_iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            self.output.push_str(&self.render_doc_to_string(leaf));
+        }
+    }
+
+    /// Renders a parameter list wrapped in `open`/`close` (a def's parens or
+    /// a lambda's), all-or-nothing and block-indented like a call's
+    /// argument list, so an overlong signature breaks one parameter per
+    /// line instead of running past the line length.
+    fn write_bracketed_parameters(
+        &mut self,
+        open: &str,
+        node: &ruby_prism::ParametersNode<'_>,
+        close: &str,
+    ) {
+        let leaves = self.parameter_leaves(node);
+        let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
+        let rendered = self.wrap_bracketed_group(open, Doc::line_(), body, Doc::line_(), close);
+        self.output.push_str(&rendered);
     }
 
     pub(super) fn fmt_block_parameters_node(&mut self, node: &ruby_prism::BlockParametersNode<'_>) {
@@ -174,19 +198,33 @@ impl Formatter {
         // block's are pipe-delimited (`{ |x| }`), and both are this node
         // type — so take the delimiters from source rather than assuming
         // pipes.
-        let opening = node.opening_loc().map(|loc| loc.as_slice().to_vec());
-        let closing = node.closing_loc().map(|loc| loc.as_slice().to_vec());
+        let opening = node
+            .opening_loc()
+            .map(|loc| String::from_utf8_lossy(loc.as_slice()).into_owned())
+            .unwrap_or_else(|| "|".to_string());
+        let closing = node
+            .closing_loc()
+            .map(|loc| String::from_utf8_lossy(loc.as_slice()).into_owned())
+            .unwrap_or_else(|| "|".to_string());
 
-        match &opening {
-            Some(bytes) => self.write_bytes(bytes),
-            None => self.output.push('|'),
-        }
-        if let Some(params) = node.parameters() {
-            self.fmt_parameters_node(&params);
-        }
-        match &closing {
-            Some(bytes) => self.write_bytes(bytes),
-            None => self.output.push('|'),
+        match node.parameters() {
+            // Only a lambda's real parens are worth all-or-nothing wrapping
+            // like a call's argument list. A block's `|params|` is never
+            // meant to span multiple lines -- forcing a wrap there splits
+            // the pipes across lines and leaves the block's body dangling
+            // after the closing pipe on the same line as its last param.
+            Some(params) if opening == "(" => {
+                self.write_bracketed_parameters(&opening, &params, &closing)
+            }
+            Some(params) => {
+                self.output.push_str(&opening);
+                self.fmt_parameters_node(&params);
+                self.output.push_str(&closing);
+            }
+            None => {
+                self.output.push_str(&opening);
+                self.output.push_str(&closing);
+            }
         }
     }
 

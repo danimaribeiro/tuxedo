@@ -169,7 +169,27 @@ impl Formatter {
             _ => None,
         };
 
-        if parenthesized || !positional.is_empty() || block_pass.is_some() {
+        let has_args = !positional.is_empty() || block_pass.is_some();
+        if parenthesized && has_args && !positional.iter().any(super::manages_own_indentation) {
+            let mut leaves: Vec<_> = positional
+                .iter()
+                .map(|arg| {
+                    self.capture_as_doc(|f| {
+                        f.inline = true;
+                        f.visit(arg);
+                    })
+                })
+                .collect();
+            if let Some(block_pass) = &block_pass {
+                leaves.push(self.capture_as_doc(|f| {
+                    f.inline = true;
+                    f.visit(block_pass);
+                }));
+            }
+            let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
+            let rendered = self.wrap_bracketed_group("(", Doc::line_(), body, Doc::line_(), ")");
+            self.output.push_str(&rendered);
+        } else if parenthesized || has_args {
             self.output.push(if parenthesized { '(' } else { ' ' });
             for (i, arg) in positional.iter().enumerate() {
                 if i > 0 {
