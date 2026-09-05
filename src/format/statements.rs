@@ -56,4 +56,48 @@ impl Formatter {
             prev_end_line = Some(end_line);
         }
     }
+
+    /// `alias new_name old_name` (bare or symbol-style method names --
+    /// `SymbolNode` renders either form faithfully based on the source, so
+    /// this just needs the literal `alias` keyword between them). Prism's
+    /// default visitor for this node visits `new_name`/`old_name` back to
+    /// back with no keyword or separator at all, which is why it needs its
+    /// own handler rather than falling through to that default.
+    pub(super) fn fmt_alias_method_node(&mut self, node: &ruby_prism::AliasMethodNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.output.push_str("alias ");
+        self.inline = true;
+        self.visit(&node.new_name());
+        self.output.push(' ');
+        self.inline = true;
+        self.visit(&node.old_name());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// `alias $new $old` -- the global-variable form of `alias`, a distinct
+    /// node type from `fmt_alias_method_node` since globals can't be
+    /// written as symbols. Same missing-keyword problem as that one.
+    pub(super) fn fmt_alias_global_variable_node(
+        &mut self,
+        node: &ruby_prism::AliasGlobalVariableNode<'_>,
+    ) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.output.push_str("alias ");
+        self.inline = true;
+        self.visit(&node.new_name());
+        self.output.push(' ');
+        self.inline = true;
+        self.visit(&node.old_name());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
 }

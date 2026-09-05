@@ -25,3 +25,6 @@ end
 command = Class.new(Thor) do
   foo
 end
+
+transmit rescue nil
+socket.close

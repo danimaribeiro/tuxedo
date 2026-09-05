@@ -997,6 +997,18 @@ impl Visit<'_> for Formatter {
         self.fmt_rescue_node(node);
     }
 
+    fn visit_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
+        self.fmt_rescue_modifier_node(node);
+    }
+
+    fn visit_alias_method_node(&mut self, node: &ruby_prism::AliasMethodNode<'_>) {
+        self.fmt_alias_method_node(node);
+    }
+
+    fn visit_alias_global_variable_node(&mut self, node: &ruby_prism::AliasGlobalVariableNode<'_>) {
+        self.fmt_alias_global_variable_node(node);
+    }
+
     fn visit_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
         self.fmt_ensure_node(node);
     }

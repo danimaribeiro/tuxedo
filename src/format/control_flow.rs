@@ -198,6 +198,29 @@ impl Formatter {
         }
     }
 
+    /// `expr rescue fallback` -- the modifier form, as opposed to an
+    /// explicit `begin`/`rescue` block (`fmt_rescue_node`). Prism's default
+    /// visitor for this node just visits `expression()` then
+    /// `rescue_expression()` back to back with no separator, which is why
+    /// this needs its own handler rather than falling through: without the
+    /// literal " rescue " keyword between them, a statement like
+    /// `transmit(...) rescue nil` followed by more code lost the boundary
+    /// between "nil" and the next line entirely.
+    pub(super) fn fmt_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.inline = true;
+        self.visit(&node.expression());
+        self.output.push_str(" rescue ");
+        self.inline = true;
+        self.visit(&node.rescue_expression());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
     pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
         self.write_indent();
         self.output.push_str("rescue");
