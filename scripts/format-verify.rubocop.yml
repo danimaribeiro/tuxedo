@@ -38,6 +38,15 @@
 # | Cop                                     | Disagreement |
 # |------------------------------------------|--------------|
 # | Layout/ElseAlignment, Layout/EndAlignment | For an `if`/`case` used as a value (`x = if ...`, `x << if ...`), rubocop's stock default (`EnforcedStyleAlignWith: keyword`, confirmed against this file, which deliberately doesn't override it) wants `else`/`end` aligned under the column the `if` keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message` reindents the whole value. Tuxedo keeps `else`/`end` at a fixed indent from the statement instead. See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
+# | Layout/LineLength (partial)               | A bare command call (`raise Foo, "msg" if cond`, no parens) has no clean multi-line continuation in Ruby, and Tuxedo doesn't rewrite bare-command style into a parenthesized call to make room for one (see the note in `write_call_args`). A monolithic string/regex literal that alone exceeds the limit can't be wrapped without altering its content. Both are permanent: see `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..." if hash.include? key`. |
+#
+# --- Known gaps (missing features, not spec conflicts -- worth fixing) ---
+#
+# | Gap | Notes |
+# |-----|-------|
+# | Method chains never break | `expect(x).to receive(:y).with(a, b).and_return(c)` overflows because the `.method.method.method` chain itself is long, not because any single call's argument list is -- wrapping that call's own args does nothing. Tuxedo has no chain-breaking (one `.method` per line) at all yet. See `test-projects/thor/spec/shell/basic_spec.rb:154`. |
+# | Only one binary op wraps, not a chain | The "operator-style call" Doc-wrap path (calls.rs) only handles a single binop with one RHS (`a + b`). A chain of same-precedence ops (`a && b && c`) never wraps. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
+# | Doc width ignores trailing content | `render_doc_to_string`'s width only accounts for `current_column()` (what's already on the line before the Doc), not what gets appended after it renders -- so `Tempfile.open(long, args) do |temp|` doesn't wrap its arg list even though the full line (args + ` do |temp|`) exceeds line_length, because the width check never sees the trailing ` do |temp|`. Same root cause made the `lambdas.rb` wrap fixture need extra-long parameter names to actually trigger. See `test-projects/thor/lib/thor/shell/basic.rb:367`. |
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
 Layout/FirstArrayElementLineBreak:
