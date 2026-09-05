@@ -13,3 +13,11 @@ end
 def each
   yield 1
 end
+
+Tempfile.open(
+  [File.basename(destination), File.extname(destination)],
+  File.dirname(destination),
+  binmode: true
+) do |temp|
+  temp.write content
+end

@@ -244,12 +244,21 @@ impl Formatter {
 
         let operator = node.operator_loc().as_slice().to_vec();
         self.write_bytes(&operator);
+        let brace = node.opening_loc().as_slice() == b"{";
         if let Some(parameters) = node.parameters() {
             self.inline = true;
+            // " {"/" do" follows right after the parameter list on the
+            // same line -- reserve its width so an overlong param list
+            // wraps instead of pushing the whole line past line_length
+            // (render_doc_to_string can't see what gets appended after it
+            // renders). Brace-block bodies overflow their own line
+            // independently and aren't reserved for here.
+            let reserve = if brace { 0 } else { " do".len() };
+            self.trailing_reserve += reserve;
             self.visit(&parameters);
+            self.trailing_reserve -= reserve;
         }
 
-        let brace = node.opening_loc().as_slice() == b"{";
         self.output.push(' ');
         self.output.push_str(if brace { "{" } else { "do" });
 

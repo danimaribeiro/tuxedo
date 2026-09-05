@@ -108,6 +108,16 @@ struct Formatter {
     /// blank-line preservation in `fmt_statements_node` see a multi-line
     /// gap where the source had none.
     heredoc_end_line: Option<usize>,
+    /// Extra width to reserve when computing how much room a `Doc` group
+    /// has to render flat -- for content that a caller knows will be
+    /// appended to the same line right after the group finishes (e.g. a
+    /// call's `do |params|` block header, appended by `write_call_block`
+    /// right after `write_call_args` renders). `render_doc_to_string` only
+    /// sees `current_column()`, i.e. what's already in `output` *before*
+    /// the group -- it has no way to see what comes after, so without this
+    /// a group can render flat and still push the full line past
+    /// `line_length`. See `do_end_header_width`.
+    trailing_reserve: usize,
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
@@ -139,6 +149,7 @@ impl Formatter {
             source: source.to_string(),
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
+            trailing_reserve: 0,
         }
     }
 
@@ -178,8 +189,39 @@ impl Formatter {
     /// Renders a `Doc` value to a string, using the width still available on
     /// the current output line before `line_length` is hit.
     fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
-        let width = self.line_length.saturating_sub(self.current_column());
+        let width = self
+            .line_length
+            .saturating_sub(self.current_column())
+            .saturating_sub(self.trailing_reserve);
         doc.pretty(width).to_string()
+    }
+
+    /// The width of a `do...end` block's header line (` do` plus an
+    /// optional ` |params|`) that will follow immediately after the
+    /// current call's argument list once `write_call_block` renders it --
+    /// 0 for a brace block (its body is captured and measured
+    /// independently, not appended inline after another Doc) or no block
+    /// at all. Meant to be added to `trailing_reserve` before Doc-wrapping
+    /// whatever precedes the block on the same line.
+    fn do_end_header_width(&mut self, block: Option<ruby_prism::Node<'_>>) -> usize {
+        let Some(block) = block.and_then(|b| b.as_block_node()) else {
+            return 0;
+        };
+        if block.opening_loc().as_slice() == b"{" {
+            return 0;
+        }
+        let mut width = " do".len();
+        if let Some(params) = block.parameters() {
+            // Bare pipe-delimited block params never wrap (see
+            // fmt_block_parameters_node), so this is always a single line.
+            let captured = self.capture_as_doc(|f| {
+                f.inline = true;
+                f.visit(&params);
+            });
+            let rendered = self.render_doc_to_string(captured);
+            width += 1 + unicode_width::UnicodeWidthStr::width(rendered.as_str());
+        }
+        width
     }
 
     /// Renders a bracketed, comma-or-other-separated group (array literal,

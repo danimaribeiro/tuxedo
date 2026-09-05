@@ -67,7 +67,10 @@ impl Formatter {
                 } else {
                     self.output.push_str(name_str);
                     let parenthesized = node.opening_loc().is_some();
+                    let reserve = self.do_end_header_width(node.block());
+                    self.trailing_reserve += reserve;
                     self.write_call_args(node, parenthesized);
+                    self.trailing_reserve -= reserve;
                 }
             } else {
                 // Operator-style call (`a + b`, `a <=> b`, ...). With
@@ -144,7 +147,10 @@ impl Formatter {
             }
             self.output.push_str(name_str);
             let parenthesized = node.opening_loc().is_some();
+            let reserve = self.do_end_header_width(node.block());
+            self.trailing_reserve += reserve;
             self.write_call_args(node, parenthesized);
+            self.trailing_reserve -= reserve;
             self.write_call_block(node);
             if !inline {
                 self.output.push('\n');

@@ -46,7 +46,15 @@
 # |-----|-------|
 # | Method chains never break | `expect(x).to receive(:y).with(a, b).and_return(c)` overflows because the `.method.method.method` chain itself is long, not because any single call's argument list is -- wrapping that call's own args does nothing. Tuxedo has no chain-breaking (one `.method` per line) at all yet. See `test-projects/thor/spec/shell/basic_spec.rb:154`. |
 # | Only one binary op wraps, not a chain | The "operator-style call" Doc-wrap path (calls.rs) only handles a single binop with one RHS (`a + b`). A chain of same-precedence ops (`a && b && c`) never wraps. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
-# | Doc width ignores trailing content | `render_doc_to_string`'s width only accounts for `current_column()` (what's already on the line before the Doc), not what gets appended after it renders -- so `Tempfile.open(long, args) do |temp|` doesn't wrap its arg list even though the full line (args + ` do |temp|`) exceeds line_length, because the width check never sees the trailing ` do |temp|`. Same root cause made the `lambdas.rb` wrap fixture need extra-long parameter names to actually trigger. See `test-projects/thor/lib/thor/shell/basic.rb:367`. |
+#
+# Fixed 2026-09-05: `render_doc_to_string`'s width used to ignore content a
+# caller knew would be appended right after the Doc rendered (a call's
+# `do |params|` block header, a lambda's), so e.g.
+# `Tempfile.open(long, args) do |temp|` didn't wrap its arg list even
+# though the full line overflowed. Fixed via `Formatter::trailing_reserve`
+# (set by `do_end_header_width`, consulted by `render_doc_to_string`) --
+# see `test-projects/thor/lib/thor/shell/basic.rb:367` and
+# `tests/fixtures/format/blocks.rb`'s `Tempfile.open` case.
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
 Layout/FirstArrayElementLineBreak:
