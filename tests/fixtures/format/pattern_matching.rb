@@ -5,3 +5,12 @@ x = 1
 h = { x: }
 n in Prism::CaseNode[predicate: Prism::CallNode[receiver: Prism::LocalVariableReadNode[name: :target_version]]]
 x in { person:, age: }
+
+def visit_module_node(node)
+  case node.constant_path
+  in Prism::ConstantReadNode[name:]
+    @namespace_stack << name
+  in Prism::ConstantPathNode
+    @namespace_stack << node.constant_path.full_name
+  end
+end

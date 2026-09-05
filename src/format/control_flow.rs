@@ -589,6 +589,61 @@ impl Formatter {
         self.indent -= 1;
     }
 
+    /// `case pred; in pattern; ...; end` -- pattern-matching's `case/in`,
+    /// as opposed to `fmt_case_node`'s `case/when`. Structurally identical
+    /// to it (predicate, a list of clauses, an optional else), just a
+    /// distinct node type with `in` clauses (`InNode`) instead of `when`
+    /// (`WhenNode`).
+    pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.output.push_str("case");
+        if let Some(predicate) = node.predicate() {
+            self.output.push(' ');
+            self.inline = true;
+            self.visit(&predicate);
+            self.inline = false;
+        }
+        self.output.push('\n');
+
+        for in_clause in node.conditions().iter() {
+            self.visit(&in_clause);
+        }
+
+        if let Some(consequent) = node.else_clause() {
+            self.write_indent();
+            self.inline = inline;
+            self.fmt_else_node(&consequent);
+        } else {
+            self.write_indent();
+            self.output.push_str("end");
+            if !inline {
+                self.output.push('\n');
+            }
+        }
+    }
+
+    /// One `in pattern` clause of a `case/in`. No guard (`in pattern if
+    /// cond`) support yet -- not observed in the wild so far; `InNode`
+    /// doesn't expose a separate guard accessor, so that would need its own
+    /// investigation into how prism represents it.
+    pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
+        self.write_indent();
+        self.output.push_str("in ");
+        self.inline = true;
+        self.visit(&node.pattern());
+        self.inline = false;
+        self.output.push('\n');
+
+        self.indent += 1;
+        if let Some(body) = node.statements() {
+            self.fmt_statements_node(&body);
+        }
+        self.indent -= 1;
+    }
+
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
         let inline = self.inline;
         if !inline {

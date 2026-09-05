@@ -1037,6 +1037,14 @@ impl Visit<'_> for Formatter {
         self.fmt_when_node(node);
     }
 
+    fn visit_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
+        self.fmt_case_match_node(node);
+    }
+
+    fn visit_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
+        self.fmt_in_node(node);
+    }
+
     fn visit_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
         self.fmt_and_node(node);
     }
