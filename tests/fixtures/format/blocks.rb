@@ -23,3 +23,10 @@ Tempfile.open(
 end
 
 PASS_NOT_FOUND = Class.new { def self.action(_); self; end; def self.call(_); [404, {}, []]; end }
+
+x = Class.new { if true; 1; elsif false; 2; else; 3; end }
+x = Class.new { unless true; 1; else; 2; end }
+x = Class.new { while true; break; end }
+x = Class.new { until true; break; end }
+x = Class.new { case 1; when 1; :a; when 2; :b; else; :c; end }
+x = Class.new { case y; in 1; :a; in 2; :b; else; :c; end }

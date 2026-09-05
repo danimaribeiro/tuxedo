@@ -105,6 +105,7 @@ impl Formatter {
 
         // Block if / elsif
         let inline = self.inline;
+        let single_line = self.single_line;
         if !is_elsif && !inline {
             self.write_indent();
         }
@@ -113,24 +114,39 @@ impl Formatter {
         self.inline = true;
         self.visit(&node.predicate());
         self.inline = false;
-        self.output.push('\n');
-        let header_line = self.line_of(node.predicate().location().start_offset());
-        self.emit_trailing_comment_if_same_line(header_line);
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            let header_line = self.line_of(node.predicate().location().start_offset());
+            self.emit_trailing_comment_if_same_line(header_line);
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
+        if !single_line {
+            self.indent -= 1;
+        }
 
         if let Some(consequent) = node.subsequent() {
-            self.write_indent();
+            if single_line {
+                self.output.push_str("; ");
+            } else {
+                self.write_indent();
+            }
             // An elsif/else terminates the same chain this `if` opened, so
             // it needs the chain's *original* inline-ness to decide whether
             // its own trailing "end" gets a newline -- not `self.inline`,
             // which was just forced to false above for the predicate/body.
             self.inline = inline;
             self.visit(&consequent);
+        } else if single_line {
+            self.output.push_str("; end");
+            if !inline {
+                self.output.push('\n');
+            }
         } else {
             self.write_indent();
             self.output.push_str("end");
@@ -150,16 +166,25 @@ impl Formatter {
         // otherwise leave that content dangling on its own line, which
         // isn't just ugly -- for a call argument it's invalid Ruby.
         let inline = self.inline;
-        self.output.push_str("else\n");
+        let single_line = self.single_line;
+        if single_line {
+            self.output.push_str("else; ");
+        } else {
+            self.output.push_str("else\n");
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
 
-        self.write_indent();
-        self.output.push_str("end");
+        if single_line {
+            self.output.push_str("; end");
+        } else {
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
         if !inline {
             self.output.push('\n');
         }
@@ -384,6 +409,7 @@ impl Formatter {
 
         // Block unless
         let inline = self.inline;
+        let single_line = self.single_line;
         if !inline {
             self.write_indent();
         }
@@ -391,18 +417,33 @@ impl Formatter {
         self.inline = true;
         self.visit(&node.predicate());
         self.inline = false;
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
+        if !single_line {
+            self.indent -= 1;
+        }
 
         if let Some(consequent) = node.else_clause() {
-            self.write_indent();
+            if single_line {
+                self.output.push_str("; ");
+            } else {
+                self.write_indent();
+            }
             self.inline = inline;
             self.fmt_else_node(&consequent);
+        } else if single_line {
+            self.output.push_str("; end");
+            if !inline {
+                self.output.push('\n');
+            }
         } else {
             self.write_indent();
             self.output.push_str("end");
@@ -441,6 +482,7 @@ impl Formatter {
 
         // Block while
         let inline = self.inline;
+        let single_line = self.single_line;
         if !inline {
             self.write_indent();
         }
@@ -448,16 +490,24 @@ impl Formatter {
         self.inline = true;
         self.visit(&node.predicate());
         self.inline = false;
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
 
-        self.write_indent();
-        self.output.push_str("end");
+        if single_line {
+            self.output.push_str("; end");
+        } else {
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
         if !inline {
             self.output.push('\n');
         }
@@ -492,6 +542,7 @@ impl Formatter {
 
         // Block until
         let inline = self.inline;
+        let single_line = self.single_line;
         if !inline {
             self.write_indent();
         }
@@ -499,16 +550,24 @@ impl Formatter {
         self.inline = true;
         self.visit(&node.predicate());
         self.inline = false;
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
 
-        self.write_indent();
-        self.output.push_str("end");
+        if single_line {
+            self.output.push_str("; end");
+        } else {
+            self.indent -= 1;
+            self.write_indent();
+            self.output.push_str("end");
+        }
         if !inline {
             self.output.push('\n');
         }
@@ -540,6 +599,7 @@ impl Formatter {
 
     pub(super) fn fmt_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
         let inline = self.inline;
+        let single_line = self.single_line;
         if !inline {
             self.write_indent();
         }
@@ -550,18 +610,26 @@ impl Formatter {
             self.visit(&predicate);
             self.inline = false;
         }
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+        }
 
         for when in node.conditions().iter() {
             self.visit(&when);
         }
 
         if let Some(consequent) = node.else_clause() {
-            self.write_indent();
+            if !single_line {
+                self.write_indent();
+            }
             self.inline = inline;
             self.fmt_else_node(&consequent);
         } else {
-            self.write_indent();
+            if !single_line {
+                self.write_indent();
+            }
             self.output.push_str("end");
             if !inline {
                 self.output.push('\n');
@@ -569,8 +637,15 @@ impl Formatter {
         }
     }
 
+    /// A `when` clause always ends by leaving a separator in place for
+    /// whatever comes next (another `when`, an `else`, or `end`) --
+    /// `; ` in single-line mode (see fmt_block_node), a real newline
+    /// otherwise -- so callers never need to add one of their own.
     pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
-        self.write_indent();
+        let single_line = self.single_line;
+        if !single_line {
+            self.write_indent();
+        }
         self.output.push_str("when ");
         for (i, condition) in node.conditions().iter().enumerate() {
             if i > 0 {
@@ -580,13 +655,22 @@ impl Formatter {
             self.visit(&condition);
         }
         self.inline = false;
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
+
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.indent -= 1;
+        }
     }
 
     /// `case pred; in pattern; ...; end` -- pattern-matching's `case/in`,
@@ -596,6 +680,7 @@ impl Formatter {
     /// (`WhenNode`).
     pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
         let inline = self.inline;
+        let single_line = self.single_line;
         if !inline {
             self.write_indent();
         }
@@ -606,18 +691,26 @@ impl Formatter {
             self.visit(&predicate);
             self.inline = false;
         }
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+        }
 
         for in_clause in node.conditions().iter() {
             self.visit(&in_clause);
         }
 
         if let Some(consequent) = node.else_clause() {
-            self.write_indent();
+            if !single_line {
+                self.write_indent();
+            }
             self.inline = inline;
             self.fmt_else_node(&consequent);
         } else {
-            self.write_indent();
+            if !single_line {
+                self.write_indent();
+            }
             self.output.push_str("end");
             if !inline {
                 self.output.push('\n');
@@ -628,20 +721,33 @@ impl Formatter {
     /// One `in pattern` clause of a `case/in`. No guard (`in pattern if
     /// cond`) support yet -- not observed in the wild so far; `InNode`
     /// doesn't expose a separate guard accessor, so that would need its own
-    /// investigation into how prism represents it.
+    /// investigation into how prism represents it. Like fmt_when_node,
+    /// always leaves a separator in place for whatever comes next.
     pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
-        self.write_indent();
+        let single_line = self.single_line;
+        if !single_line {
+            self.write_indent();
+        }
         self.output.push_str("in ");
         self.inline = true;
         self.visit(&node.pattern());
         self.inline = false;
-        self.output.push('\n');
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
-        self.indent -= 1;
+
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.indent -= 1;
+        }
     }
 
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
