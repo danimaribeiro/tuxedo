@@ -4,10 +4,13 @@ use ruby_prism::Visit;
 
 impl Formatter {
     pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
+        let inline = self.inline;
         let name = node.name();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
 
-        self.write_indent();
+        if !inline {
+            self.write_indent();
+        }
         self.output.push_str("def ");
         if let Some(receiver) = node.receiver() {
             self.inline = true;
@@ -35,7 +38,10 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_required_parameter_node(

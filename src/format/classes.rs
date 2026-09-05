@@ -3,8 +3,11 @@ use ruby_prism::Visit;
 
 impl Formatter {
     pub(super) fn fmt_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
+        let inline = self.inline;
         let class_line = self.line_of(node.location().start_offset());
-        self.write_indent();
+        if !inline {
+            self.write_indent();
+        }
         self.output.push_str("class ");
         self.inline = true;
         self.visit(&node.constant_path());
@@ -24,11 +27,17 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
-        self.write_indent();
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
         self.output.push_str("module ");
         self.inline = true;
         self.visit(&node.constant_path());
@@ -41,12 +50,18 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'_>) {
+        let inline = self.inline;
         let header_line = self.line_of(node.location().start_offset());
-        self.write_indent();
+        if !inline {
+            self.write_indent();
+        }
         self.output.push_str("class << ");
         self.inline = true;
         self.visit(&node.expression());
@@ -60,7 +75,10 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
