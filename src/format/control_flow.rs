@@ -140,20 +140,35 @@ impl Formatter {
     pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
         let has_keyword = node.begin_keyword_loc().is_some();
         let inline = self.inline;
+        // Set by fmt_block_node when rendering a brace block's body flat
+        // (`{ ... }` rather than `do...end`). A `begin`/`rescue`/`ensure`
+        // here still has to produce *something* on that one line -- join
+        // clauses with "; " instead of real indentation/newlines, the same
+        // compact style fmt_statements_node already uses for its own
+        // statements in this mode. Without this, a block like
+        // `foo { begin; risky; rescue => e; handle; end }` rendered its
+        // "rescue"/"end" with real newlines while everything around it
+        // stayed on one line, corrupting the output.
+        let single_line = self.single_line;
 
         if has_keyword {
             if !inline {
                 self.write_indent();
             }
-            self.output.push_str("begin\n");
-            self.indent += 1;
+            self.output.push_str("begin");
+            if single_line {
+                self.output.push_str("; ");
+            } else {
+                self.output.push('\n');
+                self.indent += 1;
+            }
         }
 
         if let Some(statements) = node.statements() {
             self.fmt_statements_node(&statements);
         }
 
-        if has_keyword {
+        if has_keyword && !single_line {
             self.indent -= 1;
         }
 
@@ -168,30 +183,50 @@ impl Formatter {
             // deeper — whatever the enclosing def/block set it to for the
             // body — so dedent by one to reach that keyword's own level.
             let dedent = usize::from(!has_keyword);
-            self.indent -= dedent;
+            if !single_line {
+                self.indent -= dedent;
+            }
 
             if let Some(rescue) = node.rescue_clause() {
+                if single_line {
+                    self.output.push_str("; ");
+                }
                 self.fmt_rescue_node(&rescue);
             }
             if let Some(else_clause) = node.else_clause() {
-                self.write_indent();
-                self.output.push_str("else\n");
-                self.indent += 1;
+                if single_line {
+                    self.output.push_str("; else; ");
+                } else {
+                    self.write_indent();
+                    self.output.push_str("else\n");
+                    self.indent += 1;
+                }
                 if let Some(statements) = else_clause.statements() {
                     self.fmt_statements_node(&statements);
                 }
-                self.indent -= 1;
+                if !single_line {
+                    self.indent -= 1;
+                }
             }
             if let Some(ensure) = node.ensure_clause() {
+                if single_line {
+                    self.output.push_str("; ");
+                }
                 self.fmt_ensure_node(&ensure);
             }
 
-            self.indent += dedent;
+            if !single_line {
+                self.indent += dedent;
+            }
         }
 
         if has_keyword {
-            self.write_indent();
-            self.output.push_str("end");
+            if single_line {
+                self.output.push_str("; end");
+            } else {
+                self.write_indent();
+                self.output.push_str("end");
+            }
             if !inline {
                 self.output.push('\n');
             }
@@ -222,7 +257,10 @@ impl Formatter {
     }
 
     pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
-        self.write_indent();
+        let single_line = self.single_line;
+        if !single_line {
+            self.write_indent();
+        }
         self.output.push_str("rescue");
 
         let exceptions: Vec<_> = node.exceptions().iter().collect();
@@ -237,28 +275,50 @@ impl Formatter {
             self.inline = true;
             self.visit(&reference);
         }
-        self.output.push('\n');
 
-        self.indent += 1;
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
+
         if let Some(statements) = node.statements() {
             self.fmt_statements_node(&statements);
         }
-        self.indent -= 1;
+
+        if !single_line {
+            self.indent -= 1;
+        }
 
         if let Some(subsequent) = node.subsequent() {
+            if single_line {
+                self.output.push_str("; ");
+            }
             self.fmt_rescue_node(&subsequent);
         }
     }
 
     pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
-        self.write_indent();
-        self.output.push_str("ensure\n");
+        let single_line = self.single_line;
+        if !single_line {
+            self.write_indent();
+        }
+        self.output.push_str("ensure");
+        if single_line {
+            self.output.push_str("; ");
+        } else {
+            self.output.push('\n');
+            self.indent += 1;
+        }
 
-        self.indent += 1;
         if let Some(statements) = node.statements() {
             self.fmt_statements_node(&statements);
         }
-        self.indent -= 1;
+
+        if !single_line {
+            self.indent -= 1;
+        }
     }
 
     pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
