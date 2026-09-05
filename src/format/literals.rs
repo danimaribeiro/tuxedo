@@ -87,6 +87,26 @@ impl Formatter {
         self.write_leaf(|f| f.write_bytes(bytes));
     }
 
+    /// A rational literal (`2.5r`, `3r`). Unlike most numeric nodes,
+    /// `RationalNode` carries no child node for the number it wraps --
+    /// `location()` is the only way to get its text -- so there was no
+    /// `fmt_*` for it at all, and prism's default Visit fell through
+    /// silently: a call argument like `Time.new(2002, 10, 31, 2, 2,
+    /// 2.123456789r, "+02:00")` came out with that argument dropped
+    /// entirely (`Time.new(2002, 10, 31, 2, 2, , "+02:00")` -- a syntax
+    /// error one comma later, but really a silent data-loss bug).
+    pub(super) fn fmt_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) {
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
+    /// An imaginary/complex literal (`5i`, `2.5i`). Same missing-handler
+    /// gap as `fmt_rational_node`, same fix.
+    pub(super) fn fmt_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) {
+        let bytes = node.location().as_slice();
+        self.write_leaf(|f| f.write_bytes(bytes));
+    }
+
     pub(super) fn fmt_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) {
         let bytes = node.location().as_slice();
         self.write_leaf(|f| f.write_bytes(bytes));

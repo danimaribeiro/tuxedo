@@ -1100,6 +1100,14 @@ impl Visit<'_> for Formatter {
         self.fmt_float_node(node);
     }
 
+    fn visit_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) {
+        self.fmt_rational_node(node);
+    }
+
+    fn visit_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) {
+        self.fmt_imaginary_node(node);
+    }
+
     fn visit_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) {
         self.fmt_range_node(node);
     }

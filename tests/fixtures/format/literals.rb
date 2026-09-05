@@ -9,3 +9,5 @@ empty = {}
 quoted = "she said \"hi\""
 multiline_escape = "line one\nline two"
 help_mappings = ["-h", "-?", "--help", "-D"]
+rational = 2.123456789r
+imaginary = 5i
