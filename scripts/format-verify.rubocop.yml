@@ -28,6 +28,16 @@
 #
 # This config is passed via `-c`, so it starts from rubocop's own defaults
 # and ignores whatever .rubocop.yml the project under test ships.
+#
+# --- Known, permanent disagreements ---
+#
+# Some cops can never reach 0 offenses without abandoning the block-
+# indentation spec above. These are not bugs to fix -- don't re-litigate
+# them without a real change to the spec itself.
+#
+# | Cop                                     | Disagreement |
+# |------------------------------------------|--------------|
+# | Layout/ElseAlignment, Layout/EndAlignment | For an `if`/`case` used as a value (`x = if ...`, `x << if ...`), rubocop's stock default (`EnforcedStyleAlignWith: keyword`, confirmed against this file, which deliberately doesn't override it) wants `else`/`end` aligned under the column the `if` keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message` reindents the whole value. Tuxedo keeps `else`/`end` at a fixed indent from the statement instead. See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
 Layout/FirstArrayElementLineBreak:
