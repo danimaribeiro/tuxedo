@@ -304,13 +304,16 @@ impl Formatter {
         let prefix_len = self.output.len() - start_len;
 
         // An `if`/`case` value should have its continuation lines/`end`
-        // align under the `=` (rubocop's Layout/EndAlignment: keyword
-        // default for a keyword value). Everything else -- a wrapped
-        // array/hash/call-args literal (block-indented at a fixed depth
-        // regardless of the assignment target's length), a `do...end`/`{ }`
-        // block, a lambda literal, or an implicit/explicit `begin` --
-        // manages its own body indentation relative to the statement's own
-        // indent instead.
+        // align under the `=` (rubocop's Layout/EndAlignment stock default
+        // is `keyword`: align `end` with the keyword that opens the value,
+        // not with the assignment target -- confirmed against
+        // scripts/format-verify.rubocop.yml, which deliberately does not
+        // override it, as opposed to a project's own .rubocop.yml, which
+        // may). Everything else -- a wrapped array/hash/call-args literal
+        // (block-indented at a fixed depth regardless of the assignment
+        // target's length), a `do...end`/`{ }` block, a lambda literal, or
+        // an implicit/explicit `begin` -- manages its own body indentation
+        // relative to the statement's own indent instead.
         let skip_alignment = matches!(
             value,
             ruby_prism::Node::BeginNode { .. }
