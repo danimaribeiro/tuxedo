@@ -2,6 +2,40 @@ use super::Formatter;
 use ruby_prism::Visit;
 
 impl Formatter {
+    /// `value => pattern` -- the "rightward assignment" one-line pattern
+    /// match that raises `NoMatchingPatternError` on failure (as opposed to
+    /// `MatchPredicateNode`'s `in`, which returns `false`).
+    pub(super) fn fmt_match_required_node(&mut self, node: &ruby_prism::MatchRequiredNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.inline = true;
+        self.visit(&node.value());
+        self.output.push_str(" => ");
+        self.inline = true;
+        self.visit(&node.pattern());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// `value in pattern` -- the boolean-returning one-line pattern match.
+    pub(super) fn fmt_match_predicate_node(&mut self, node: &ruby_prism::MatchPredicateNode<'_>) {
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+        self.inline = true;
+        self.visit(&node.value());
+        self.output.push_str(" in ");
+        self.inline = true;
+        self.visit(&node.pattern());
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
     pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
         let keyword = node.if_keyword_loc().map(|k| k.as_slice());
         let is_ternary = keyword.is_none();

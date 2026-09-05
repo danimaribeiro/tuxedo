@@ -220,6 +220,16 @@ impl Formatter {
     pub(super) fn fmt_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
         self.inline = true;
         self.visit(&node.key());
+        let value = node.value();
+        // Shorthand `key:` (3.1+ hash-literal value-omission, or a pattern
+        // -match bind) has an `ImplicitNode` standing in for the omitted
+        // value -- the key's own trailing `:` already says everything, so
+        // there's nothing more to print. Printing it anyway would silently
+        // rewrite `{ x: }` into `{ x: x }`, or worse, turn a pattern-match
+        // bind into a match against an existing variable's current value.
+        if matches!(value, ruby_prism::Node::ImplicitNode { .. }) {
+            return;
+        }
         if let Some(op) = node.operator_loc() {
             self.output.push(' ');
             self.output
@@ -229,6 +239,110 @@ impl Formatter {
             self.output.push(' ');
         }
         self.inline = true;
-        self.visit(&node.value());
+        self.visit(&value);
     }
+
+    /// `{ key: value, ... }` / `ClassName[key: value, ...]` as a pattern
+    /// (as opposed to `fmt_hash_node`'s hash *literal*) -- e.g. the
+    /// right-hand side of `expr => { key: value }` or `expr in
+    /// ClassName[key:]`. Kept as a plain imperative leaf rather than a
+    /// Doc-wrapped group like the literal: patterns are short in practice
+    /// and rarely need to wrap.
+    pub(super) fn fmt_hash_pattern_node(&mut self, node: &ruby_prism::HashPatternNode<'_>) {
+        if let Some(constant) = node.constant() {
+            self.inline = true;
+            self.visit(&constant);
+        }
+
+        let opening = node
+            .opening_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"{".to_vec());
+        let closing = node
+            .closing_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"}".to_vec());
+        let braced = opening == b"{";
+
+        self.write_bytes(&opening);
+        let elements: Vec<_> = node.elements().iter().collect();
+        let has_content = !elements.is_empty() || node.rest().is_some();
+        if braced && has_content {
+            self.output.push(' ');
+        }
+        for (i, element) in elements.iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(element);
+        }
+        if let Some(rest) = node.rest() {
+            if !elements.is_empty() {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(&rest);
+        }
+        if braced && has_content {
+            self.output.push(' ');
+        }
+        self.write_bytes(&closing);
+    }
+
+    /// `[a, b, *rest, c]` / `ClassName[a, b]` as a pattern (as opposed to
+    /// `fmt_array_node`'s array *literal*). Same rationale as
+    /// `fmt_hash_pattern_node` for staying a plain imperative leaf.
+    pub(super) fn fmt_array_pattern_node(&mut self, node: &ruby_prism::ArrayPatternNode<'_>) {
+        if let Some(constant) = node.constant() {
+            self.inline = true;
+            self.visit(&constant);
+        }
+
+        let opening = node
+            .opening_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"[".to_vec());
+        let closing = node
+            .closing_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"]".to_vec());
+        self.write_bytes(&opening);
+
+        let mut wrote_any = false;
+        for required in node.requireds().iter() {
+            if wrote_any {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(&required);
+            wrote_any = true;
+        }
+        if let Some(rest) = node.rest() {
+            if wrote_any {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(&rest);
+            wrote_any = true;
+        }
+        for post in node.posts().iter() {
+            if wrote_any {
+                self.output.push_str(", ");
+            }
+            self.inline = true;
+            self.visit(&post);
+            wrote_any = true;
+        }
+
+        self.write_bytes(&closing);
+    }
+
+    /// The omitted value of a shorthand `key:` entry (hash-literal
+    /// value-omission or a pattern-match bind) -- see the comment in
+    /// `fmt_assoc_node`, which returns before ever visiting this node in
+    /// practice. Renders nothing; kept only so an unexpected direct visit
+    /// doesn't fall through to prism's default (which would print the
+    /// implied variable's read/target, defeating the point).
+    pub(super) fn fmt_implicit_node(&mut self, _node: &ruby_prism::ImplicitNode<'_>) {}
 }

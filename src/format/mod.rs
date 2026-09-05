@@ -1150,4 +1150,24 @@ impl Visit<'_> for Formatter {
     fn visit_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) {
         self.fmt_assoc_splat_node(node);
     }
+
+    fn visit_hash_pattern_node(&mut self, node: &ruby_prism::HashPatternNode<'_>) {
+        self.fmt_hash_pattern_node(node);
+    }
+
+    fn visit_array_pattern_node(&mut self, node: &ruby_prism::ArrayPatternNode<'_>) {
+        self.fmt_array_pattern_node(node);
+    }
+
+    fn visit_implicit_node(&mut self, node: &ruby_prism::ImplicitNode<'_>) {
+        self.fmt_implicit_node(node);
+    }
+
+    fn visit_match_required_node(&mut self, node: &ruby_prism::MatchRequiredNode<'_>) {
+        self.fmt_match_required_node(node);
+    }
+
+    fn visit_match_predicate_node(&mut self, node: &ruby_prism::MatchPredicateNode<'_>) {
+        self.fmt_match_predicate_node(node);
+    }
 }
