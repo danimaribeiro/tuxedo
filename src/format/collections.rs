@@ -1,4 +1,4 @@
-use super::{Formatter, assoc_has_real_block, has_real_block};
+use super::{Formatter, assoc_manages_own_indentation, manages_own_indentation};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
@@ -31,7 +31,7 @@ impl Formatter {
 
         let bracketed = opening.is_some();
 
-        if !bracketed || elements.is_empty() || elements.iter().any(has_real_block) {
+        if !bracketed || elements.is_empty() || elements.iter().any(manages_own_indentation) {
             self.write_leaf(|f| {
                 if bracketed {
                     f.output.push('[');
@@ -161,7 +161,7 @@ impl Formatter {
             return;
         }
 
-        if elements.iter().any(assoc_has_real_block) {
+        if elements.iter().any(assoc_manages_own_indentation) {
             self.write_leaf(|f| {
                 if braced {
                     f.output.push_str("{ ");

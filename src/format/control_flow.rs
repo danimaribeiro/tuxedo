@@ -91,14 +91,31 @@ impl Formatter {
 
         if let Some(consequent) = node.subsequent() {
             self.write_indent();
+            // An elsif/else terminates the same chain this `if` opened, so
+            // it needs the chain's *original* inline-ness to decide whether
+            // its own trailing "end" gets a newline -- not `self.inline`,
+            // which was just forced to false above for the predicate/body.
+            self.inline = inline;
             self.visit(&consequent);
         } else {
             self.write_indent();
-            self.output.push_str("end\n");
+            self.output.push_str("end");
+            if !inline {
+                self.output.push('\n');
+            }
         }
     }
 
     pub(super) fn fmt_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
+        // Whether the if/case chain this closes is itself being rendered
+        // inline (as a sub-expression, e.g. a call argument) -- see
+        // fmt_if_node, which restores this into self.inline before
+        // recursing here for exactly this reason. A captured inline value
+        // must not carry a hardcoded trailing newline: joining it with more
+        // content on the same Doc/text line (a following `, arg)`) would
+        // otherwise leave that content dangling on its own line, which
+        // isn't just ugly -- for a call argument it's invalid Ruby.
+        let inline = self.inline;
         self.output.push_str("else\n");
 
         self.indent += 1;
@@ -108,7 +125,10 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     /// Renders `begin ... end`, including any attached `rescue`/`else`/
@@ -171,7 +191,10 @@ impl Formatter {
 
         if has_keyword {
             self.write_indent();
-            self.output.push_str("end\n");
+            self.output.push_str("end");
+            if !inline {
+                self.output.push('\n');
+            }
         }
     }
 
@@ -261,10 +284,14 @@ impl Formatter {
 
         if let Some(consequent) = node.else_clause() {
             self.write_indent();
+            self.inline = inline;
             self.fmt_else_node(&consequent);
         } else {
             self.write_indent();
-            self.output.push_str("end\n");
+            self.output.push_str("end");
+            if !inline {
+                self.output.push('\n');
+            }
         }
     }
 
@@ -313,7 +340,10 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
@@ -361,7 +391,10 @@ impl Formatter {
         self.indent -= 1;
 
         self.write_indent();
-        self.output.push_str("end\n");
+        self.output.push_str("end");
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     pub(super) fn fmt_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
@@ -408,10 +441,14 @@ impl Formatter {
 
         if let Some(consequent) = node.else_clause() {
             self.write_indent();
+            self.inline = inline;
             self.fmt_else_node(&consequent);
         } else {
             self.write_indent();
-            self.output.push_str("end\n");
+            self.output.push_str("end");
+            if !inline {
+                self.output.push('\n');
+            }
         }
     }
 

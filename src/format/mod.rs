@@ -41,15 +41,18 @@ pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
     ) || has_real_block(node)
 }
 
-/// Like `has_real_block`, but for a hash element (`AssocNode`/`AssocSplatNode`):
-/// looks at the value being assigned rather than the element itself, since a
-/// hash element is never itself a call node.
-fn assoc_has_real_block(node: &ruby_prism::Node<'_>) -> bool {
+/// Like `manages_own_indentation`, but for a hash element
+/// (`AssocNode`/`AssocSplatNode`): looks at the value being assigned rather
+/// than the element itself, since a hash element is never itself a node
+/// `manages_own_indentation` would match directly.
+pub(super) fn assoc_manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
     if let Some(assoc) = node.as_assoc_node() {
-        return has_real_block(&assoc.value());
+        return manages_own_indentation(&assoc.value());
     }
     if let Some(splat) = node.as_assoc_splat_node() {
-        return splat.value().is_some_and(|value| has_real_block(&value));
+        return splat
+            .value()
+            .is_some_and(|value| manages_own_indentation(&value));
     }
     false
 }
@@ -407,10 +410,14 @@ impl Formatter {
 
         // Doc-based wrapping only applies to the parenthesized case — Ruby
         // has no clean multi-line continuation for a bare command call like
-        // `puts a, b, c` — and only when no argument is itself a call with a
-        // real block (see `has_real_block`).
+        // `puts a, b, c` — and only when no argument manages its own
+        // multi-line body imperatively (see `manages_own_indentation`): a
+        // captured if/case/begin/block-call carries a hardcoded "end\n" (or
+        // block-close) at the point capture_as_doc freezes it, so joining it
+        // with a following `, arg)` via a Doc leaves the comma dangling on
+        // its own line after that newline -- invalid Ruby, not just ugly.
         let has_args = !positional.is_empty() || block_pass.is_some();
-        if parenthesized && has_args && !positional.iter().any(has_real_block) {
+        if parenthesized && has_args && !positional.iter().any(manages_own_indentation) {
             let mut leaves: Vec<_> = positional
                 .iter()
                 .map(|arg| {
