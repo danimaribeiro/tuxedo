@@ -155,8 +155,16 @@ impl Formatter {
                     self.inline = true;
                     self.visit(&value);
                 }
-            } else if name_str == "!" && node.arguments().is_none() {
-                self.output.push('!');
+            } else if matches!(name_str, "!" | "~" | "+@" | "-@") && node.arguments().is_none() {
+                // A unary operator method (defined as `def +@`/`def -@`/
+                // `def ~`/`def !`) is called in prefix notation (`+x`),
+                // unlike every other operator method here, which is infix
+                // (`a + b`). The generic operator-style branch below
+                // assumes infix and would render this receiver-first
+                // (`x +@`, dropping the fact there's no actual right-hand
+                // side) -- invalid Ruby.
+                self.output
+                    .push_str(name_str.strip_suffix('@').unwrap_or(name_str));
                 self.inline = true;
                 self.visit(&receiver);
             } else if is_identifier_call && node.is_attribute_write() {

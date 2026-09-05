@@ -8,6 +8,10 @@ multi = ->(x) do
   x + 1
 end
 
+callback = ->(message) do
+  message.call
+end
+
 def wrap(block)
   app = ->(_) { block.call }
   app

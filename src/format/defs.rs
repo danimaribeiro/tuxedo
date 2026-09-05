@@ -197,15 +197,20 @@ impl Formatter {
         // A lambda's parameters are parenthesized (`->(x) { }`) while a
         // block's are pipe-delimited (`{ |x| }`), and both are this node
         // type — so take the delimiters from source rather than assuming
-        // pipes.
+        // pipes. A block's parameter list always has an explicit `|...|`
+        // when it has any parameters at all -- `opening_loc`/`closing_loc`
+        // come back `None` here only for a lambda's single bare parameter
+        // written with no delimiter (`-> message do ... end`, valid Ruby
+        // shorthand for `->(message) do ... end`), so parens is the only
+        // correct default, not pipes.
         let opening = node
             .opening_loc()
             .map(|loc| String::from_utf8_lossy(loc.as_slice()).into_owned())
-            .unwrap_or_else(|| "|".to_string());
+            .unwrap_or_else(|| "(".to_string());
         let closing = node
             .closing_loc()
             .map(|loc| String::from_utf8_lossy(loc.as_slice()).into_owned())
-            .unwrap_or_else(|| "|".to_string());
+            .unwrap_or_else(|| ")".to_string());
 
         match node.parameters() {
             // Only a lambda's real parens are worth all-or-nothing wrapping

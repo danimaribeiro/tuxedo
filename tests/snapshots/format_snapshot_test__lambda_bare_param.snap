@@ -1,0 +1,8 @@
+---
+source: tests/format_snapshot_test.rs
+assertion_line: 58
+expression: output
+---
+callback = ->(message) do
+  message.call
+end

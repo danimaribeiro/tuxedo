@@ -6,6 +6,10 @@ list[0] = "first"
 list[0, 1] = "a"
 user&.name
 user.valid?
+desc = +""
+x = -y
+z = ~w
+q = !r
 
 short.chain.of.calls
 
