@@ -39,15 +39,17 @@
 # |------------------------------------------|--------------|
 # | Layout/ElseAlignment, Layout/EndAlignment | For an `if`/`case` used as a value (`x = if ...`, `x << if ...`), rubocop's stock default (`EnforcedStyleAlignWith: keyword`, confirmed against this file, which deliberately doesn't override it) wants `else`/`end` aligned under the column the `if` keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message` reindents the whole value. Tuxedo keeps `else`/`end` at a fixed indent from the statement instead. See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
 # | Layout/LineLength (partial)               | A bare command call (`raise Foo, "msg" if cond`, no parens) has no clean multi-line continuation in Ruby, and Tuxedo doesn't rewrite bare-command style into a parenthesized call to make room for one (see the note in `write_call_args`). A monolithic string/regex literal that alone exceeds the limit can't be wrapped without altering its content. Both are permanent: see `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..." if hash.include? key`. |
+# | Layout/MultilineMethodCallIndentation     | Rubocop's stock default is `aligned`: a broken `.method` chain's continuation should align under the column its *base* expression starts at. When the base sits mid-statement (`X unless Thor::Base\n  .subclass_files\n  .keys`), that column depends on what precedes it (`unless `, an assignment, ...), so renaming/moving it reindents the whole chain -- the same bracket-alignment problem as ElseAlignment, just for chains. Tuxedo's chain-breaking (calls.rs's `try_build_chain_doc`) always indents one fixed level from the statement instead. See `test-projects/thor/lib/thor/runner.rb:227`. |
 #
 # --- Known gaps (missing features, not spec conflicts -- worth fixing) ---
 #
 # | Gap | Notes |
 # |-----|-------|
-# | Method chains never break | `expect(x).to receive(:y).with(a, b).and_return(c)` overflows because the `.method.method.method` chain itself is long, not because any single call's argument list is -- wrapping that call's own args does nothing. Tuxedo has no chain-breaking (one `.method` per line) at all yet. See `test-projects/thor/spec/shell/basic_spec.rb:154`. |
 # | Only one binary op wraps, not a chain | The "operator-style call" Doc-wrap path (calls.rs) only handles a single binop with one RHS (`a + b`). A chain of same-precedence ops (`a && b && c`) never wraps. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
 #
-# Fixed 2026-09-05: `render_doc_to_string`'s width used to ignore content a
+# Fixed 2026-09-05: method chains (`a.b.c.d`) now break -- see
+# `try_build_chain_doc` in calls.rs. Also fixed the same day:
+# `render_doc_to_string`'s width used to ignore content a
 # caller knew would be appended right after the Doc rendered (a call's
 # `do |params|` block header, a lambda's), so e.g.
 # `Tempfile.open(long, args) do |temp|` didn't wrap its arg list even
