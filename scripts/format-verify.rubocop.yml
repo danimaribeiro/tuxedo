@@ -46,6 +46,7 @@
 # | Gap | Notes |
 # |-----|-------|
 # | `&&`/`\|\|` chains still bin-pack | `fmt_and_node`/`fmt_or_node` (control_flow.rs) now wrap a single `a && b` pair via `fmt_binary_bool_node`, same Doc-group pattern as the operator-style call path in calls.rs. A chain of same-precedence ops (`a && b && c`) is left-associative (`(a && b) && c`), so it wraps pairwise rather than putting every operand on its own line -- still an improvement over never wrapping, but not full all-or-nothing expansion for chains longer than two. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
+# | Array literal misindented inside a broken method chain | `Set.new([...]).freeze` when the chain breaks (`try_build_chain_doc`) and the array argument also expands: the array's elements, and its own `)`/`]`, don't land at a consistent fixed indent from the chain -- e.g. `VALID_UNSCOPING_VALUES = Set\n  .new(\n    [\n    :where,\n    ...\n  ]\n  )\n  .freeze`. Pre-existing (confirmed present before the `write_call_args`/`manages_own_indentation` fix below made more arrays reach the Doc-wrap path and thus surface it more often). See `test-projects/rails/source/activerecord/lib/active_record/relation/query_methods.rb:817`. |
 #
 # Fixed 2026-09-05: method chains (`a.b.c.d`) now break -- see
 # `try_build_chain_doc` in calls.rs. Also fixed the same day:

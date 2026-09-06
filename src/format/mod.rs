@@ -12,22 +12,35 @@ mod statements;
 mod variables;
 
 /// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
-/// a `&block` pass). Such a block always hard-breaks onto its own lines
-/// regardless of width, which isn't the kind of flat-or-broken choice a Doc
-/// `group` is meant to arbitrate — a list containing one is left on the
-/// existing, always-imperative rendering path instead of the Doc path.
+/// a `&block` pass) -- of either shape. Used where a block of any kind, not
+/// just a hard-breaking one, needs to be singled out (e.g. a `.method` chain
+/// stops at a link that has one; an assignment's RHS with one keeps its own
+/// fixed indent rather than aligning under the `=`).
 fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
     node.as_call_node()
         .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
 }
 
+/// True if `node` is a call whose block hard-breaks onto its own lines
+/// regardless of width -- a `do...end` block, which always renders
+/// multi-line via `self.indent`/`write_indent`. A `{ }` block is not one of
+/// these: its body is always forced onto one physical output line (see
+/// `fmt_block_node`'s `self.single_line = true`), so it carries no raw `\n`
+/// a `Doc` wrapper would need to account for.
+fn has_multiline_block(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node()
+        .and_then(|call| call.block())
+        .and_then(|block| block.as_block_node())
+        .is_some_and(|block| block.opening_loc().as_slice() != b"{")
+}
+
 /// True for a node whose formatter lays out its own multi-line body
 /// imperatively (via `self.indent`/`write_indent`) rather than through a
-/// composable `Doc` -- an `if`/`case`/`begin`, or a call with a real block.
-/// Such a node can't be safely captured with `capture_as_doc` and then
-/// nested inside a `Doc::line()`-driven wrapper: the wrapper only shifts the
-/// break immediately before the captured text, not the raw newlines already
-/// baked into it, so only the first line would move.
+/// composable `Doc` -- an `if`/`case`/`begin`, or a call with a `do...end`
+/// block. Such a node can't be safely captured with `capture_as_doc` and
+/// then nested inside a `Doc::line()`-driven wrapper: the wrapper only
+/// shifts the break immediately before the captured text, not the raw
+/// newlines already baked into it, so only the first line would move.
 pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
     matches!(
         node,
@@ -38,7 +51,7 @@ pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
             | ruby_prism::Node::WhileNode { .. }
             | ruby_prism::Node::UntilNode { .. }
             | ruby_prism::Node::BeginNode { .. }
-    ) || has_real_block(node)
+    ) || has_multiline_block(node)
 }
 
 /// True for an `IfNode` that's actually a ternary (`predicate ? a : b`) --
