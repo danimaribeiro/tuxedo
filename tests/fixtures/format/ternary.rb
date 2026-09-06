@@ -7,3 +7,7 @@ def guarded
   valid? ? proceed : raise("invalid")
   cleanup
 end
+
+result = some_condition_that_is_quite_long? ?
+  some_long_method_call_for_the_truthy_case(argument) :
+  another_long_fallback_method_call(argument)

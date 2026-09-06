@@ -41,6 +41,14 @@ pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
     ) || has_real_block(node)
 }
 
+/// True for an `IfNode` that's actually a ternary (`predicate ? a : b`) --
+/// Prism represents both with the same node type, distinguished only by the
+/// absence of an `if`/`elsif` keyword location.
+fn is_ternary_if(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_if_node()
+        .is_some_and(|n| n.if_keyword_loc().is_none())
+}
+
 /// Like `manages_own_indentation`, but for a hash element
 /// (`AssocNode`/`AssocSplatNode`): looks at the value being assigned rather
 /// than the element itself, since a hash element is never itself a node
@@ -366,7 +374,8 @@ impl Formatter {
                 | ruby_prism::Node::ArrayNode { .. }
                 | ruby_prism::Node::HashNode { .. }
                 | ruby_prism::Node::CallNode { .. }
-        ) || has_real_block(value);
+        ) || has_real_block(value)
+            || is_ternary_if(value);
         let extra_indent = if skip_alignment {
             0
         } else {

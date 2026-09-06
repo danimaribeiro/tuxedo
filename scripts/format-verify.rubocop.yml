@@ -45,7 +45,7 @@
 #
 # | Gap | Notes |
 # |-----|-------|
-# | Only one binary op wraps, not a chain | The "operator-style call" Doc-wrap path (calls.rs) only handles a single binop with one RHS (`a + b`). A chain of same-precedence ops (`a && b && c`) never wraps. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
+# | `&&`/`\|\|` chains still bin-pack | `fmt_and_node`/`fmt_or_node` (control_flow.rs) now wrap a single `a && b` pair via `fmt_binary_bool_node`, same Doc-group pattern as the operator-style call path in calls.rs. A chain of same-precedence ops (`a && b && c`) is left-associative (`(a && b) && c`), so it wraps pairwise rather than putting every operand on its own line -- still an improvement over never wrapping, but not full all-or-nothing expansion for chains longer than two. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
 #
 # Fixed 2026-09-05: method chains (`a.b.c.d`) now break -- see
 # `try_build_chain_doc` in calls.rs. Also fixed the same day:
@@ -89,6 +89,8 @@ Layout/MultilineHashBraceLayout:
   EnforcedStyle: new_line
 Layout/MultilineMethodCallBraceLayout:
   EnforcedStyle: new_line
+Layout/MultilineOperationIndentation:
+  EnforcedStyle: indented
 
 # --- Carried over from format-compare.rubocop.yml ---
 # Tuxedo does not preserve hand-aligned columns yet; it always collapses

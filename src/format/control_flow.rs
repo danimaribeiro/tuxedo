@@ -1,4 +1,5 @@
 use super::Formatter;
+use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
 impl Formatter {
@@ -43,39 +44,7 @@ impl Formatter {
         let is_modifier = !is_ternary && !is_elsif && node.end_keyword_loc().is_none();
 
         if is_ternary {
-            // Ternary: predicate ? true_branch : false_branch
-            let inline = self.inline;
-            if !inline {
-                self.write_indent();
-            }
-            self.inline = true;
-            self.visit(&node.predicate());
-            self.output.push_str(" ? ");
-            if let Some(body) = node.statements() {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            self.output.push_str(" : ");
-            if let Some(consequent) = node.subsequent()
-                && let Some(else_node) = consequent.as_else_node()
-                && let Some(body) = else_node.statements()
-            {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            if !inline {
-                self.output.push('\n');
-            }
+            self.fmt_ternary(node);
             return;
         }
 
@@ -750,39 +719,148 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
+    /// `predicate ? true_branch : false_branch`. Wraps as a Doc group so an
+    /// overlong ternary breaks after `?` with both branches at a fixed
+    /// indent from the statement -- the same fixed-indent choice
+    /// `fmt_binary_bool_node` makes, not aligned under `?`/`:`, so renaming
+    /// the predicate can't reindent the branches. Falls back to the old flat
+    /// rendering when the predicate or either branch manages its own
+    /// multi-line body, for the same reason `fmt_binary_bool_node` does.
+    fn fmt_ternary(&mut self, node: &ruby_prism::IfNode<'_>) {
         let inline = self.inline;
         if !inline {
             self.write_indent();
         }
-        self.inline = true;
-        self.visit(&node.left());
-        let op = node.operator_loc().as_slice();
-        let op_str = std::str::from_utf8(op).unwrap_or("&&");
-        self.output.push(' ');
-        self.output.push_str(op_str);
-        self.output.push(' ');
-        self.inline = true;
-        self.visit(&node.right());
+
+        let predicate = node.predicate();
+        let true_branch: Vec<_> = node
+            .statements()
+            .map(|b| b.body().iter().collect())
+            .unwrap_or_default();
+        let false_branch: Vec<_> = node
+            .subsequent()
+            .and_then(|c| c.as_else_node())
+            .and_then(|e| e.statements())
+            .map(|b| b.body().iter().collect())
+            .unwrap_or_default();
+
+        let manages_own = super::manages_own_indentation(&predicate)
+            || true_branch.iter().any(super::manages_own_indentation)
+            || false_branch.iter().any(super::manages_own_indentation);
+
+        if manages_own {
+            self.inline = true;
+            self.visit(&predicate);
+            self.output.push_str(" ? ");
+            self.write_ternary_branch_flat(&true_branch);
+            self.output.push_str(" : ");
+            self.write_ternary_branch_flat(&false_branch);
+        } else {
+            let predicate_doc = self.capture_as_doc(|f| {
+                f.inline = true;
+                f.visit(&predicate);
+            });
+            let true_doc = self.capture_ternary_branch_as_doc(&true_branch);
+            let false_doc = self.capture_ternary_branch_as_doc(&false_branch);
+            let nest_width = self.indent_width() + self.indent_str.len();
+            let doc = predicate_doc.append(Doc::text(" ?")).append(
+                Doc::line()
+                    .append(true_doc)
+                    .append(Doc::text(" :"))
+                    .append(Doc::line())
+                    .append(false_doc)
+                    .nest(nest_width as isize)
+                    .group(),
+            );
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
+        }
+
         if !inline {
             self.output.push('\n');
         }
     }
 
+    fn write_ternary_branch_flat(&mut self, stmts: &[ruby_prism::Node<'_>]) {
+        for (i, stmt) in stmts.iter().enumerate() {
+            if i > 0 {
+                self.output.push_str("; ");
+            }
+            self.inline = true;
+            self.visit(stmt);
+        }
+    }
+
+    fn capture_ternary_branch_as_doc(
+        &mut self,
+        stmts: &[ruby_prism::Node<'_>],
+    ) -> Doc<'static, ()> {
+        self.capture_as_doc(|f| {
+            f.write_ternary_branch_flat(stmts);
+        })
+    }
+
+    pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
+        let op = node.operator_loc().as_slice();
+        let op_str = std::str::from_utf8(op).unwrap_or("&&");
+        self.fmt_binary_bool_node(node.left(), op_str, node.right());
+    }
+
     pub(super) fn fmt_or_node(&mut self, node: &ruby_prism::OrNode<'_>) {
+        let op = node.operator_loc().as_slice();
+        let op_str = std::str::from_utf8(op).unwrap_or("||");
+        self.fmt_binary_bool_node(node.left(), op_str, node.right());
+    }
+
+    /// Shared renderer for `&&`/`||`. Wraps the pair as a Doc group so an
+    /// overlong line breaks right after the operator with the right-hand
+    /// side indented one level, instead of always rendering flat regardless
+    /// of width -- the same pattern `fmt_call_node` uses for a single-arg
+    /// operator-style call. Falls back to the old flat rendering when either
+    /// side manages its own multi-line body imperatively (see
+    /// `manages_own_indentation`), for the same reason `write_call_args`
+    /// excludes those: a captured multi-line body's internal newlines aren't
+    /// nest-aware, so wrapping it in this Doc would misalign continuation
+    /// lines.
+    fn fmt_binary_bool_node(
+        &mut self,
+        left: ruby_prism::Node<'_>,
+        op_str: &str,
+        right: ruby_prism::Node<'_>,
+    ) {
         let inline = self.inline;
         if !inline {
             self.write_indent();
         }
-        self.inline = true;
-        self.visit(&node.left());
-        let op = node.operator_loc().as_slice();
-        let op_str = std::str::from_utf8(op).unwrap_or("||");
-        self.output.push(' ');
-        self.output.push_str(op_str);
-        self.output.push(' ');
-        self.inline = true;
-        self.visit(&node.right());
+
+        if super::manages_own_indentation(&left) || super::manages_own_indentation(&right) {
+            self.inline = true;
+            self.visit(&left);
+            self.output.push(' ');
+            self.output.push_str(op_str);
+            self.output.push(' ');
+            self.inline = true;
+            self.visit(&right);
+        } else {
+            let left_doc = self.capture_as_doc(|f| {
+                f.inline = true;
+                f.visit(&left);
+            });
+            let right_doc = self.capture_as_doc(|f| {
+                f.inline = true;
+                f.visit(&right);
+            });
+            let nest_width = self.indent_width() + self.indent_str.len();
+            let doc = left_doc.append(Doc::text(format!(" {op_str}"))).append(
+                Doc::line()
+                    .append(right_doc)
+                    .nest(nest_width as isize)
+                    .group(),
+            );
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
+        }
+
         if !inline {
             self.output.push('\n');
         }

@@ -46,14 +46,25 @@ fn range(loc: &Location<'_>) -> (usize, usize) {
 }
 
 fn token(kind: &str, (start, end): (usize, usize)) -> Elem {
-    Elem { kind: kind.to_string(), category: Category::Token, start, end, children: Vec::new() }
+    Elem {
+        kind: kind.to_string(),
+        category: Category::Token,
+        start,
+        end,
+        children: Vec::new(),
+    }
 }
 
 /// Sorts `parts` by position and fills every gap between them (and between the
 /// enclosing `span` and the first/last part) with reconstructed trivia. This is
 /// the whole trick: prism guarantees the parts it hands us don't overlap, so
 /// anything left over in `span` must be whitespace or a comment.
-fn assemble(kind: &str, span: (usize, usize), mut parts: Vec<Elem>, comments: &[(usize, usize)]) -> Elem {
+fn assemble(
+    kind: &str,
+    span: (usize, usize),
+    mut parts: Vec<Elem>,
+    comments: &[(usize, usize)],
+) -> Elem {
     parts.sort_by_key(|e| e.start);
 
     let mut children = Vec::with_capacity(parts.len() * 2);
@@ -69,7 +80,13 @@ fn assemble(kind: &str, span: (usize, usize), mut parts: Vec<Elem>, comments: &[
         push_trivia(&mut children, cursor, span.1, comments);
     }
 
-    Elem { kind: kind.to_string(), category: Category::Node, start: span.0, end: span.1, children }
+    Elem {
+        kind: kind.to_string(),
+        category: Category::Node,
+        start: span.0,
+        end: span.1,
+        children,
+    }
 }
 
 fn push_trivia(children: &mut Vec<Elem>, start: usize, end: usize, comments: &[(usize, usize)]) {
@@ -79,23 +96,49 @@ fn push_trivia(children: &mut Vec<Elem>, start: usize, end: usize, comments: &[(
             continue;
         }
         if cs > cursor {
-            children.push(Elem { kind: "whitespace".into(), category: Category::Trivia, start: cursor, end: cs, children: Vec::new() });
+            children.push(Elem {
+                kind: "whitespace".into(),
+                category: Category::Trivia,
+                start: cursor,
+                end: cs,
+                children: Vec::new(),
+            });
         }
-        children.push(Elem { kind: "comment".into(), category: Category::Trivia, start: cs, end: ce, children: Vec::new() });
+        children.push(Elem {
+            kind: "comment".into(),
+            category: Category::Trivia,
+            start: cs,
+            end: ce,
+            children: Vec::new(),
+        });
         cursor = ce;
     }
     if end > cursor {
-        children.push(Elem { kind: "whitespace".into(), category: Category::Trivia, start: cursor, end, children: Vec::new() });
+        children.push(Elem {
+            kind: "whitespace".into(),
+            category: Category::Trivia,
+            start: cursor,
+            end,
+            children: Vec::new(),
+        });
     }
 }
 
 fn build_statements(node: &StatementsNode<'_>, comments: &[(usize, usize)]) -> Elem {
-    let parts = node.body().iter().map(|child| build(&child, comments)).collect();
+    let parts = node
+        .body()
+        .iter()
+        .map(|child| build(&child, comments))
+        .collect();
     assemble("Statements", range(&node.location()), parts, comments)
 }
 
 fn build_arguments(node: &ArgumentsNode<'_>, comments: &[(usize, usize)]) -> Elem {
-    let parts = node.arguments().iter().map(|child| build(&child, comments)).collect();
+    let parts = node
+        .arguments()
+        .iter()
+        .map(|child| build(&child, comments))
+        .collect();
     assemble("Arguments", range(&node.location()), parts, comments)
 }
 
@@ -135,10 +178,8 @@ fn build(node: &Node<'_>, comments: &[(usize, usize)]) -> Elem {
         // prism mirrors the chain's single terminal `end` onto every level's
         // end_keyword_loc; only take it here when this is that terminal level,
         // or it would be emitted once per elsif/if in the chain.
-        if !has_subsequent {
-            if let Some(loc) = n.end_keyword_loc() {
-                parts.push(token("end", range(&loc)));
-            }
+        if !has_subsequent && let Some(loc) = n.end_keyword_loc() {
+            parts.push(token("end", range(&loc)));
         }
         return assemble("If", range(&n.location()), parts, comments);
     }
@@ -162,10 +203,8 @@ fn build(node: &Node<'_>, comments: &[(usize, usize)]) -> Elem {
         }
         // Same mirroring as IfNode above: defer to the else clause's own
         // end_keyword_loc when present, since it's the same physical token.
-        if !has_else {
-            if let Some(loc) = n.end_keyword_loc() {
-                parts.push(token("end", range(&loc)));
-            }
+        if !has_else && let Some(loc) = n.end_keyword_loc() {
+            parts.push(token("end", range(&loc)));
         }
         return assemble("Unless", range(&n.location()), parts, comments);
     }
@@ -222,15 +261,27 @@ fn build(node: &Node<'_>, comments: &[(usize, usize)]) -> Elem {
     // Opaque leaf fallback for anything not handled above - not exercised by
     // playground/conditionals.rb today, but keeps the builder total.
     let (start, end) = range(&node.location());
-    Elem { kind: "Unhandled".into(), category: Category::Token, start, end, children: Vec::new() }
+    Elem {
+        kind: "Unhandled".into(),
+        category: Category::Token,
+        start,
+        end,
+        children: Vec::new(),
+    }
 }
 
 fn node_children(elem: &Elem) -> Vec<&Elem> {
-    elem.children.iter().filter(|c| c.category == Category::Node).collect()
+    elem.children
+        .iter()
+        .filter(|c| c.category == Category::Node)
+        .collect()
 }
 
 fn tok<'a>(elem: &'a Elem, kind: &str, source: &'a str) -> Option<&'a str> {
-    elem.children.iter().find(|c| c.category == Category::Token && c.kind == kind).map(|t| &source[t.start..t.end])
+    elem.children
+        .iter()
+        .find(|c| c.category == Category::Token && c.kind == kind)
+        .map(|t| &source[t.start..t.end])
 }
 
 fn line_col(source: &str, offset: usize) -> (usize, usize) {
@@ -258,7 +309,11 @@ fn render(elem: &Elem, source: &str, depth: usize) -> String {
         "If" | "Unless" => render_conditional(elem, source, depth),
         "Else" => render_else(elem, source, depth),
         "Call" => render_call(elem, source, depth),
-        "Arguments" => node_children(elem).iter().map(|a| render(a, source, depth)).collect::<Vec<_>>().join(", "),
+        "Arguments" => node_children(elem)
+            .iter()
+            .map(|a| render(a, source, depth))
+            .collect::<Vec<_>>()
+            .join(", "),
         // Leaves and anything not given a canonical rule render verbatim -
         // exactly right for String/InterpolatedString, since only the
         // surrounding trivia (not literal content) is a formatting concern.
@@ -296,7 +351,12 @@ fn render_statements_block(stmts: &Elem, source: &str, depth: usize) -> String {
 }
 
 fn render_conditional(elem: &Elem, source: &str, depth: usize) -> String {
-    let keyword = tok(elem, if elem.kind == "If" { "if" } else { "unless" }, source).expect("if/unless keyword");
+    let keyword = tok(
+        elem,
+        if elem.kind == "If" { "if" } else { "unless" },
+        source,
+    )
+    .expect("if/unless keyword");
     let nodes = node_children(elem);
     let predicate = nodes[0];
     let rest = &nodes[1..];
@@ -346,7 +406,11 @@ fn render_call(elem: &Elem, source: &str, depth: usize) -> String {
     match nodes.len() {
         0 => message.to_string(),
         1 => format!("{message} {}", render(nodes[0], source, depth)),
-        _ => format!("{} {message} {}", render(nodes[0], source, depth), render(nodes[1], source, depth)),
+        _ => format!(
+            "{} {message} {}",
+            render(nodes[0], source, depth),
+            render(nodes[1], source, depth)
+        ),
     }
 }
 
@@ -364,7 +428,12 @@ fn check_if_unless_modifier(elem: &Elem, source: &str, out: &mut Vec<Diagnostic>
     if elem.kind == "If" || elem.kind == "Unless" {
         let nodes = node_children(elem);
         if nodes.len() == 2 && nodes[1].kind == "Statements" && node_children(nodes[1]).len() == 1 {
-            let keyword = tok(elem, if elem.kind == "If" { "if" } else { "unless" }, source).expect("keyword");
+            let keyword = tok(
+                elem,
+                if elem.kind == "If" { "if" } else { "unless" },
+                source,
+            )
+            .expect("keyword");
             let predicate_text = &source[nodes[0].start..nodes[0].end];
             let body = node_children(nodes[1])[0];
             let body_text = &source[body.start..body.end];
@@ -403,7 +472,12 @@ fn check_alignment(elem: &Elem, source: &str, out: &mut Vec<AlignmentDiagnostic>
             for part in rest {
                 let (_, col) = line_col(source, part.start);
                 if col != anchor_col {
-                    out.push(AlignmentDiagnostic { start: part.start, end: part.end, expected_column: anchor_col, actual_column: col });
+                    out.push(AlignmentDiagnostic {
+                        start: part.start,
+                        end: part.end,
+                        expected_column: anchor_col,
+                        actual_column: col,
+                    });
                 }
             }
         }
@@ -417,11 +491,13 @@ fn corrected_alignment(source: &str, diagnostics: &[AlignmentDiagnostic]) -> Str
     let mut edits: Vec<(usize, usize, String)> = diagnostics
         .iter()
         .map(|d| {
-            let last_nl = source[..d.start].rfind('\n').expect("continuation line has a preceding newline");
+            let last_nl = source[..d.start]
+                .rfind('\n')
+                .expect("continuation line has a preceding newline");
             (last_nl + 1, d.start, " ".repeat(d.expected_column))
         })
         .collect();
-    edits.sort_by(|a, b| b.0.cmp(&a.0));
+    edits.sort_by_key(|a| std::cmp::Reverse(a.0));
 
     let mut result = source.to_string();
     for (start, end, replacement) in edits {
@@ -452,7 +528,13 @@ fn write_elem(elem: &Elem, source: &str, out: &mut String) {
     out.push('{');
     out.push_str("\"kind\":");
     escape_json(&elem.kind, out);
-    let _ = write!(out, ",\"category\":\"{}\",\"start\":{},\"end\":{},\"text\":", elem.category.as_str(), elem.start, elem.end);
+    let _ = write!(
+        out,
+        ",\"category\":\"{}\",\"start\":{},\"end\":{},\"text\":",
+        elem.category.as_str(),
+        elem.start,
+        elem.end
+    );
     escape_json(&source[elem.start..elem.end], out);
     out.push_str(",\"children\":[");
     for (i, child) in elem.children.iter().enumerate() {
@@ -465,10 +547,12 @@ fn write_elem(elem: &Elem, source: &str, out: &mut String) {
 }
 
 fn parse_file(path: &str) -> (String, Elem) {
-    let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+    let source =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
     let mut root = {
         let parsed = ruby_prism::parse(source.as_bytes());
-        let comments: Vec<(usize, usize)> = parsed.comments().map(|c| range(&c.location())).collect();
+        let comments: Vec<(usize, usize)> =
+            parsed.comments().map(|c| range(&c.location())).collect();
         build(&parsed.node(), &comments)
     };
     // ProgramNode's own location can end before the source does (e.g. it
@@ -509,7 +593,14 @@ fn write_if_unless_diagnostics(diagnostics: &[Diagnostic], source: &str) -> Stri
             out.push(',');
         }
         let (line, column) = line_col(source, d.start);
-        let _ = write!(out, "{{\"start\":{},\"end\":{},\"line\":{line},\"column\":{column},\"message\":{},\"replacement\":{}}}", d.start, d.end, json_string_field(&d.message), json_string_field(&d.replacement));
+        let _ = write!(
+            out,
+            "{{\"start\":{},\"end\":{},\"line\":{line},\"column\":{column},\"message\":{},\"replacement\":{}}}",
+            d.start,
+            d.end,
+            json_string_field(&d.message),
+            json_string_field(&d.replacement)
+        );
     }
     out.push(']');
     out
@@ -522,14 +613,20 @@ fn write_alignment_diagnostics(diagnostics: &[AlignmentDiagnostic], source: &str
             out.push(',');
         }
         let (line, _) = line_col(source, d.start);
-        let _ = write!(out, "{{\"start\":{},\"end\":{},\"line\":{line},\"expected_column\":{},\"actual_column\":{}}}", d.start, d.end, d.expected_column, d.actual_column);
+        let _ = write!(
+            out,
+            "{{\"start\":{},\"end\":{},\"line\":{line},\"expected_column\":{},\"actual_column\":{}}}",
+            d.start, d.end, d.expected_column, d.actual_column
+        );
     }
     out.push(']');
     out
 }
 
 fn main() {
-    let output_path = std::env::args().nth(1).unwrap_or_else(|| "playground/output.json".to_string());
+    let output_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "playground/output.json".to_string());
 
     let mut json = String::from("{");
 
@@ -540,13 +637,23 @@ fn main() {
     let (fmt_source, fmt_tree) = parse_file("playground/formatter_before.rb");
     let formatted = render(&fmt_tree, &fmt_source, 0) + "\n";
     json.push_str(",\"formatter\":");
-    write_scenario(&mut json, &fmt_source, &fmt_tree, &[("formatted", json_string_field(&formatted))]);
+    write_scenario(
+        &mut json,
+        &fmt_source,
+        &fmt_tree,
+        &[("formatted", json_string_field(&formatted))],
+    );
 
     let mut lint_diagnostics = Vec::new();
     check_if_unless_modifier(&cond_tree, &cond_source, &mut lint_diagnostics);
     json.push_str(",\"linter\":");
     let lint_json = write_if_unless_diagnostics(&lint_diagnostics, &cond_source);
-    write_scenario(&mut json, &cond_source, &cond_tree, &[("diagnostics", lint_json)]);
+    write_scenario(
+        &mut json,
+        &cond_source,
+        &cond_tree,
+        &[("diagnostics", lint_json)],
+    );
 
     let (align_source, align_tree) = parse_file("playground/alignment.rb");
     let mut align_diagnostics = Vec::new();
@@ -554,10 +661,19 @@ fn main() {
     let corrected = corrected_alignment(&align_source, &align_diagnostics);
     json.push_str(",\"alignment\":");
     let align_json = write_alignment_diagnostics(&align_diagnostics, &align_source);
-    write_scenario(&mut json, &align_source, &align_tree, &[("diagnostics", align_json), ("corrected_source", json_string_field(&corrected))]);
+    write_scenario(
+        &mut json,
+        &align_source,
+        &align_tree,
+        &[
+            ("diagnostics", align_json),
+            ("corrected_source", json_string_field(&corrected)),
+        ],
+    );
 
     json.push('}');
 
-    std::fs::write(&output_path, &json).unwrap_or_else(|e| panic!("failed to write {output_path}: {e}"));
+    std::fs::write(&output_path, &json)
+        .unwrap_or_else(|e| panic!("failed to write {output_path}: {e}"));
     println!("wrote {output_path} ({} bytes)", json.len());
 }

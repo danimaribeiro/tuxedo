@@ -8,7 +8,7 @@ Running tuxedo format...
 
 [3/3] Layout conformance (rubocop --only Layout)...
 
-  36   Layout/LineLength [Safe Correctable]
+  32   Layout/LineLength [Safe Correctable]
   18   Layout/FirstMethodArgumentLineBreak [Safe Correctable]
   18   Layout/MultilineMethodCallBraceLayout [Safe Correctable]
   17   Layout/ArrayAlignment [Safe Correctable]
@@ -21,10 +21,11 @@ Running tuxedo format...
   7    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
   4    Layout/FirstArrayElementIndentation [Safe Correctable]
   3    Layout/MultilineMethodCallIndentation [Safe Correctable]
-  3    Layout/MultilineOperationIndentation [Safe Correctable]
+  2    Layout/BeginEndAlignment [Safe Correctable]
   2    Layout/EmptyLineAfterMagicComment [Safe Correctable]
-  1    Layout/BeginEndAlignment [Safe Correctable]
   1    Layout/BlockAlignment [Safe Correctable]
+  1    Layout/BlockEndNewline [Safe Correctable]
+  1    Layout/MultilineBlockLayout [Safe Correctable]
   1    Layout/TrailingWhitespace [Safe Correctable]
 
 ======================================================================
@@ -32,7 +33,7 @@ Running tuxedo format...
 ----------------------------------------------------------------------
   parse       76 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
   idempotent  0 files change on a second format
-  layout      194 offenses across 18 distinct cops
+  layout      190 offenses across 19 distinct cops
 ======================================================================
 
 Output kept at test-projects/thor/verify for inspection.
