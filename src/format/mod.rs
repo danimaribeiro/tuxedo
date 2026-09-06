@@ -673,6 +673,11 @@ impl Visit<'_> for Formatter {
         self.fmt_forwarding_parameter_node(node);
     }
 
+    // `...` as a call argument, forwarding a `...` parameter through.
+    fn visit_forwarding_arguments_node(&mut self, _node: &ruby_prism::ForwardingArgumentsNode<'_>) {
+        self.output.push_str("...");
+    }
+
     fn visit_block_parameter_node(&mut self, node: &ruby_prism::BlockParameterNode<'_>) {
         self.fmt_block_parameter_node(node);
     }
@@ -1177,5 +1182,13 @@ impl Visit<'_> for Formatter {
 
     fn visit_match_predicate_node(&mut self, node: &ruby_prism::MatchPredicateNode<'_>) {
         self.fmt_match_predicate_node(node);
+    }
+
+    // `regex =~ str` where `regex` has named captures: Ruby defines the
+    // capture names as local variables as a side effect. `targets` names
+    // those locals but they aren't source text to emit -- only the `=~`
+    // call itself is.
+    fn visit_match_write_node(&mut self, node: &ruby_prism::MatchWriteNode<'_>) {
+        self.visit(&node.call().as_node());
     }
 }

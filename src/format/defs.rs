@@ -42,7 +42,15 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
-            let header_line = self.line_of(node.location().start_offset());
+            // A trailing comment sits after wherever the signature actually
+            // ends -- the closing paren when params wrapped onto their own
+            // lines, not the `def` keyword's line, which may be several
+            // lines earlier by then.
+            let header_end = node
+                .rparen_loc()
+                .map(|l| l.start_offset())
+                .unwrap_or_else(|| node.location().start_offset());
+            let header_line = self.line_of(header_end);
             self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
