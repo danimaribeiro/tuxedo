@@ -1,0 +1,406 @@
+Building tuxedo (release)...
+Preparing working copy...
+Running tuxedo format...
+
+[1/3] Parse check (ruby -c)...
+
+[2/3] Idempotence check (format twice)...
+  UNSTABLE: actioncable/lib/action_cable/channel/streams.rb
+          @@ -114,7 +114,7 @@
+                 # the callback. Defaults to `coder: nil` which does no decoding, passes raw
+                 # messages.
+                 def stream_for(broadcastables, ...)
+          -        stream_from(broadcasting_for(broadcastables), )
+          +        stream_from(broadcasting_for(broadcastables))
+                 end
+           
+  UNSTABLE: actionmailer/lib/action_mailer/base.rb
+          @@ -613,7 +613,7 @@
+                 end
+           
+                 def mail(...)
+          -        MessageDelivery.new(self, :mail, )
+          +        MessageDelivery.new(self, :mail)
+                 end
+           
+  UNSTABLE: actionmailer/lib/action_mailer/parameterized.rb
+          @@ -117,7 +117,7 @@
+           
+                 def method_missing(method_name, ...)
+                   if @mailer.action_methods.include?(method_name.name)
+          -          ActionMailer::Parameterized::MessageDelivery.new(@mailer, method_name, @params, )
+          +          ActionMailer::Parameterized::MessageDelivery.new(@mailer, method_name, @params)
+                   else
+                     super
+  UNSTABLE: actionpack/lib/abstract_controller/base.rb
+          @@ -153,7 +153,7 @@
+           
+                 @_response_body = nil
+           
+          -      process_action(action_name, )
+          +      process_action(action_name)
+               end
+           
+  UNSTABLE: actionpack/lib/abstract_controller/collector.rb
+          @@ -36,7 +36,7 @@
+           
+                 if Mime.symbols.include?(mime_constant.to_sym)
+                   AbstractController::Collector.generate_method_for_mime(mime_constant)
+          -        public_send(symbol, )
+          +        public_send(symbol)
+                 else
+                   super
+  UNSTABLE: actionpack/lib/action_controller/test_case.rb
+          @@ -619,7 +619,7 @@
+           
+                 def method_missing(selector, ...)
+                   if @controller && @controller && @routes && @routes && @routes.named_routes.route_defined?(selector)
+          -          @controller.public_send(selector, )
+          +          @controller.public_send(selector)
+                   else
+                     super
+  UNSTABLE: actionpack/lib/action_dispatch/middleware/stack.rb
+          @@ -112,12 +112,12 @@
+           
+               def insert_after(index, ...)
+                 index = assert_index(index, :after)
+          -      insert(index + 1, )
+          +      insert(index + 1)
+               end
+           
+  UNSTABLE: actionpack/lib/action_dispatch/system_test_case.rb
+          @@ -190,7 +190,7 @@
+           
+               def method_missing(name, ...)
+                 if url_helpers.respond_to?(name)
+          -        url_helpers.public_send(name, )
+          +        url_helpers.public_send(name)
+                 else
+                   super
+  UNSTABLE: actionpack/lib/action_dispatch/testing/integration.rb
+          @@ -450,7 +450,7 @@
+                 # Delegate unhandled messages to the current session instance.
+                 def method_missing(method, ...)
+                   if integration_session.respond_to?(method)
+          -          integration_session.public_send(method, ).tap do
+          +          integration_session.public_send(method).tap do
+                       copy_session_variables!
+                     end
+  UNSTABLE: actionpack/test/dispatch/routing_test.rb
+          @@ -4136,7 +4136,7 @@
+           
+             def method_missing(method, ...)
+               if method.match?(/_(path|url)$/)
+          -      @app.routes.url_helpers.send(method, )
+          +      @app.routes.url_helpers.send(method)
+               else
+                 super
+  UNSTABLE: actiontext/lib/action_text/editor/trix_editor.rb
+          @@ -11,7 +11,7 @@
+               end
+           
+               def editor_tag(...)
+          -      Tag.new(editor_name, )
+          +      Tag.new(editor_name)
+               end
+           
+  UNSTABLE: actionview/lib/action_view/test_case.rb
+          @@ -439,7 +439,7 @@
+                   # Don't call routes, if there is an error on _routes call
+           
+                   if routes && (routes.named_routes.route_defined?(selector) || routes.mounted_helpers.method_defined?(selector))
+          -          @controller.__send__(selector, )
+          +          @controller.__send__(selector)
+                   else
+                     super
+  UNSTABLE: activemodel/lib/active_model/attribute_methods.rb
+          @@ -555,7 +555,7 @@
+                   super
+                 else
+                   match = matched_attribute_method(method.name)
+          -        match ? attribute_missing(match, ) : super
+          +        match ? attribute_missing(match) : super
+                 end
+               end
+  UNSTABLE: activemodel/lib/active_model/type/registry.rb
+          @@ -21,7 +21,7 @@
+                   registration = registrations[symbol]
+           
+                   if registration
+          -          registration.call(symbol, )
+          +          registration.call(symbol)
+                   else
+                     raise ArgumentError, "Unknown type #{symbol.inspect}"
+  UNSTABLE: activemodel/test/cases/naming_test.rb
+          @@ -307,7 +307,7 @@
+             private
+           
+             def method_missing(method, ...)
+          -    ActiveModel::Naming.public_send(method, )
+          +    ActiveModel::Naming.public_send(method)
+             end
+           end
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/abstract_adapter.rb
+          @@ -152,7 +152,8 @@
+                   deprecated_logger = nil,
+                   deprecated_connection_options = nil,
+                   deprecated_config = nil
+          -      ) # :nodoc:
+          +      )
+          +        # :nodoc:
+                   super()
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/abstract_mysql_adapter.rb
+          @@ -749,7 +749,7 @@
+           
+                   table_options = {}
+           
+          -        if / DEFAULT CHARSET=(?<charset>\w+)(?: COLLATE=(?<collation>\w+))?/ =~ raw_table_optionscharsetcollation
+          +        if / DEFAULT CHARSET=(?<charset>\w+)(?: COLLATE=(?<collation>\w+))?/ =~ raw_table_optionscharsetcollationcharsetcollation
+                     raw_table_options = $` + $' # before part + after part
+                     table_options[:charset] = charset
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/abstract/connection_handler.rb
+          @@ -199,7 +199,8 @@
+                   connection_name,
+                   role: ActiveRecord::Base.current_role,
+                   shard: ActiveRecord::Base.current_shard
+          -      ) # :nodoc:
+          +      )
+          +        # :nodoc:
+                   pool = retrieve_connection_pool(connection_name, role: role, shard: shard, strict: true)
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/mysql/schema_dumper.rb
+          @@ -16,7 +16,7 @@
+                     spec[:unsigned] = "true" if column.unsigned?
+                     spec[:auto_increment] = "true" if column.auto_increment?
+           
+          -          if /\A(?<size>tiny|medium|long)(?:text|blob)/ =~ column.sql_typesize
+          +          if /\A(?<size>tiny|medium|long)(?:text|blob)/ =~ column.sql_typesizesize
+                       spec = { size: size.to_sym.inspect }.merge!(spec)
+                     end
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/postgresql/schema_definitions.rb
+          @@ -300,7 +300,7 @@
+                   #
+                   # See {connection.add_exclusion_constraint}[rdoc-ref:SchemaStatements#add_exclusion_constraint]
+                   def exclusion_constraint(...)
+          -          @base.add_exclusion_constraint(name, )
+          +          @base.add_exclusion_constraint(name)
+                   end
+           
+  UNSTABLE: activerecord/lib/active_record/connection_adapters/sqlite3/schema_statements.rb
+          @@ -128,7 +128,7 @@
+                   def build_index(table_name, row, index_sql, columns)
+                     /\bON\b\s*"?(\w+?)"?\s*\((?<expressions>.+?)\)(?:\s*WHERE\b\s*(?<where>.+?))?(?:\s*\/\*.*\*\/)?\s*\z/im =~
+                       index_sql
+          -expressionswhere
+          +expressionswhere          expressionswhere
+                     where = where.sub(/\s*\/\*.*\*\/\z/, "") if where
+                     orders = {}
+  UNSTABLE: activerecord/lib/active_record/dynamic_matchers.rb
+          @@ -21,7 +21,7 @@
+           
+                 if match && match.valid?(self, name)
+                   match.define(self, name)
+          -        send(name, )
+          +        send(name)
+                 else
+                   super
+  UNSTABLE: activerecord/lib/active_record/insert_all.rb
+          @@ -10,7 +10,7 @@
+               class << self
+                 def execute(relation, ...)
+                   relation.model.with_connection do |c|
+          -          new(relation, c, ).execute
+          +          new(relation, c).execute
+                   end.tap { relation.reset }
+                 end
+  UNSTABLE: activerecord/lib/active_record/migration.rb
+          @@ -738,7 +738,7 @@
+                 end
+           
+                 def method_missing(name, ...) # :nodoc:
+          -        nearest_delegate.send(name, )
+          +        nearest_delegate.send(name)
+                 end
+           
+  UNSTABLE: activerecord/lib/active_record/migration/command_recorder.rb
+          @@ -425,7 +425,7 @@
+                 # Forwards any missing method call to the \target.
+                 def method_missing(method, ...)
+                   if delegate.respond_to?(method)
+          -          delegate.public_send(method, )
+          +          delegate.public_send(method)
+                   else
+                     super
+  UNSTABLE: activerecord/lib/active_record/migration/default_strategy.rb
+          @@ -53,7 +53,7 @@
+                 private
+           
+                 def method_missing(method, ...)
+          -        connection.send(method, )
+          +        connection.send(method)
+                 end
+           
+  UNSTABLE: activerecord/lib/active_record/relation/delegation.rb
+          @@ -132,7 +132,7 @@
+                       model.generate_relation_method(method)
+                     end
+           
+          -          scoping { model.public_send(method, ) }
+          +          scoping { model.public_send(method) }
+                   else
+                     super
+  UNSTABLE: activerecord/lib/active_record/relation/finder_methods.rb
+          @@ -415,7 +415,8 @@
+                 expected_size = nil,
+                 key = primary_key,
+                 not_found_ids = nil
+          -    ) # :nodoc:
+          +    )
+          +      # :nodoc:
+                 conditions = " [#{arel.where_sql(model)}]" unless where_clause.empty?
+  UNSTABLE: activerecord/lib/active_record/relation/query_methods.rb
+          @@ -2062,7 +2062,7 @@
+           
+                 if model.columns_hash.key?(field) && (!from || table_name_matches?(from))
+                   table[field]
+          -      elsif /\A(?<table>(?:\w+\.)?\w+)\.(?<column>\w+)\z/ =~ fieldtablecolumn
+          +      elsif /\A(?<table>(?:\w+\.)?\w+)\.(?<column>\w+)\z/ =~ fieldtablecolumntablecolumn
+                   arel_column_with_table(table, column)
+                 elsif block_given?
+  UNSTABLE: activerecord/lib/active_record/test_fixtures.rb
+          @@ -326,7 +326,7 @@
+           
+               def method_missing(method, ...)
+                 if fixture_sets.key?(method.name)
+          -        active_record_fixture(method, )
+          +        active_record_fixture(method)
+                 else
+                   super
+  UNSTABLE: activestorage/app/models/active_storage/blob.rb
+          @@ -100,7 +100,8 @@
+                 service_name: nil,
+                 identify: true,
+                 record: nil
+          -    ) # :nodoc:
+          +    )
+          +      # :nodoc:
+                 new(key: key, filename: filename, content_type: content_type, metadata: metadata, service_name: service_name).tap do |blob|
+  UNSTABLE: activesupport/lib/active_support/broadcast_logger.rb
+          @@ -232,9 +232,9 @@
+                 if loggers.none?
+                   super
+                 elsif loggers.one?
+          -        loggers.first.send(name, )
+          +        loggers.first.send(name)
+                 else
+          -        loggers.map { |logger| logger.send(name, ) }
+  UNSTABLE: activesupport/lib/active_support/current_attributes.rb
+          @@ -175,7 +175,7 @@
+                 end
+           
+                 def method_missing(name, ...)
+          -        instance.public_send(name, )
+          +        instance.public_send(name)
+                 end
+           
+  UNSTABLE: activesupport/lib/active_support/deprecation/proxy_wrappers.rb
+          @@ -23,8 +23,8 @@
+                 private
+           
+                 def method_missing(called, ...)
+          -        warn(caller_locations, called, )
+          -        target.__send__(called, )
+          +        warn(caller_locations, called)
+          +        target.__send__(called)
+  UNSTABLE: activesupport/lib/active_support/notifications/fanout.rb
+          @@ -344,7 +344,7 @@
+                 end
+           
+                 def publish(name, ...)
+          -        iterate_guarding_exceptions(listeners_for(name)) { |s| s.publish(name, ) }
+          +        iterate_guarding_exceptions(listeners_for(name)) { |s| s.publish(name) }
+                 end
+           
+  UNSTABLE: activesupport/test/cache/stores/deprecated_redis_cache_store_test.rb
+          @@ -410,7 +410,7 @@
+               private
+           
+               def assert_raise_redis_error(...)
+          -      assert_raise(Redis::BaseError, )
+          +      assert_raise(Redis::BaseError)
+               end
+           
+  UNSTABLE: activesupport/test/cache/stores/redis_cache_store_test.rb
+          @@ -476,7 +476,7 @@
+               private
+           
+               def assert_raise_redis_error(...)
+          -      assert_raise(RedisClient::ConnectionError, )
+          +      assert_raise(RedisClient::ConnectionError)
+               end
+           
+  UNSTABLE: railties/lib/rails/application/dummy_config.rb
+          @@ -11,7 +11,7 @@
+           
+             def method_missing(selector, ...)
+               if @config.respond_to?(selector)
+          -      @config.send(selector, )
+          +      @config.send(selector)
+               else
+                 self
+  UNSTABLE: railties/lib/rails/engine/lazy_route_set.rb
+          @@ -55,7 +55,7 @@
+                     else
+                       Rails.application&.reload_routes_unless_loaded
+                       if ActionDispatch::Routing::RouteSet::MountedHelpers.method_defined?(method_name)
+          -              public_send(method_name, )
+          +              public_send(method_name)
+                       else
+                         super
+  UNSTABLE: railties/lib/rails/railtie.rb
+          @@ -263,7 +263,7 @@
+                 # to the Railtie instance.
+                 def method_missing(name, ...)
+                   if !abstract_railtie? && instance.respond_to?(name)
+          -          instance.public_send(name, )
+          +          instance.public_send(name)
+                   else
+                     super
+
+[3/3] Layout conformance (rubocop --only Layout)...
+
+  3659   Layout/LineLength [Safe Correctable]
+  2479   Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
+  755    Layout/MultilineMethodCallIndentation [Safe Correctable]
+  578    Layout/FirstHashElementIndentation [Safe Correctable]
+  565    Layout/ArrayAlignment [Safe Correctable]
+  295    Layout/ArgumentAlignment [Safe Correctable]
+  292    Layout/BlockEndNewline [Safe Correctable]
+  214    Layout/FirstArrayElementIndentation [Safe Correctable]
+  198    Layout/MultilineBlockLayout [Safe Correctable]
+  180    Layout/HeredocIndentation [Safe Correctable]
+  167    Layout/EndAlignment [Safe Correctable]
+  147    Layout/ClosingHeredocIndentation [Safe Correctable]
+  140    Layout/ExtraSpacing [Safe Correctable]
+  127    Layout/IndentationWidth [Safe Correctable]
+  120    Layout/ElseAlignment [Safe Correctable]
+  108    Layout/FirstArgumentIndentation [Safe Correctable]
+  102    Layout/CaseIndentation [Safe Correctable]
+  94     Layout/MultilineOperationIndentation [Safe Correctable]
+  58     Layout/DefEndAlignment [Safe Correctable]
+  52     Layout/SpaceAroundOperators [Safe Correctable]
+  48     Layout/MultilineMethodCallBraceLayout [Safe Correctable]
+  47     Layout/FirstMethodArgumentLineBreak [Safe Correctable]
+  47     Layout/SpaceInsideParens [Safe Correctable]
+  33     Layout/MultilineHashKeyLineBreaks [Safe Correctable]
+  28     Layout/MultilineArrayLineBreaks [Safe Correctable]
+
+======================================================================
+  rails
+----------------------------------------------------------------------
+  parse       3458 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
+  idempotent  40 files change on a second format
+  layout      10708 offenses across 45 distinct cops
+======================================================================
+
+Output kept at test-projects/rails/verify for inspection.
+Report saved to scripts/results/rails-format-verify.txt

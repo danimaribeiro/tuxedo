@@ -6,6 +6,10 @@
 # Usage:
 #   scripts/format-verify.sh <project>
 #
+# Report saved to scripts/results/<project>-format-verify.txt (committed -
+# survives across sessions; commit the update alongside whatever prompted
+# the run).
+#
 # Why a second script: rubocop is a linter, so it only ever *adds* line
 # breaks — it has no mandate to overrule an author who broke a line by hand.
 # Tuxedo is a formatter and normalizes in both directions. Given
@@ -51,6 +55,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="$ROOT/test-projects/$PROJECT"
 SRC="$BASE/source"
 OUT="$BASE/verify"
+RESULTS_DIR="$ROOT/scripts/results"
+REPORT="$RESULTS_DIR/$PROJECT-format-verify.txt"
 
 if [ ! -d "$SRC" ]; then
   echo "error: $SRC does not exist." >&2
@@ -62,6 +68,12 @@ if ! command -v ruby >/dev/null 2>&1; then
   echo "error: ruby not found on PATH (needed for the parse check)." >&2
   exit 1
 fi
+
+mkdir -p "$RESULTS_DIR"
+# Mirrors stdout (not stderr - that's just progress noise) to the report
+# file for the rest of the script, without disturbing this script's exit
+# code the way `... | tee` would.
+exec > >(tee "$REPORT")
 
 echo "Building tuxedo (release)..."
 (cd "$ROOT" && cargo build --release --quiet)
@@ -118,6 +130,10 @@ while IFS= read -r -d '' file; do
   fi
   if ! diff -q "$OUT/$rel" "$TWICE/$rel" >/dev/null 2>&1; then
     echo "  UNSTABLE: $rel"
+    # Show what actually changed on the second pass, not just that it did -
+    # this is the difference between "go look at this file" and "go look at
+    # this file, on this line, for this reason."
+    diff -u "$OUT/$rel" "$TWICE/$rel" 2>&1 | tail -n +3 | head -8 | sed 's/^/          /' || true
     unstable=$((unstable + 1))
   fi
 done < <(find "$OUT" -name '*.rb' -print0 | sort -z)
@@ -169,6 +185,7 @@ printf "  layout      %s offenses across %s distinct cops\n" \
 echo "======================================================================"
 echo
 echo "Output kept at test-projects/$PROJECT/verify for inspection."
+echo "Report saved to scripts/results/$PROJECT-format-verify.txt"
 
 if [ "$parse_regressed" -gt 0 ]; then
   echo

@@ -23,6 +23,10 @@
 #
 # Follow up on a mismatch with:
 #   scripts/format-diff.sh <project> <relative/path.rb>
+#
+# Report saved to scripts/results/<project>-format-compare.txt (committed -
+# survives across sessions instead of needing a rerun to know where things
+# stand; commit the update alongside whatever prompted the run).
 
 set -euo pipefail
 
@@ -36,6 +40,8 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="$ROOT/test-projects/$PROJECT"
 SRC="$BASE/source"
+RESULTS_DIR="$ROOT/scripts/results"
+REPORT="$RESULTS_DIR/$PROJECT-format-compare.txt"
 
 if [ ! -d "$SRC" ]; then
   echo "error: $SRC does not exist." >&2
@@ -47,6 +53,8 @@ if ! command -v rubocop >/dev/null 2>&1; then
   echo "error: rubocop not found on PATH (gem install rubocop)." >&2
   exit 1
 fi
+
+mkdir -p "$RESULTS_DIR"
 
 echo "Building tuxedo (release)..."
 (cd "$ROOT" && cargo build --release --quiet)
@@ -75,28 +83,37 @@ rm -f "$rubocop_log"
 
 echo
 echo "Comparing output..."
-mismatches=0
-total=0
-while IFS= read -r -d '' file; do
-  rel="${file#"$SRC"/}"
-  total=$((total + 1))
-  if ! diff -q "$BASE/tuxedo/$rel" "$BASE/rubocop/$rel" >/dev/null 2>&1; then
-    echo "MISMATCH: $rel"
-    mismatches=$((mismatches + 1))
+{
+  echo "format-compare: $PROJECT"
+  echo "generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  echo
+
+  mismatches=0
+  total=0
+  while IFS= read -r -d '' file; do
+    rel="${file#"$SRC"/}"
+    total=$((total + 1))
+    if ! diff -q "$BASE/tuxedo/$rel" "$BASE/rubocop/$rel" >/dev/null 2>&1; then
+      echo "MISMATCH: $rel"
+      mismatches=$((mismatches + 1))
+    fi
+  done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
+
+  echo
+  echo "$mismatches / $total files differ between tuxedo and rubocop output."
+  echo
+  echo "tuxedo:  ${tuxedo_time}s"
+  echo "rubocop: ${rubocop_time}s"
+  speedup=$(awk -v a="$rubocop_time" -v b="$tuxedo_time" 'BEGIN { if (b > 0) printf "%.1f", a / b }')
+  if [ -n "$speedup" ]; then
+    echo "tuxedo is ${speedup}x faster"
   fi
-done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
+  if [ "$mismatches" -gt 0 ]; then
+    echo
+    echo "To see a diff for one file:"
+    echo "  scripts/format-diff.sh $PROJECT <relative/path.rb>"
+  fi
+} | tee "$REPORT"
 
 echo
-echo "$mismatches / $total files differ between tuxedo and rubocop output."
-echo
-echo "tuxedo:  ${tuxedo_time}s"
-echo "rubocop: ${rubocop_time}s"
-speedup=$(awk -v a="$rubocop_time" -v b="$tuxedo_time" 'BEGIN { if (b > 0) printf "%.1f", a / b }')
-if [ -n "$speedup" ]; then
-  echo "tuxedo is ${speedup}x faster"
-fi
-if [ "$mismatches" -gt 0 ]; then
-  echo
-  echo "To see a diff for one file:"
-  echo "  scripts/format-diff.sh $PROJECT <relative/path.rb>"
-fi
+echo "Report saved to scripts/results/$PROJECT-format-compare.txt"

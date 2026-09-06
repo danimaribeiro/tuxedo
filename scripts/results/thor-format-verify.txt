@@ -1,0 +1,39 @@
+Building tuxedo (release)...
+Preparing working copy...
+Running tuxedo format...
+
+[1/3] Parse check (ruby -c)...
+
+[2/3] Idempotence check (format twice)...
+
+[3/3] Layout conformance (rubocop --only Layout)...
+
+  36   Layout/LineLength [Safe Correctable]
+  18   Layout/FirstMethodArgumentLineBreak [Safe Correctable]
+  18   Layout/MultilineMethodCallBraceLayout [Safe Correctable]
+  17   Layout/ArrayAlignment [Safe Correctable]
+  17   Layout/ElseAlignment [Safe Correctable]
+  15   Layout/ClosingHeredocIndentation [Safe Correctable]
+  15   Layout/EndAlignment [Safe Correctable]
+  13   Layout/HeredocIndentation [Safe Correctable]
+  12   Layout/IndentationWidth [Safe Correctable]
+  11   Layout/CaseIndentation [Safe Correctable]
+  7    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
+  4    Layout/FirstArrayElementIndentation [Safe Correctable]
+  3    Layout/MultilineMethodCallIndentation [Safe Correctable]
+  3    Layout/MultilineOperationIndentation [Safe Correctable]
+  2    Layout/EmptyLineAfterMagicComment [Safe Correctable]
+  1    Layout/BeginEndAlignment [Safe Correctable]
+  1    Layout/BlockAlignment [Safe Correctable]
+  1    Layout/TrailingWhitespace [Safe Correctable]
+
+======================================================================
+  thor
+----------------------------------------------------------------------
+  parse       76 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
+  idempotent  0 files change on a second format
+  layout      194 offenses across 18 distinct cops
+======================================================================
+
+Output kept at test-projects/thor/verify for inspection.
+Report saved to scripts/results/thor-format-verify.txt

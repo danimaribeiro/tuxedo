@@ -91,30 +91,9 @@ before considering a change done.
 
 `test-projects/` (gitignored, not committed) holds real Ruby codebases used to stress-test
 the formatter beyond the fixtures in `tests/fixtures/`. To add one, clone its source into
-`test-projects/<name>/source`. Then:
-
-```bash
-scripts/format-compare.sh <name>              # format with tuxedo + autocorrect with
-                                               # rubocop (Layout cops only), diff the two,
-                                               # list files that differ
-scripts/format-diff.sh <name> <relative/path.rb>   # show the diff for one mismatching file
-```
-
-`format-compare.sh` writes two working copies next to the source
-(`test-projects/<name>/tuxedo` and `.../rubocop`, both regenerated on each run) and compares
-them file-by-file. Comparison is scoped to RuboCop's `Layout` department (whitespace,
-indentation, blank lines) rather than the full `Style`/`Lint` cop set, since tuxedo's
-formatter is a formatting tool, not a full linter — `Style` cops rewrite idiom choices
-(quote style, `.each` vs `.map`, etc.) that aren't formatting concerns. rubocop also runs
-with `-c scripts/format-compare.rubocop.yml`, ignoring the project's own `.rubocop.yml`
-(that file starts from rubocop's defaults and only relaxes `AllowForAlignment`) — tuxedo has no
-per-project style config yet, so rubocop's own defaults are the only fair baseline (a
-project's local overrides, like Thor's `AllCops: DisabledByDefault: true`, can silently
-turn off Layout cops rather than customize them, which produced a misleading reference
-full of un-corrected code before this was added).
-
-`format-compare.sh` also prints wall-clock timing for both formatters and the resulting
-speedup factor.
+`test-projects/<name>/source`. See `scripts/README.md` for the full script list
+(`format-compare.sh`, `format-diff.sh`, `format-verify.sh`, `lint-baseline.sh`) and what
+each one measures.
 
 ### `format-verify.sh` — the metric that actually matters
 
@@ -122,9 +101,10 @@ speedup factor.
 scripts/format-verify.sh <name>
 ```
 
-`format-compare.sh` measures *similarity* to RuboCop, which is capped below 100% for the
-reason given under "The goal" above. `format-verify.sh` measures the properties Tuxedo
-must actually hold, and each of them is reachable at 100%:
+Byte-diffing against RuboCop's autocorrect (`format-compare.sh`, see `scripts/README.md`)
+measures *similarity*, which is capped below 100% for the reason given under "The goal"
+above. `format-verify.sh` measures the properties Tuxedo must actually hold instead, and
+each of them is reachable at 100%:
 
 1. **Parse.** Output is still valid Ruby, counted as regressions against the source: a
    file that parsed before formatting and does not parse after is a bug, full stop.
@@ -147,6 +127,30 @@ must actually hold, and each of them is reachable at 100%:
 
 All three are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
 and should only ever go down. Record them before a change and compare after.
+
+There's also `scripts/lint-baseline.sh <project>` — runs full RuboCop (not just Layout)
+three ways (RuboCop's real defaults on the original source, on tuxedo's output, and the
+project's own `.rubocop.yml` on tuxedo's output) and reports a per-cop delta table.
+`scripts/results/` holds the latest saved run against `rails` and `thor` — regenerate
+with `format-verify.sh`/`lint-baseline.sh` before trusting stale numbers.
+
+## Where to pick up work next
+
+`scripts/results/` is committed and already holds the latest saved run against `rails`
+and `thor` — that's the backlog. Don't keep a separate hand-written list of known issues
+here; it will drift the moment one gets fixed and this file doesn't get edited to match.
+
+`format-verify.sh`'s output is the primary guide: its idempotence section names an exact
+file plus an 8-line diff of what changed on a second `format` pass, and its parse section
+names an exact file plus the parse error — both point straight at a bug, no further
+digging needed. `lint-baseline.sh`'s per-cop delta table is the secondary guide, for
+"which RuboCop-ecosystem thing changed and by how much." Pick whichever entry looks worth
+tackling and go straight to it.
+
+If the saved reports look stale (or you've just fixed something and want to confirm),
+regenerate before trusting them: `scripts/format-verify.sh rails`, `scripts/format-verify.sh
+thor`, `scripts/lint-baseline.sh rails`, `scripts/lint-baseline.sh thor` — commit the
+updated `scripts/results/*.txt` alongside the fix.
 
 ## Architecture
 
