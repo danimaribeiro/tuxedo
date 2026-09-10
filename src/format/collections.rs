@@ -1,4 +1,4 @@
-use super::{Formatter, assoc_forces_list_break, forces_list_break};
+use super::{Formatter, assoc_forces_list_break};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
@@ -50,27 +50,8 @@ impl Formatter {
             return;
         }
 
-        if elements.iter().any(forces_list_break) {
-            self.write_leaf(|f| {
-                f.write_expanded_bracketed_items("[", &elements, "]");
-            });
-            return;
-        }
-
         self.write_leaf(|f| {
-            let leaves: Vec<_> = elements
-                .iter()
-                .map(|element| {
-                    f.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(element);
-                    })
-                })
-                .collect();
-
-            let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
-            let rendered = f.wrap_bracketed_group("[", Doc::line_(), body, Doc::line_(), "]");
-            f.output.push_str(&rendered);
+            f.write_bracketed_items("[", Doc::line_(), &elements, Doc::line_(), "]");
         });
     }
 
@@ -168,39 +149,33 @@ impl Formatter {
             return;
         }
 
-        if elements.iter().any(assoc_forces_list_break) {
+        if braced {
             self.write_leaf(|f| {
-                if braced {
-                    f.write_expanded_bracketed_items("{", elements, "}");
-                } else {
-                    f.write_expanded_items(elements);
-                }
+                f.write_bracketed_items("{", Doc::line(), elements, Doc::line(), "}");
             });
             return;
         }
 
+        // Bare keyword args at a call site with no braces of their own.
+        // Call args flatten KeywordHashNode before wrapping, so this is
+        // the fallback if a keyword hash is visited directly.
         self.write_leaf(|f| {
-            let leaves: Vec<_> = elements
-                .iter()
-                .map(|element| {
-                    f.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(element);
-                    })
-                })
-                .collect();
-
+            if elements.iter().any(assoc_forces_list_break) {
+                f.write_expanded_items(elements);
+                return;
+            }
+            let snap = f.capture_snapshot();
+            let captured: Vec<String> = elements.iter().map(|e| f.capture_inline(e)).collect();
+            if captured.iter().any(|s| s.contains('\n')) {
+                f.restore_capture_snapshot(snap);
+                f.write_expanded_items(elements);
+                return;
+            }
+            let leaves = captured.into_iter().map(Doc::text);
             let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
-            let rendered = if braced {
-                f.wrap_bracketed_group("{", Doc::line(), body, Doc::line(), "}")
-            } else {
-                // Bare keyword args at a call site with no braces of its own
-                // to anchor a leading/trailing break on -- just a group, no
-                // bracket padding.
-                let nest_width = f.indent_width() + f.indent_str.len();
-                let doc = body.nest(nest_width as isize).group();
-                f.render_doc_to_string(doc)
-            };
+            let nest_width = f.indent_width() + f.indent_str.len();
+            let doc = body.nest(nest_width as isize).group();
+            let rendered = f.render_doc_to_string(doc);
             f.output.push_str(&rendered);
         });
     }
