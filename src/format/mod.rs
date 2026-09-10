@@ -89,7 +89,7 @@ pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
 /// `single_line` and join inner `if`/`def`/… with `; `, so they stay one
 /// physical line.
 pub(super) fn forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
-    if manages_own_indentation(node) {
+    if manages_own_indentation(node) || assoc_forces_list_break(node) {
         return true;
     }
     if let Some(array) = node.as_array_node() {
@@ -164,6 +164,21 @@ pub(super) fn assoc_forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
     false
 }
 
+/// Prism groups `foo(a, k: 1, j: 2)`'s keyword pairs into one
+/// `KeywordHashNode`. Flatten those pairs so a call's argument list wraps
+/// one-argument-per-line the same way RuboCop counts arguments.
+fn flatten_keyword_hash_args(items: Vec<ruby_prism::Node<'_>>) -> Vec<ruby_prism::Node<'_>> {
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        if let Some(kw) = item.as_keyword_hash_node() {
+            out.extend(kw.elements().iter());
+        } else {
+            out.push(item);
+        }
+    }
+    out
+}
+
 pub fn format(source: &str) -> String {
     format_with_config(source, &FormatConfig::default())
 }
@@ -185,6 +200,13 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
 struct CommentSpan {
     start: usize,
     text: String,
+}
+
+struct CaptureSnapshot {
+    comment_cursor: usize,
+    pending_heredocs_len: usize,
+    heredoc_end_line: Option<usize>,
+    indent: usize,
 }
 
 fn line_starts(source: &str) -> Vec<usize> {
@@ -380,10 +402,74 @@ impl Formatter {
     /// renders correctly inside a `Doc`-based construct: it's rendered once,
     /// the normal way, and treated as an unsplittable block of text.
     fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
+        pretty::RcDoc::text(self.capture_to_string(render))
+    }
+
+    fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
         let saved = std::mem::take(&mut self.output);
         render(self);
-        let captured = std::mem::replace(&mut self.output, saved);
-        pretty::RcDoc::text(captured)
+        std::mem::replace(&mut self.output, saved)
+    }
+
+    fn capture_inline(&mut self, node: &ruby_prism::Node<'_>) -> String {
+        self.capture_to_string(|f| {
+            f.inline = true;
+            f.visit(node);
+        })
+    }
+
+    /// Side effects `capture_inline` / `capture_as_doc` can take that a
+    /// subsequent re-`visit` would take again -- comments consumed, heredoc
+    /// bodies queued, indent left shifted if a visitor failed to restore it.
+    fn capture_snapshot(&self) -> CaptureSnapshot {
+        CaptureSnapshot {
+            comment_cursor: self.comment_cursor,
+            pending_heredocs_len: self.pending_heredocs.len(),
+            heredoc_end_line: self.heredoc_end_line,
+            indent: self.indent,
+        }
+    }
+
+    fn restore_capture_snapshot(&mut self, snap: CaptureSnapshot) {
+        self.comment_cursor = snap.comment_cursor;
+        self.pending_heredocs.truncate(snap.pending_heredocs_len);
+        self.heredoc_end_line = snap.heredoc_end_line;
+        self.indent = snap.indent;
+    }
+
+    /// Parenthesized/bracketed list: expand all-or-nothing if any item
+    /// already hard-breaks *or* captures as multi-line (a nested array/
+    /// hash/call that wrapped during capture). Captured newlines can't go
+    /// through `wrap_bracketed_group` -- `Doc::text` with a raw `\n` stays
+    /// "flat" in the outer group, so sibling items share a line with the
+    /// broken nested collection, and the nest can't reindent the baked-in
+    /// continuation lines.
+    fn write_bracketed_items(
+        &mut self,
+        open: &str,
+        open_sep: pretty::RcDoc<'static, ()>,
+        items: &[ruby_prism::Node<'_>],
+        close_sep: pretty::RcDoc<'static, ()>,
+        close: &str,
+    ) {
+        if items.iter().any(forces_list_break) {
+            self.write_expanded_bracketed_items(open, items, close);
+            return;
+        }
+        let snap = self.capture_snapshot();
+        let captured: Vec<String> = items.iter().map(|item| self.capture_inline(item)).collect();
+        if captured.iter().any(|s| s.contains('\n')) {
+            self.restore_capture_snapshot(snap);
+            self.write_expanded_bracketed_items(open, items, close);
+            return;
+        }
+        let leaves = captured.into_iter().map(pretty::RcDoc::text);
+        let body = pretty::RcDoc::intersperse(
+            leaves,
+            pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
+        );
+        let rendered = self.wrap_bracketed_group(open, open_sep, body, close_sep, close);
+        self.output.push_str(&rendered);
     }
 
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
@@ -562,14 +648,15 @@ impl Formatter {
 
     /// Shared argument-list renderer for calls, `super`, and `yield`.
     ///
-    /// Parenthesized lists with a hard-breaking argument expand
-    /// all-or-nothing (one argument per line) instead of staying flat -- a
-    /// multi-line `if`/`do...end`/`def` argument already can't fit on one
-    /// line, and leaving sibling arguments on the same line as `(` / `end`
-    /// is bin-packing. Parenthesized lists without one go through the Doc
-    /// wrap path (flat if they fit, same one-per-line shape if they
-    /// overflow). Bare command calls stay flat: Ruby has no clean
-    /// multi-line continuation for `puts a, b, c`.
+    /// Parenthesized lists expand all-or-nothing when any argument
+    /// hard-breaks *or* captures as multi-line (a nested array/hash/call
+    /// that wrapped internally). Capturing those as `Doc::text` would leave
+    /// sibling arguments on the same line as the broken nested collection.
+    /// Keyword pairs are flattened out of Prism's `KeywordHashNode` so
+    /// `foo(a, k: 1, j: 2)` wraps one pair per line, not as one opaque
+    /// leaf. Parenthesized lists that still fit go through the Doc wrap
+    /// path. Bare command calls stay flat: Ruby has no clean multi-line
+    /// continuation for `puts a, b, c`.
     fn write_arg_list<'a>(
         &mut self,
         parenthesized: bool,
@@ -584,34 +671,23 @@ impl Formatter {
             items.push(block_pass);
         }
 
-        let has_args = !items.is_empty();
-        if parenthesized && has_args && items.iter().any(forces_list_break) {
-            self.write_expanded_bracketed_items("(", &items, ")");
-            return;
-        }
+        // Bare keyword args (`foo(a, k: 1, j: 2)`) are one KeywordHashNode
+        // in Prism. Flatten each pair into a sibling of the positional
+        // args so all-or-nothing wrapping applies to every argument the
+        // way RuboCop's Layout/MultilineMethodArgumentLineBreaks counts
+        // them -- not to the hash as a single opaque leaf (`k: 1, j: 2`
+        // sharing a line on an already-broken call).
+        let items = flatten_keyword_hash_args(items);
 
+        let has_args = !items.is_empty();
         if parenthesized && has_args {
-            let leaves: Vec<_> = items
-                .iter()
-                .map(|arg| {
-                    self.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(arg);
-                    })
-                })
-                .collect();
-            let body = pretty::RcDoc::intersperse(
-                leaves,
-                pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
-            );
-            let rendered = self.wrap_bracketed_group(
+            self.write_bracketed_items(
                 "(",
                 pretty::RcDoc::line_(),
-                body,
+                &items,
                 pretty::RcDoc::line_(),
                 ")",
             );
-            self.output.push_str(&rendered);
             return;
         }
 
