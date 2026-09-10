@@ -8,38 +8,38 @@ Running tuxedo format...
 
 [3/3] Layout conformance (rubocop --only Layout)...
 
-  3505   Layout/LineLength [Safe Correctable]
-  2446   Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
-  698    Layout/MultilineMethodCallIndentation [Safe Correctable]
-  584    Layout/ArrayAlignment [Safe Correctable]
-  576    Layout/FirstHashElementIndentation [Safe Correctable]
-  299    Layout/BlockEndNewline [Safe Correctable]
-  298    Layout/ArgumentAlignment [Safe Correctable]
-  216    Layout/FirstArrayElementIndentation [Safe Correctable]
-  205    Layout/MultilineBlockLayout [Safe Correctable]
-  181    Layout/HeredocIndentation [Safe Correctable]
-  168    Layout/EndAlignment [Safe Correctable]
-  148    Layout/ClosingHeredocIndentation [Safe Correctable]
-  140    Layout/ExtraSpacing [Safe Correctable]
-  127    Layout/IndentationWidth [Safe Correctable]
-  120    Layout/ElseAlignment [Safe Correctable]
-  104    Layout/FirstArgumentIndentation [Safe Correctable]
-  102    Layout/CaseIndentation [Safe Correctable]
-  61     Layout/DefEndAlignment [Safe Correctable]
-  54     Layout/MultilineOperationIndentation [Safe Correctable]
-  52     Layout/SpaceAroundOperators [Safe Correctable]
-  25     Layout/SpaceBeforeSemicolon [Safe Correctable]
-  17     Layout/EmptyLineBetweenDefs [Safe Correctable]
-  17     Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
-  15     Layout/SpaceInsideBlockBraces [Safe Correctable]
-  14     Layout/EmptyComment [Safe Correctable]
+  3745  Layout/LineLength [Safe Correctable]
+  1744  Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
+  710   Layout/MultilineMethodCallIndentation [Safe Correctable]
+  293   Layout/BlockEndNewline [Safe Correctable]
+  199   Layout/MultilineBlockLayout [Safe Correctable]
+  181   Layout/HeredocIndentation [Safe Correctable]
+  168   Layout/EndAlignment [Safe Correctable]
+  148   Layout/ClosingHeredocIndentation [Safe Correctable]
+  140   Layout/ExtraSpacing [Safe Correctable]
+  127   Layout/IndentationWidth [Safe Correctable]
+  120   Layout/ElseAlignment [Safe Correctable]
+  102   Layout/CaseIndentation [Safe Correctable]
+  58    Layout/DefEndAlignment [Safe Correctable]
+  57    Layout/ArrayAlignment [Safe Correctable]
+  54    Layout/MultilineOperationIndentation [Safe Correctable]
+  52    Layout/SpaceAroundOperators [Safe Correctable]
+  32    Layout/ArgumentAlignment [Safe Correctable]
+  25    Layout/SpaceBeforeSemicolon [Safe Correctable]
+  18    Layout/FirstArgumentIndentation [Safe Correctable]
+  17    Layout/EmptyLineBetweenDefs [Safe Correctable]
+  17    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
+  15    Layout/SpaceInsideBlockBraces [Safe Correctable]
+  14    Layout/EmptyComment [Safe Correctable]
+  14    Layout/FirstArrayElementIndentation [Safe Correctable]
+  12    Layout/HashAlignment [Safe Correctable]
 
 ======================================================================
   rails
 ----------------------------------------------------------------------
   parse       3459 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  layout      10228 offenses across 41 distinct cops
+  layout      8107 offenses across 36 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.
