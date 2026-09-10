@@ -1,4 +1,4 @@
-use super::{Formatter, assoc_manages_own_indentation, manages_own_indentation};
+use super::{Formatter, assoc_forces_list_break, forces_list_break};
 use pretty::RcDoc as Doc;
 use ruby_prism::Visit;
 
@@ -31,7 +31,7 @@ impl Formatter {
 
         let bracketed = opening.is_some();
 
-        if !bracketed || elements.is_empty() || elements.iter().any(manages_own_indentation) {
+        if !bracketed || elements.is_empty() {
             self.write_leaf(|f| {
                 if bracketed {
                     f.output.push('[');
@@ -46,6 +46,13 @@ impl Formatter {
                 if bracketed {
                     f.output.push(']');
                 }
+            });
+            return;
+        }
+
+        if elements.iter().any(forces_list_break) {
+            self.write_leaf(|f| {
+                f.write_expanded_bracketed_items("[", &elements, "]");
             });
             return;
         }
@@ -161,20 +168,12 @@ impl Formatter {
             return;
         }
 
-        if elements.iter().any(assoc_manages_own_indentation) {
+        if elements.iter().any(assoc_forces_list_break) {
             self.write_leaf(|f| {
                 if braced {
-                    f.output.push_str("{ ");
-                }
-                for (i, element) in elements.iter().enumerate() {
-                    if i > 0 {
-                        f.output.push_str(", ");
-                    }
-                    f.inline = true;
-                    f.visit(element);
-                }
-                if braced {
-                    f.output.push_str(" }");
+                    f.write_expanded_bracketed_items("{", elements, "}");
+                } else {
+                    f.write_expanded_items(elements);
                 }
             });
             return;

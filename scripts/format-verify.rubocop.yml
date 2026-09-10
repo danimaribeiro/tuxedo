@@ -38,7 +38,7 @@
 # | Cop                                     | Disagreement |
 # |------------------------------------------|--------------|
 # | Layout/ElseAlignment, Layout/EndAlignment | For an `if`/`case` used as a value (`x = if ...`, `x << if ...`), rubocop's stock default (`EnforcedStyleAlignWith: keyword`, confirmed against this file, which deliberately doesn't override it) wants `else`/`end` aligned under the column the `if` keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message` reindents the whole value. Tuxedo keeps `else`/`end` at a fixed indent from the statement instead. See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
-# | Layout/LineLength (partial)               | A bare command call (`raise Foo, "msg" if cond`, no parens) has no clean multi-line continuation in Ruby, and Tuxedo doesn't rewrite bare-command style into a parenthesized call to make room for one (see the note in `write_call_args`). A monolithic string/regex literal that alone exceeds the limit can't be wrapped without altering its content. Both are permanent: see `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..." if hash.include? key`. |
+# | Layout/LineLength (partial)               | A bare command call (`raise Foo, "msg" if cond`, no parens) has no clean multi-line continuation in Ruby, and Tuxedo doesn't rewrite bare-command style into a parenthesized call to make room for one (see the note in `write_arg_list`). A monolithic string/regex literal that alone exceeds the limit can't be wrapped without altering its content. Both are permanent: see `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..." if hash.include? key`. |
 # | Layout/MultilineMethodCallIndentation     | Rubocop's stock default is `aligned`: a broken `.method` chain's continuation should align under the column its *base* expression starts at. When the base sits mid-statement (`X unless Thor::Base\n  .subclass_files\n  .keys`), that column depends on what precedes it (`unless `, an assignment, ...), so renaming/moving it reindents the whole chain -- the same bracket-alignment problem as ElseAlignment, just for chains. Tuxedo's chain-breaking (calls.rs's `try_build_chain_doc`) always indents one fixed level from the statement instead. See `test-projects/thor/lib/thor/runner.rb:227`. |
 #
 # --- Known gaps (missing features, not spec conflicts -- worth fixing) ---
@@ -47,6 +47,14 @@
 # |-----|-------|
 # | `&&`/`\|\|` chains still bin-pack | `fmt_and_node`/`fmt_or_node` (control_flow.rs) now wrap a single `a && b` pair via `fmt_binary_bool_node`, same Doc-group pattern as the operator-style call path in calls.rs. A chain of same-precedence ops (`a && b && c`) is left-associative (`(a && b) && c`), so it wraps pairwise rather than putting every operand on its own line -- still an improvement over never wrapping, but not full all-or-nothing expansion for chains longer than two. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
 # | Array literal misindented inside a broken method chain | `Set.new([...]).freeze` when the chain breaks (`try_build_chain_doc`) and the array argument also expands: the array's elements, and its own `)`/`]`, don't land at a consistent fixed indent from the chain -- e.g. `VALID_UNSCOPING_VALUES = Set\n  .new(\n    [\n    :where,\n    ...\n  ]\n  )\n  .freeze`. Pre-existing (confirmed present before the `write_call_args`/`manages_own_indentation` fix below made more arrays reach the Doc-wrap path and thus surface it more often). See `test-projects/rails/source/activerecord/lib/active_record/relation/query_methods.rb:817`. |
+#
+# Fixed 2026-09-10: parenthesized calls/arrays/hashes with a hard-breaking
+# argument (`if`/`case`/`begin`/`do...end`/`def`/…) now expand all-or-nothing
+# instead of staying on the flat imperative path. Ternaries and modifier
+# `if`/`unless` no longer count as hard-breaking, so an overlong call like
+# `foo(cond ? a : b, lots, of, args)` reaches the Doc-wrap path. See
+# `write_arg_list` / `write_expanded_bracketed_items` in format/mod.rs and
+# `tests/fixtures/format/expanded_hard_break_args.rb`.
 #
 # Fixed 2026-09-05: method chains (`a.b.c.d`) now break -- see
 # `try_build_chain_doc` in calls.rs. Also fixed the same day:

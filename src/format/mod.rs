@@ -21,37 +21,125 @@ fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
         .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
 }
 
-/// True if `node` is a call whose block hard-breaks onto its own lines
-/// regardless of width -- a `do...end` block, which always renders
+/// True if `node` is a call or lambda whose block hard-breaks onto its own
+/// lines regardless of width -- a `do...end` block, which always renders
 /// multi-line via `self.indent`/`write_indent`. A `{ }` block is not one of
 /// these: its body is always forced onto one physical output line (see
 /// `fmt_block_node`'s `self.single_line = true`), so it carries no raw `\n`
 /// a `Doc` wrapper would need to account for.
 fn has_multiline_block(node: &ruby_prism::Node<'_>) -> bool {
-    node.as_call_node()
-        .and_then(|call| call.block())
-        .and_then(|block| block.as_block_node())
-        .is_some_and(|block| block.opening_loc().as_slice() != b"{")
+    if let Some(call) = node.as_call_node() {
+        return call
+            .block()
+            .and_then(|block| block.as_block_node())
+            .is_some_and(|block| block.opening_loc().as_slice() != b"{");
+    }
+    if let Some(lambda) = node.as_lambda_node() {
+        return lambda.opening_loc().as_slice() != b"{";
+    }
+    false
 }
 
 /// True for a node whose formatter lays out its own multi-line body
 /// imperatively (via `self.indent`/`write_indent`) rather than through a
-/// composable `Doc` -- an `if`/`case`/`begin`, or a call with a `do...end`
-/// block. Such a node can't be safely captured with `capture_as_doc` and
-/// then nested inside a `Doc::line()`-driven wrapper: the wrapper only
-/// shifts the break immediately before the captured text, not the raw
-/// newlines already baked into it, so only the first line would move.
+/// composable `Doc`. Ternaries and modifier `if`/`unless`/`while`/`until`
+/// are excluded: they render on one line (or via their own Doc wrap) and
+/// must not kick a surrounding call/array off the Doc-wrap path.
+///
+/// Such a node can't be safely captured with `capture_as_doc` and then
+/// nested inside a `Doc::line()`-driven wrapper: the wrapper only shifts
+/// the break immediately before the captured text, not the raw newlines
+/// already baked into it, so only the first line would move.
 pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
+    if let Some(if_node) = node.as_if_node() {
+        // Block `if`/`elsif` has an `end`; ternary has no `if` keyword;
+        // modifier `x if y` has an `if` keyword but no `end`.
+        return if_node.if_keyword_loc().is_some() && if_node.end_keyword_loc().is_some();
+    }
+    if let Some(unless_node) = node.as_unless_node() {
+        return unless_node.end_keyword_loc().is_some();
+    }
+    if let Some(while_node) = node.as_while_node() {
+        return while_node.closing_loc().is_some();
+    }
+    if let Some(until_node) = node.as_until_node() {
+        return until_node.closing_loc().is_some();
+    }
     matches!(
         node,
-        ruby_prism::Node::IfNode { .. }
-            | ruby_prism::Node::UnlessNode { .. }
-            | ruby_prism::Node::CaseNode { .. }
+        ruby_prism::Node::CaseNode { .. }
             | ruby_prism::Node::CaseMatchNode { .. }
-            | ruby_prism::Node::WhileNode { .. }
-            | ruby_prism::Node::UntilNode { .. }
             | ruby_prism::Node::BeginNode { .. }
+            | ruby_prism::Node::ForNode { .. }
+            | ruby_prism::Node::DefNode { .. }
+            | ruby_prism::Node::ClassNode { .. }
+            | ruby_prism::Node::ModuleNode { .. }
+            | ruby_prism::Node::SingletonClassNode { .. }
     ) || has_multiline_block(node)
+}
+
+/// True if rendering `node` inline would emit a raw newline -- either
+/// because `node` itself manages its own indentation, or because a nested
+/// collection/call/operator contains one that does. Used to decide that a
+/// parenthesized list can't stay on one line and must expand
+/// all-or-nothing rather than going through `capture_as_doc` (which would
+/// bake those newlines in and then misalign them under a Doc nest).
+///
+/// Does not walk into `{ }` / parenthesized bodies: those force
+/// `single_line` and join inner `if`/`def`/… with `; `, so they stay one
+/// physical line.
+pub(super) fn forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
+    if manages_own_indentation(node) {
+        return true;
+    }
+    if let Some(array) = node.as_array_node() {
+        return array.elements().iter().any(|e| forces_list_break(&e));
+    }
+    if let Some(hash) = node.as_hash_node() {
+        return hash.elements().iter().any(|e| assoc_forces_list_break(&e));
+    }
+    if let Some(kw) = node.as_keyword_hash_node() {
+        return kw.elements().iter().any(|e| assoc_forces_list_break(&e));
+    }
+    if let Some(splat) = node.as_splat_node() {
+        return splat.expression().is_some_and(|e| forces_list_break(&e));
+    }
+    if let Some(call) = node.as_call_node() {
+        return call
+            .arguments()
+            .is_some_and(|a| a.arguments().iter().any(|arg| forces_list_break(&arg)));
+    }
+    if let Some(super_node) = node.as_super_node() {
+        return super_node
+            .arguments()
+            .is_some_and(|a| a.arguments().iter().any(|arg| forces_list_break(&arg)));
+    }
+    if let Some(if_node) = node.as_if_node() {
+        return forces_list_break(&if_node.predicate())
+            || statements_force_list_break(if_node.statements())
+            || if_node.subsequent().is_some_and(|s| forces_list_break(&s));
+    }
+    if let Some(unless_node) = node.as_unless_node() {
+        return forces_list_break(&unless_node.predicate())
+            || statements_force_list_break(unless_node.statements())
+            || unless_node
+                .else_clause()
+                .is_some_and(|e| statements_force_list_break(e.statements()));
+    }
+    if let Some(else_node) = node.as_else_node() {
+        return statements_force_list_break(else_node.statements());
+    }
+    if let Some(and_node) = node.as_and_node() {
+        return forces_list_break(&and_node.left()) || forces_list_break(&and_node.right());
+    }
+    if let Some(or_node) = node.as_or_node() {
+        return forces_list_break(&or_node.left()) || forces_list_break(&or_node.right());
+    }
+    false
+}
+
+fn statements_force_list_break(stmts: Option<ruby_prism::StatementsNode<'_>>) -> bool {
+    stmts.is_some_and(|s| s.body().iter().any(|n| forces_list_break(&n)))
 }
 
 /// True for an `IfNode` that's actually a ternary (`predicate ? a : b`) --
@@ -62,18 +150,16 @@ fn is_ternary_if(node: &ruby_prism::Node<'_>) -> bool {
         .is_some_and(|n| n.if_keyword_loc().is_none())
 }
 
-/// Like `manages_own_indentation`, but for a hash element
-/// (`AssocNode`/`AssocSplatNode`): looks at the value being assigned rather
-/// than the element itself, since a hash element is never itself a node
-/// `manages_own_indentation` would match directly.
-pub(super) fn assoc_manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
+/// Like `forces_list_break`, but for a hash element (`AssocNode`/
+/// `AssocSplatNode`): looks at the value being assigned rather than the
+/// element itself, since a hash element is never itself a node
+/// `forces_list_break` would match directly.
+pub(super) fn assoc_forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
     if let Some(assoc) = node.as_assoc_node() {
-        return manages_own_indentation(&assoc.value());
+        return forces_list_break(&assoc.value());
     }
     if let Some(splat) = node.as_assoc_splat_node() {
-        return splat
-            .value()
-            .is_some_and(|value| manages_own_indentation(&value));
+        return splat.value().is_some_and(|value| forces_list_break(&value));
     }
     false
 }
@@ -411,6 +497,52 @@ impl Formatter {
             .push_str(std::str::from_utf8(bytes).unwrap_or(""));
     }
 
+    /// Writes a must-break bracketed list: opening token alone, every item
+    /// on its own line at indent+1, closing token alone at the current
+    /// indent. Used when at least one item already hard-breaks (see
+    /// `forces_list_break`), so a Doc group can't choose "fits on one
+    /// line" -- it already doesn't -- and capturing those items as
+    /// `Doc::text` would bake in newlines the nest can't shift.
+    fn write_expanded_bracketed_items(
+        &mut self,
+        open: &str,
+        items: &[ruby_prism::Node<'_>],
+        close: &str,
+    ) {
+        self.output.push_str(open);
+        self.output.push('\n');
+        self.indent += 1;
+        self.write_indent();
+        self.write_expanded_items(items);
+        self.output.push('\n');
+        self.indent -= 1;
+        self.write_indent();
+        self.output.push_str(close);
+    }
+
+    /// Writes `items` one-per-line at the current indent, comma-separated,
+    /// with the first item continuing on the current line. Caller is
+    /// responsible for any leading indent (so this works both as the body
+    /// of `write_expanded_bracketed_items` and for a bare keyword-arg list
+    /// that's already sitting at the right column).
+    fn write_expanded_items(&mut self, items: &[ruby_prism::Node<'_>]) {
+        let last = items.len().saturating_sub(1);
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                self.output.push('\n');
+                self.write_indent();
+            }
+            self.inline = true;
+            self.visit(item);
+            while self.output.ends_with('\n') {
+                self.output.pop();
+            }
+            if i != last {
+                self.output.push(',');
+            }
+        }
+    }
+
     /// Renders a call's argument list, including a block-pass argument
     /// (`&:sym` / `&block`) if present. Prism stores a block-pass in the
     /// same `block()` slot as a real `{ }`/`do...end` block, but unlike a
@@ -425,22 +557,41 @@ impl Formatter {
             Some(b @ ruby_prism::Node::BlockArgumentNode { .. }) => Some(b),
             _ => None,
         };
+        self.write_arg_list(parenthesized, positional, block_pass);
+    }
 
-        if positional.is_empty() && block_pass.is_none() && !parenthesized {
+    /// Shared argument-list renderer for calls, `super`, and `yield`.
+    ///
+    /// Parenthesized lists with a hard-breaking argument expand
+    /// all-or-nothing (one argument per line) instead of staying flat -- a
+    /// multi-line `if`/`do...end`/`def` argument already can't fit on one
+    /// line, and leaving sibling arguments on the same line as `(` / `end`
+    /// is bin-packing. Parenthesized lists without one go through the Doc
+    /// wrap path (flat if they fit, same one-per-line shape if they
+    /// overflow). Bare command calls stay flat: Ruby has no clean
+    /// multi-line continuation for `puts a, b, c`.
+    fn write_arg_list<'a>(
+        &mut self,
+        parenthesized: bool,
+        mut items: Vec<ruby_prism::Node<'a>>,
+        block_pass: Option<ruby_prism::Node<'a>>,
+    ) {
+        if items.is_empty() && block_pass.is_none() && !parenthesized {
             return;
         }
 
-        // Doc-based wrapping only applies to the parenthesized case — Ruby
-        // has no clean multi-line continuation for a bare command call like
-        // `puts a, b, c` — and only when no argument manages its own
-        // multi-line body imperatively (see `manages_own_indentation`): a
-        // captured if/case/begin/block-call carries a hardcoded "end\n" (or
-        // block-close) at the point capture_as_doc freezes it, so joining it
-        // with a following `, arg)` via a Doc leaves the comma dangling on
-        // its own line after that newline -- invalid Ruby, not just ugly.
-        let has_args = !positional.is_empty() || block_pass.is_some();
-        if parenthesized && has_args && !positional.iter().any(manages_own_indentation) {
-            let mut leaves: Vec<_> = positional
+        if let Some(block_pass) = block_pass {
+            items.push(block_pass);
+        }
+
+        let has_args = !items.is_empty();
+        if parenthesized && has_args && items.iter().any(forces_list_break) {
+            self.write_expanded_bracketed_items("(", &items, ")");
+            return;
+        }
+
+        if parenthesized && has_args {
+            let leaves: Vec<_> = items
                 .iter()
                 .map(|arg| {
                     self.capture_as_doc(|f| {
@@ -449,13 +600,6 @@ impl Formatter {
                     })
                 })
                 .collect();
-            if let Some(block_pass) = &block_pass {
-                leaves.push(self.capture_as_doc(|f| {
-                    f.inline = true;
-                    f.visit(block_pass);
-                }));
-            }
-
             let body = pretty::RcDoc::intersperse(
                 leaves,
                 pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
@@ -472,19 +616,12 @@ impl Formatter {
         }
 
         self.output.push(if parenthesized { '(' } else { ' ' });
-        for (i, arg) in positional.iter().enumerate() {
+        for (i, arg) in items.iter().enumerate() {
             if i > 0 {
                 self.output.push_str(", ");
             }
             self.inline = true;
             self.visit(arg);
-        }
-        if let Some(block_pass) = &block_pass {
-            if !positional.is_empty() {
-                self.output.push_str(", ");
-            }
-            self.inline = true;
-            self.visit(block_pass);
         }
         if parenthesized {
             self.output.push(')');
