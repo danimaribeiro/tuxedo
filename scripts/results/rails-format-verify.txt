@@ -8,15 +8,14 @@ Running tuxedo format...
 
 [3/3] Layout conformance (rubocop --only Layout)...
 
-  3745  Layout/LineLength [Safe Correctable]
-  1744  Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
-  710   Layout/MultilineMethodCallIndentation [Safe Correctable]
-  293   Layout/BlockEndNewline [Safe Correctable]
+  4529  Layout/LineLength [Safe Correctable]
+  701   Layout/MultilineMethodCallIndentation [Safe Correctable]
+  294   Layout/BlockEndNewline [Safe Correctable]
   199   Layout/MultilineBlockLayout [Safe Correctable]
-  181   Layout/HeredocIndentation [Safe Correctable]
+  182   Layout/HeredocIndentation [Safe Correctable]
   168   Layout/EndAlignment [Safe Correctable]
-  148   Layout/ClosingHeredocIndentation [Safe Correctable]
-  140   Layout/ExtraSpacing [Safe Correctable]
+  149   Layout/ClosingHeredocIndentation [Safe Correctable]
+  141   Layout/ExtraSpacing [Safe Correctable]
   127   Layout/IndentationWidth [Safe Correctable]
   120   Layout/ElseAlignment [Safe Correctable]
   102   Layout/CaseIndentation [Safe Correctable]
@@ -24,11 +23,12 @@ Running tuxedo format...
   57    Layout/ArrayAlignment [Safe Correctable]
   54    Layout/MultilineOperationIndentation [Safe Correctable]
   52    Layout/SpaceAroundOperators [Safe Correctable]
-  32    Layout/ArgumentAlignment [Safe Correctable]
+  27    Layout/ArgumentAlignment [Safe Correctable]
+  27    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
   25    Layout/SpaceBeforeSemicolon [Safe Correctable]
-  18    Layout/FirstArgumentIndentation [Safe Correctable]
   17    Layout/EmptyLineBetweenDefs [Safe Correctable]
   17    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
+  17    Layout/FirstArgumentIndentation [Safe Correctable]
   15    Layout/SpaceInsideBlockBraces [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
   14    Layout/FirstArrayElementIndentation [Safe Correctable]
@@ -39,7 +39,7 @@ Running tuxedo format...
 ----------------------------------------------------------------------
   parse       3459 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  layout      8107 offenses across 36 distinct cops
+  layout      7163 offenses across 36 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.

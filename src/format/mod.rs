@@ -629,6 +629,40 @@ impl Formatter {
         }
     }
 
+    /// Bare command args that already span lines: first argument stays on
+    /// the call line, every later argument starts on its own line at one
+    /// indent. Ruby has no paren-less way to put the first argument on a
+    /// new line, and Tuxedo does not rewrite command style into a
+    /// parenthesized call (see Layout/LineLength in
+    /// `scripts/format-verify.rubocop.yml`).
+    ///
+    /// Subsequent arguments are visited at +1 indent so a nested
+    /// collection that wraps uses that indent for its own brackets;
+    /// the first argument is visited at the statement indent because it
+    /// continues the call line.
+    fn write_expanded_bare_args(&mut self, items: &[ruby_prism::Node<'_>]) {
+        self.output.push(' ');
+        let last = items.len().saturating_sub(1);
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                self.output.push('\n');
+                self.indent += 1;
+                self.write_indent();
+            }
+            self.inline = true;
+            self.visit(item);
+            while self.output.ends_with('\n') {
+                self.output.pop();
+            }
+            if i != last {
+                self.output.push(',');
+            }
+            if i > 0 {
+                self.indent -= 1;
+            }
+        }
+    }
+
     /// Renders a call's argument list, including a block-pass argument
     /// (`&:sym` / `&block`) if present. Prism stores a block-pass in the
     /// same `block()` slot as a real `{ }`/`do...end` block, but unlike a
@@ -655,8 +689,16 @@ impl Formatter {
     /// Keyword pairs are flattened out of Prism's `KeywordHashNode` so
     /// `foo(a, k: 1, j: 2)` wraps one pair per line, not as one opaque
     /// leaf. Parenthesized lists that still fit go through the Doc wrap
-    /// path. Bare command calls stay flat: Ruby has no clean multi-line
-    /// continuation for `puts a, b, c`.
+    /// path.
+    ///
+    /// Bare command calls stay unparenthesized. A single-line `puts a, b`
+    /// has no clean continuation, so overlong ones are left flat (the
+    /// Layout/LineLength note in `scripts/format-verify.rubocop.yml`).
+    /// When an argument is already multi-line -- a string with a literal
+    /// newline, or a nested collection that wrapped -- siblings of that
+    /// argument move to their own line at one indent, first argument
+    /// remaining on the call line. That is Layout/MultilineMethodArgumentLineBreaks
+    /// for command style, without adding parens.
     fn write_arg_list<'a>(
         &mut self,
         parenthesized: bool,
@@ -688,6 +730,25 @@ impl Formatter {
                 pretty::RcDoc::line_(),
                 ")",
             );
+            return;
+        }
+
+        if !parenthesized && items.len() > 1 && !self.single_line {
+            let snap = self.capture_snapshot();
+            let captured: Vec<String> =
+                items.iter().map(|item| self.capture_inline(item)).collect();
+            if captured.iter().any(|s| s.contains('\n')) {
+                self.restore_capture_snapshot(snap);
+                self.write_expanded_bare_args(&items);
+                return;
+            }
+            self.output.push(' ');
+            for (i, arg) in captured.iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(", ");
+                }
+                self.output.push_str(arg);
+            }
             return;
         }
 

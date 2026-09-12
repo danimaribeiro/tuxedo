@@ -57,6 +57,12 @@
 # `flatten_keyword_hash_args` in format/mod.rs and
 # `tests/fixtures/format/nested_collection_args.rb`.
 #
+# Fixed 2026-09-12: a bare command whose argument is already multi-line
+# (`foo a, 'hello\nworld'`, `foo bar(\n  ...\n), extra`) now puts each
+# sibling argument on its own line, first argument remaining on the call
+# line. Command style is kept -- parens are not added. See
+# `write_expanded_bare_args` and `tests/fixtures/format/bare_multiline_args.rb`.
+#
 # Fixed 2026-09-10: parenthesized calls/arrays/hashes with a hard-breaking
 # argument (`if`/`case`/`begin`/`do...end`/`def`/…) now expand all-or-nothing
 # instead of staying on the flat imperative path. Ternaries and modifier
