@@ -46,6 +46,7 @@ foo bar(
 foo 'hello
 world'
 
-# All-single-line commands stay flat, even when overlong.
+# Short commands stay flat.
 foo a, b, c
-raise Foo, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" if cond
+# A single overlong argument still cannot wrap without adding parens.
+foo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

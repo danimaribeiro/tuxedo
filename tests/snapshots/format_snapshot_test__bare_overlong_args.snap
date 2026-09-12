@@ -1,0 +1,13 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+assert_equal "long payload",
+  long_queue.pop(timeout: WAIT_WHEN_EXPECTING_EVENT),
+  "broadcast to a >63-byte multibyte channel must reach its own subscribers"
+
+env = Rack::MockRequest.env_for "/test",
+  "HTTP_CONNECTION" => "upgrade",
+  "HTTP_UPGRADE" => "websocket",
+  "HTTP_HOST" => "localhost",
+  "HTTP_ORIGIN" => "http://rubyonrails.com"
