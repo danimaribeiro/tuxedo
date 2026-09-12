@@ -629,12 +629,12 @@ impl Formatter {
         }
     }
 
-    /// Bare command args that already span lines: first argument stays on
-    /// the call line, every later argument starts on its own line at one
-    /// indent. Ruby has no paren-less way to put the first argument on a
-    /// new line, and Tuxedo does not rewrite command style into a
-    /// parenthesized call (see Layout/LineLength in
-    /// `scripts/format-verify.rubocop.yml`).
+    /// Bare command args that already span lines, or whose flat form
+    /// would overflow `line_length`: first argument stays on the call
+    /// line, every later argument starts on its own line at one indent.
+    /// Ruby has no paren-less way to put the first argument on a new
+    /// line, and Tuxedo does not rewrite command style into a
+    /// parenthesized call.
     ///
     /// Subsequent arguments are visited at +1 indent so a nested
     /// collection that wraps uses that indent for its own brackets;
@@ -661,6 +661,22 @@ impl Formatter {
                 self.indent -= 1;
             }
         }
+    }
+
+    /// True if emitting `captured` as ` a, b, c` on the current line
+    /// would pass `line_length` (including any `trailing_reserve` for a
+    /// following `do |params|` header).
+    fn bare_args_overflow(&self, captured: &[String]) -> bool {
+        let args_width: usize = captured
+            .iter()
+            .map(|s| unicode_width::UnicodeWidthStr::width(s.as_str()))
+            .sum();
+        let seps = captured.len().saturating_sub(1) * ", ".len();
+        let flat_width = " ".len() + args_width + seps;
+        self.current_column()
+            .saturating_add(flat_width)
+            .saturating_add(self.trailing_reserve)
+            > self.line_length
     }
 
     /// Renders a call's argument list, including a block-pass argument
@@ -691,14 +707,13 @@ impl Formatter {
     /// leaf. Parenthesized lists that still fit go through the Doc wrap
     /// path.
     ///
-    /// Bare command calls stay unparenthesized. A single-line `puts a, b`
-    /// has no clean continuation, so overlong ones are left flat (the
-    /// Layout/LineLength note in `scripts/format-verify.rubocop.yml`).
-    /// When an argument is already multi-line -- a string with a literal
-    /// newline, or a nested collection that wrapped -- siblings of that
-    /// argument move to their own line at one indent, first argument
-    /// remaining on the call line. That is Layout/MultilineMethodArgumentLineBreaks
-    /// for command style, without adding parens.
+    /// Bare command calls stay unparenthesized. When any argument is
+    /// already multi-line, or the flat `a, b, c` form would pass
+    /// `line_length`, siblings move to their own line at one indent with
+    /// the first argument remaining on the call line. That covers
+    /// Layout/MultilineMethodArgumentLineBreaks and Layout/LineLength
+    /// for command style without adding parentheses (a single argument
+    /// that itself exceeds the limit still cannot wrap).
     fn write_arg_list<'a>(
         &mut self,
         parenthesized: bool,
@@ -737,7 +752,7 @@ impl Formatter {
             let snap = self.capture_snapshot();
             let captured: Vec<String> =
                 items.iter().map(|item| self.capture_inline(item)).collect();
-            if captured.iter().any(|s| s.contains('\n')) {
+            if captured.iter().any(|s| s.contains('\n')) || self.bare_args_overflow(&captured) {
                 self.restore_capture_snapshot(snap);
                 self.write_expanded_bare_args(&items);
                 return;

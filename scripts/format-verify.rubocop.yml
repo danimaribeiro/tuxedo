@@ -38,7 +38,7 @@
 # | Cop                                     | Disagreement |
 # |------------------------------------------|--------------|
 # | Layout/ElseAlignment, Layout/EndAlignment | For an `if`/`case` used as a value (`x = if ...`, `x << if ...`), rubocop's stock default (`EnforcedStyleAlignWith: keyword`, confirmed against this file, which deliberately doesn't override it) wants `else`/`end` aligned under the column the `if` keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message` reindents the whole value. Tuxedo keeps `else`/`end` at a fixed indent from the statement instead. See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
-# | Layout/LineLength (partial)               | A bare command call (`raise Foo, "msg" if cond`, no parens) has no clean multi-line continuation in Ruby, and Tuxedo doesn't rewrite bare-command style into a parenthesized call to make room for one (see the note in `write_arg_list`). A monolithic string/regex literal that alone exceeds the limit can't be wrapped without altering its content. Both are permanent: see `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..." if hash.include? key`. |
+# | Layout/LineLength (partial)               | A *single* argument that itself exceeds the limit (a monolithic string/regex, or `raise "huge message"` with no sibling to break after) can't wrap without adding parens or altering the string. Tuxedo still does not rewrite command style into a parenthesized call. Multi-arg commands that overflow now break after commas (`assert_equal a,\n  b,\n  c`) — see `write_expanded_bare_args`. Remaining hits: `test-projects/thor/lib/thor/parser/arguments.rb`'s `raise MalformattedArgumentError, "..."` when the string plus ` if cond` still exceeds 120 on the continuation line. |
 # | Layout/MultilineMethodCallIndentation     | Rubocop's stock default is `aligned`: a broken `.method` chain's continuation should align under the column its *base* expression starts at. When the base sits mid-statement (`X unless Thor::Base\n  .subclass_files\n  .keys`), that column depends on what precedes it (`unless `, an assignment, ...), so renaming/moving it reindents the whole chain -- the same bracket-alignment problem as ElseAlignment, just for chains. Tuxedo's chain-breaking (calls.rs's `try_build_chain_doc`) always indents one fixed level from the statement instead. See `test-projects/thor/lib/thor/runner.rb:227`. |
 #
 # --- Known gaps (missing features, not spec conflicts -- worth fixing) ---
@@ -62,6 +62,11 @@
 # sibling argument on its own line, first argument remaining on the call
 # line. Command style is kept -- parens are not added. See
 # `write_expanded_bare_args` and `tests/fixtures/format/bare_multiline_args.rb`.
+#
+# Fixed 2026-09-12: the same one-arg-per-line shape now also applies when
+# a multi-arg command is still one physical line but would overflow
+# `line_length` (`assert_equal a, b, "long message"`). See
+# `bare_args_overflow` and `tests/fixtures/format/bare_overlong_args.rb`.
 #
 # Fixed 2026-09-10: parenthesized calls/arrays/hashes with a hard-breaking
 # argument (`if`/`case`/`begin`/`do...end`/`def`/…) now expand all-or-nothing
