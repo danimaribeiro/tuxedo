@@ -549,9 +549,10 @@ impl Formatter {
         // override it, as opposed to a project's own .rubocop.yml, which
         // may). Everything else -- a wrapped array/hash/call-args literal
         // (block-indented at a fixed depth regardless of the assignment
-        // target's length), a `do...end`/`{ }` block, a lambda literal, or
-        // an implicit/explicit `begin` -- manages its own body indentation
-        // relative to the statement's own indent instead.
+        // target's length), adjacent string literals (`"foo" "bar"`), a
+        // `do...end`/`{ }` block, a lambda literal, or an implicit/explicit
+        // `begin` -- manages its own body indentation relative to the
+        // statement's own indent instead.
         let skip_alignment = matches!(
             value,
             ruby_prism::Node::BeginNode { .. }
@@ -559,6 +560,7 @@ impl Formatter {
                 | ruby_prism::Node::ArrayNode { .. }
                 | ruby_prism::Node::HashNode { .. }
                 | ruby_prism::Node::CallNode { .. }
+                | ruby_prism::Node::InterpolatedStringNode { .. }
         ) || has_real_block(value)
             || is_ternary_if(value);
         let extra_indent = if skip_alignment {
