@@ -355,10 +355,13 @@ impl Formatter {
             return;
         };
 
-        if self.single_line {
+        if self.single_line || self.capture_depth > 0 {
             self.output.push(' ');
+            let was_single_line = self.single_line;
+            self.single_line = true;
             self.inline = true;
             self.visit(&body);
+            self.single_line = was_single_line;
             self.output.push_str(" }");
             return;
         }

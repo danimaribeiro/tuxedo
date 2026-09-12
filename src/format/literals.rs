@@ -275,7 +275,7 @@ impl Formatter {
             self.write_indent();
         }
 
-        let join_flat = self.single_line || slices.len() <= 1 || {
+        let join_flat = self.single_line || self.capture_depth > 0 || slices.len() <= 1 || {
             let parts_width: usize = slices
                 .iter()
                 .map(|s| unicode_width::UnicodeWidthStr::width(String::from_utf8_lossy(s).as_ref()))

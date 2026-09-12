@@ -250,6 +250,12 @@ struct Formatter {
     /// a group can render flat and still push the full line past
     /// `line_length`. See `do_end_header_width`.
     trailing_reserve: usize,
+    /// How many `capture_to_string` frames are active. A `{ }` body or
+    /// implicit string-concat wrap that injects raw newlines while the
+    /// result is being captured as `Doc::text` would bake those breaks in
+    /// so a surrounding Doc nest (e.g. `a || b { ... }`) only shifts the
+    /// first line. Stay flat while capturing.
+    capture_depth: usize,
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
@@ -282,6 +288,7 @@ impl Formatter {
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
             trailing_reserve: 0,
+            capture_depth: 0,
         }
     }
 
@@ -407,7 +414,9 @@ impl Formatter {
 
     fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
         let saved = std::mem::take(&mut self.output);
+        self.capture_depth += 1;
         render(self);
+        self.capture_depth -= 1;
         std::mem::replace(&mut self.output, saved)
     }
 
