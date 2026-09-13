@@ -1,0 +1,7 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+@mutex.synchronize {
+  @executor ||= ThreadedExecutor.new(max_size: config.executor_pool_size, name: "streamer", wait: true)
+}

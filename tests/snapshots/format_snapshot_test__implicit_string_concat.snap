@@ -1,0 +1,11 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+error = "Failed to execute 'close' on WebSocket: " \
+  "The code must be either 1000, or between 3000 and 4999. " \
+  "#{code} is neither."
+
+misaligned = "Failed to execute 'close' on WebSocket: " \
+  "The code must be either 1000, or between 3000 and 4999. " \
+  "#{code} is neither."

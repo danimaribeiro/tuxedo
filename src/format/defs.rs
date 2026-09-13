@@ -301,21 +301,7 @@ impl Formatter {
         self.output.push_str(if brace { "{" } else { "do" });
 
         if brace {
-            let doc = match node.body() {
-                Some(body) => {
-                    let was_single_line = self.single_line;
-                    self.single_line = true;
-                    let body_doc = self.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(&body);
-                    });
-                    self.single_line = was_single_line;
-                    Doc::text(" ").append(body_doc).append(Doc::text(" }"))
-                }
-                None => Doc::text("}"),
-            };
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
+            self.write_brace_block_body(node.body());
         } else {
             self.output.push('\n');
             self.indent += 1;
@@ -346,21 +332,7 @@ impl Formatter {
         }
 
         if brace {
-            let doc = match node.body() {
-                Some(body) => {
-                    let was_single_line = self.single_line;
-                    self.single_line = true;
-                    let body_doc = self.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(&body);
-                    });
-                    self.single_line = was_single_line;
-                    Doc::text(" ").append(body_doc).append(Doc::text(" }"))
-                }
-                None => Doc::text("}"),
-            };
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
+            self.write_brace_block_body(node.body());
         } else {
             self.output.push('\n');
             self.indent += 1;
@@ -371,5 +343,61 @@ impl Formatter {
             self.write_indent();
             self.output.push_str("end");
         }
+    }
+
+    /// Brace-block / brace-lambda body: stay ` { stmt }` when that fits
+    /// on the current line, otherwise the same all-or-nothing expanded
+    /// shape as `do...end` (body at +1 indent, `}` on its own line). A
+    /// `{ }` nested inside another still-flat brace body stays flat.
+    fn write_brace_block_body(&mut self, body: Option<ruby_prism::Node<'_>>) {
+        let Some(body) = body else {
+            self.output.push('}');
+            return;
+        };
+
+        if self.single_line || self.capture_depth > 0 {
+            self.output.push(' ');
+            let was_single_line = self.single_line;
+            self.single_line = true;
+            self.inline = true;
+            self.visit(&body);
+            self.single_line = was_single_line;
+            self.output.push_str(" }");
+            return;
+        }
+
+        let snap = self.capture_snapshot();
+        let was_single_line = self.single_line;
+        self.single_line = true;
+        let captured = self.capture_to_string(|f| {
+            f.inline = true;
+            f.visit(&body);
+        });
+        self.single_line = was_single_line;
+        let flat_width =
+            " ".len() + unicode_width::UnicodeWidthStr::width(captured.as_str()) + " }".len();
+        if !captured.contains('\n')
+            && self
+                .current_column()
+                .saturating_add(flat_width)
+                .saturating_add(self.trailing_reserve)
+                <= self.line_length
+        {
+            self.output.push(' ');
+            self.output.push_str(&captured);
+            self.output.push_str(" }");
+            return;
+        }
+        self.restore_capture_snapshot(snap);
+        self.output.push('\n');
+        self.indent += 1;
+        self.inline = false;
+        self.visit(&body);
+        self.indent -= 1;
+        if !self.output.ends_with('\n') {
+            self.output.push('\n');
+        }
+        self.write_indent();
+        self.output.push('}');
     }
 }

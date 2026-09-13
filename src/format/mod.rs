@@ -250,6 +250,12 @@ struct Formatter {
     /// a group can render flat and still push the full line past
     /// `line_length`. See `do_end_header_width`.
     trailing_reserve: usize,
+    /// How many `capture_to_string` frames are active. A `{ }` body or
+    /// implicit string-concat wrap that injects raw newlines while the
+    /// result is being captured as `Doc::text` would bake those breaks in
+    /// so a surrounding Doc nest (e.g. `a || b { ... }`) only shifts the
+    /// first line. Stay flat while capturing.
+    capture_depth: usize,
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
@@ -282,6 +288,7 @@ impl Formatter {
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
             trailing_reserve: 0,
+            capture_depth: 0,
         }
     }
 
@@ -407,7 +414,9 @@ impl Formatter {
 
     fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
         let saved = std::mem::take(&mut self.output);
+        self.capture_depth += 1;
         render(self);
+        self.capture_depth -= 1;
         std::mem::replace(&mut self.output, saved)
     }
 
@@ -549,9 +558,10 @@ impl Formatter {
         // override it, as opposed to a project's own .rubocop.yml, which
         // may). Everything else -- a wrapped array/hash/call-args literal
         // (block-indented at a fixed depth regardless of the assignment
-        // target's length), a `do...end`/`{ }` block, a lambda literal, or
-        // an implicit/explicit `begin` -- manages its own body indentation
-        // relative to the statement's own indent instead.
+        // target's length), adjacent string literals (`"foo" "bar"`), a
+        // `do...end`/`{ }` block, a lambda literal, or an implicit/explicit
+        // `begin` -- manages its own body indentation relative to the
+        // statement's own indent instead.
         let skip_alignment = matches!(
             value,
             ruby_prism::Node::BeginNode { .. }
@@ -559,6 +569,7 @@ impl Formatter {
                 | ruby_prism::Node::ArrayNode { .. }
                 | ruby_prism::Node::HashNode { .. }
                 | ruby_prism::Node::CallNode { .. }
+                | ruby_prism::Node::InterpolatedStringNode { .. }
         ) || has_real_block(value)
             || is_ternary_if(value);
         let extra_indent = if skip_alignment {

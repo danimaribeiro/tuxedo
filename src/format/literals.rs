@@ -213,15 +213,7 @@ impl Formatter {
         // `x = "foo" "bar"` into `x = foobar` — still valid Ruby, and a
         // completely different program. Copy each part verbatim instead.
         if opening.is_none() {
-            let locations: Vec<_> = parts.iter().map(|part| part.location()).collect();
-            self.write_leaf(|f| {
-                for (i, location) in locations.iter().enumerate() {
-                    if i > 0 {
-                        f.output.push(' ');
-                    }
-                    f.write_bytes(location.as_slice());
-                }
-            });
+            self.write_implicit_string_concat(&parts);
             return;
         }
 
@@ -266,6 +258,59 @@ impl Formatter {
             f.fmt_interpolated_parts(&parts);
             f.write_bytes(closing);
         });
+    }
+
+    /// Adjacent string literals (`"foo" "bar"`). A newline between parts
+    /// without a trailing `\` is a new statement, so overflow wraps with
+    /// `\` and the continuation at one indent. Parts that fit stay on one
+    /// line with a single space. A `{ }` body that's still being forced
+    /// flat (`single_line`) never introduces those breaks.
+    fn write_implicit_string_concat(&mut self, parts: &ruby_prism::NodeList<'_>) {
+        let slices: Vec<Vec<u8>> = parts
+            .iter()
+            .map(|part| part.location().as_slice().to_vec())
+            .collect();
+        let inline = self.inline;
+        if !inline {
+            self.write_indent();
+        }
+
+        let join_flat = self.single_line || self.capture_depth > 0 || slices.len() <= 1 || {
+            let parts_width: usize = slices
+                .iter()
+                .map(|s| unicode_width::UnicodeWidthStr::width(String::from_utf8_lossy(s).as_ref()))
+                .sum();
+            let seps = slices.len().saturating_sub(1);
+            let flat_width = parts_width + seps;
+            self.current_column()
+                .saturating_add(flat_width)
+                .saturating_add(self.trailing_reserve)
+                <= self.line_length
+        };
+
+        if join_flat {
+            for (i, slice) in slices.iter().enumerate() {
+                if i > 0 {
+                    self.output.push(' ');
+                }
+                self.write_bytes(slice);
+            }
+        } else {
+            for (i, slice) in slices.iter().enumerate() {
+                if i > 0 {
+                    self.output.push_str(" \\");
+                    self.output.push('\n');
+                    self.indent += 1;
+                    self.write_indent();
+                    self.indent -= 1;
+                }
+                self.write_bytes(slice);
+            }
+        }
+
+        if !inline {
+            self.output.push('\n');
+        }
     }
 
     /// Renders the parts of an interpolated string/symbol/regexp literal:
