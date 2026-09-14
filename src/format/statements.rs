@@ -44,6 +44,27 @@ fn is_attr_accessor_call(node: &ruby_prism::Node<'_>) -> bool {
     })
 }
 
+/// A magic comment (`# frozen_string_literal: true`, `# encoding: utf-8`,
+/// ...) -- Layout/EmptyLineAfterMagicComment wants a blank line separating
+/// the last of a run of these from whatever follows, since they're
+/// interpreter directives rather than documentation for the code below.
+fn is_magic_comment(text: &str) -> bool {
+    let inner = text.trim_start_matches('#').trim();
+    let inner = inner.strip_prefix("-*-").map(str::trim).unwrap_or(inner);
+    let inner = inner.strip_suffix("-*-").map(str::trim).unwrap_or(inner);
+    let Some((key, _)) = inner.split_once(':') else {
+        return false;
+    };
+    matches!(
+        key.trim(),
+        "encoding"
+            | "coding"
+            | "frozen_string_literal"
+            | "warn_indent"
+            | "shareable_constant_value"
+    )
+}
+
 /// A modifier or plain block-form `if`/`unless` (no `elsif`/`else`) whose
 /// entire body is a single "jump" statement (`return`/`next`/`break`/
 /// `redo`/`retry`, or a bare `raise`/`fail`) -- the shape
@@ -141,6 +162,12 @@ impl Formatter {
 
         let mut prev_end_line: Option<usize> = None;
         let mut prev_stmt: Option<ruby_prism::Node<'_>> = None;
+        // Set once a magic comment has been emitted and cleared as soon as
+        // whatever follows isn't another one -- a run of magic comments
+        // (`# encoding: ...` immediately followed by
+        // `# frozen_string_literal: ...`) needs no blank line between its
+        // own members, only after the run ends.
+        let mut pending_blank_after_magic = false;
 
         for stmt in stmts.iter() {
             let start_line = self.line_of(stmt.location().start_offset());
@@ -159,11 +186,15 @@ impl Formatter {
                 if comment_line >= start_line {
                     break;
                 }
-                if prev_end_line.is_some_and(|prev| comment_line > prev + 1) || force_blank_pending
+                let is_magic = is_magic_comment(&self.comments[self.comment_cursor].text);
+                if prev_end_line.is_some_and(|prev| comment_line > prev + 1)
+                    || force_blank_pending
+                    || (pending_blank_after_magic && !is_magic)
                 {
                     self.ensure_blank_line();
                 }
                 force_blank_pending = false;
+                pending_blank_after_magic = is_magic;
                 self.write_indent();
                 let formatted =
                     Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
@@ -173,9 +204,13 @@ impl Formatter {
                 self.comment_cursor += 1;
             }
 
-            if prev_end_line.is_some_and(|prev| start_line > prev + 1) || force_blank_pending {
+            if prev_end_line.is_some_and(|prev| start_line > prev + 1)
+                || force_blank_pending
+                || pending_blank_after_magic
+            {
                 self.ensure_blank_line();
             }
+            pending_blank_after_magic = false;
 
             self.inline = false;
             self.heredoc_end_line = None;
