@@ -345,10 +345,12 @@ impl Formatter {
         }
     }
 
-    /// Brace-block / brace-lambda body: stay ` { stmt }` when that fits
-    /// on the current line, otherwise the same all-or-nothing expanded
-    /// shape as `do...end` (body at +1 indent, `}` on its own line). A
-    /// `{ }` nested inside another still-flat brace body stays flat.
+    /// Brace-block / brace-lambda body: stay ` { stmt }` when there's a
+    /// single statement and it fits on the current line, otherwise the
+    /// same all-or-nothing expanded shape as `do...end` (body at +1
+    /// indent, `}` on its own line). A body with more than one statement
+    /// always expands, regardless of width. A `{ }` nested inside another
+    /// still-flat brace body stays flat.
     fn write_brace_block_body(&mut self, body: Option<ruby_prism::Node<'_>>) {
         let Some(body) = body else {
             self.output.push('}');
@@ -366,29 +368,43 @@ impl Formatter {
             return;
         }
 
-        let snap = self.capture_snapshot();
-        let was_single_line = self.single_line;
-        self.single_line = true;
-        let captured = self.capture_to_string(|f| {
-            f.inline = true;
-            f.visit(&body);
-        });
-        self.single_line = was_single_line;
-        let flat_width =
-            " ".len() + unicode_width::UnicodeWidthStr::width(captured.as_str()) + " }".len();
-        if !captured.contains('\n')
-            && self
-                .current_column()
-                .saturating_add(flat_width)
-                .saturating_add(self.trailing_reserve)
-                <= self.line_length
-        {
-            self.output.push(' ');
-            self.output.push_str(&captured);
-            self.output.push_str(" }");
-            return;
+        // A body with more than one statement never collapses onto one
+        // line, even when the flat form would fit -- joining statements
+        // with "; " inside `{ }` is what RuboCop's Style/Semicolon flags,
+        // and it silently collapses structure the source author chose to
+        // keep multi-line (e.g. a lambda body split across several lines).
+        // Confirmed against rails's action_controller/metal.rb, where a
+        // 4-line lambda body fit under line_length flat and so got
+        // squashed to one line before this check.
+        let multiline_body = body
+            .as_statements_node()
+            .is_some_and(|s| s.body().iter().count() > 1);
+
+        if !multiline_body {
+            let snap = self.capture_snapshot();
+            let was_single_line = self.single_line;
+            self.single_line = true;
+            let captured = self.capture_to_string(|f| {
+                f.inline = true;
+                f.visit(&body);
+            });
+            self.single_line = was_single_line;
+            let flat_width =
+                " ".len() + unicode_width::UnicodeWidthStr::width(captured.as_str()) + " }".len();
+            if !captured.contains('\n')
+                && self
+                    .current_column()
+                    .saturating_add(flat_width)
+                    .saturating_add(self.trailing_reserve)
+                    <= self.line_length
+            {
+                self.output.push(' ');
+                self.output.push_str(&captured);
+                self.output.push_str(" }");
+                return;
+            }
+            self.restore_capture_snapshot(snap);
         }
-        self.restore_capture_snapshot(snap);
         self.output.push('\n');
         self.indent += 1;
         self.inline = false;

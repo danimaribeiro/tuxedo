@@ -1,0 +1,14 @@
+---
+source: tests/format_snapshot_test.rs
+assertion_line: 58
+expression: output
+---
+app = lambda { |env|
+  req = Request.new(env)
+  res = make_response!(req)
+  dispatch(req, res)
+}
+items.each { |x|
+  y = x + 1
+  puts y
+}

@@ -22,7 +22,15 @@ Tempfile.open(
   temp.write content
 end
 
-PASS_NOT_FOUND = Class.new { def self.action(_); self; end; def self.call(_); [404, {}, []]; end }
+PASS_NOT_FOUND = Class.new {
+  def self.action(_)
+    self
+  end
+
+  def self.call(_)
+    [404, {}, []]
+  end
+}
 
 x = Class.new { if true; 1; elsif false; 2; else; 3; end }
 x = Class.new { unless true; 1; else; 2; end }
