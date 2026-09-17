@@ -152,9 +152,43 @@ with `format-verify.sh`/`lint-baseline.sh` before trusting stale numbers.
 
 ## Where to pick up work next
 
-`scripts/results/` is committed and already holds the latest saved run against `rails`
-and `thor` — that's the backlog. Don't keep a separate hand-written list of known issues
-here; it will drift the moment one gets fixed and this file doesn't get edited to match.
+There are two backlogs, and they answer different questions.
+
+**The plan** — GitHub issues, grouped into five milestones, with a roadmap doc at
+<https://claude.ai/code/artifact/a4eeb67b-2e0c-422a-af19-730c276f1055> holding the
+reasoning behind each one. Issue numbers follow the order of work, so the next thing
+to pick up is normally the lowest open number: `gh issue list`. The issue bodies carry
+the detail — which node types, which functions, which traps — so read the issue before
+planning the work, and record what you learn back in it.
+
+| Milestone | Outcome | State |
+| --- | --- | --- |
+| 1. Safety net | An unfinished node passes through unchanged and never disappears | Done, PR #33 |
+| 2. Comment attachment | Comments stay beside the code they describe | Done, PR #34 |
+| 3. Finish the Doc migration | The capture and snapshot workarounds in `mod.rs` go away | In progress, PR #35 merged |
+| 4. Formatter cleanups | Config, block indentation and CLI gaps are closed | #25, #26, #27 open |
+| 5. Linter | `tuxedo check` reports real diagnostics with RuboCop cop names | Not started |
+
+Milestone 3 is where the work is. #22 is a tracking issue; the actual work is #36 to
+#43, one per file, and they must be done roughly in that order — #40 (statements and
+comments) is the keystone, because every construct with a body contains a
+`StatementsNode`, and #41, #42 and #43 all depend on it. #24 (whether to replace
+`pretty`) gets settled inside #40, not afterwards: `line_suffix` for trailing comments
+is the only capability still missing, so whichever way #40 goes decides it.
+
+Milestone 4 is small and independent of that, so it's the thing to reach for if the Doc
+migration is blocked. Note #25 is half done: PR #33 wired `.tuxedo.toml` into `format`,
+but `run_check` still takes `_config` and ignores it.
+
+**Every Doc-migration change must leave output byte-identical.** The test suite does not
+catch these regressions — both bugs found in PR #35 were invisible to it. Format all of
+`test-projects/rails` and `test-projects/thor` with the binary from `main` and with your
+branch, and `diff -rq` the two trees. Say so in the PR, and if a step deliberately changes
+output, show the before and after.
+
+**The bugs** — `scripts/results/`, committed, holding the latest saved run against `rails`
+and `thor`. Don't keep a separate hand-written list of known issues here; it will drift the
+moment one gets fixed and this file doesn't get edited to match.
 
 `format-verify.sh`'s output is the primary guide: its meaning section names an exact
 file plus the point where the source and output ASTs diverge, its idempotence section
