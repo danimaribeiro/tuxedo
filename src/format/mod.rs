@@ -464,10 +464,7 @@ impl Formatter {
         if let Some(params) = explicit_parameters(block.parameters()) {
             // Bare pipe-delimited block params never wrap (see
             // fmt_block_parameters_node), so this is always a single line.
-            let captured = self.capture_as_doc(|f| {
-                f.inline = true;
-                f.visit(&params);
-            });
+            let captured = self.node_doc(&params);
             let rendered = self.render_doc_to_string(captured);
             width += 1 + unicode_width::UnicodeWidthStr::width(rendered.as_str());
         }
@@ -1338,4 +1335,53 @@ impl Formatter {
             self.output.push('\n');
         }
     }
+
+    /// `write_leaf` for a node whose `fmt_*` returns a `Doc` instead of
+    /// writing to `output`: indent, render against the width left on the
+    /// line, terminate. Rendering happens *after* the indent is written so
+    /// the width `render_doc_to_string` computes accounts for it.
+    ///
+    /// `inline` is passed in rather than read from `self` because building
+    /// the `Doc` happens first and can clobber the flag on the way
+    /// (`fmt_parentheses_node` visits a body that clears it). `write_leaf`
+    /// reads the flag before running its closure, so this has to use the
+    /// value from before the `fmt_*` call to lay a node out the same way.
+    fn write_leaf_doc(&mut self, inline: bool, doc: Doc) {
+        if !inline {
+            self.write_indent();
+        }
+        let rendered = self.render_doc_to_string(doc);
+        self.output.push_str(&rendered);
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// The `Doc` for `node` rendered inline, wherever a construct needs one
+    /// of its children as a value rather than as output.
+    ///
+    /// For a node whose `fmt_*` already returns a `Doc` this is that `Doc`,
+    /// composable and measured by the enclosing group. For every other node
+    /// it is still the node's string output wrapped as one opaque leaf, so
+    /// this is the seam the rest of the migration moves nodes across.
+    fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        // Set before either branch, not just inside the capture: today's
+        // callers leave `inline` true afterwards, and something downstream
+        // reads it (`write_leaf` never clears it). Keeping the flag's
+        // behaviour identical is what makes moving a node type onto the
+        // `Doc` path a no-op for output. It goes away with the flag itself
+        // (issue #23).
+        self.inline = true;
+        if let Some(doc) = self.leaf_doc(node) {
+            return doc;
+        }
+        self.capture_as_doc(|f| f.visit(node))
+    }
+}
+
+/// `Doc::text` from source bytes, matching `write_bytes`: text that isn't
+/// valid UTF-8 renders as nothing rather than as replacement characters,
+/// which the AST check would then flag.
+fn bytes_doc(bytes: &[u8]) -> Doc {
+    Doc::text(std::str::from_utf8(bytes).unwrap_or("").to_string())
 }

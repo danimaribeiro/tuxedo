@@ -66,10 +66,7 @@ impl Formatter {
     fn try_build_chain_doc(&mut self, node: &ruby_prism::CallNode<'_>) -> Option<String> {
         let (base, links) = collect_chain(node)?;
 
-        let base_doc = self.capture_as_doc(|f| {
-            f.inline = true;
-            f.visit(&base);
-        });
+        let base_doc = self.node_doc(&base);
 
         let total = links.len() + 1;
         // Every segment renders one indent level deeper than the
@@ -263,14 +260,8 @@ impl Formatter {
                     .filter(|arg| !manages_own_indentation(arg));
 
                 if let Some(arg) = single_arg {
-                    let receiver_doc = self.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(&receiver);
-                    });
-                    let arg_doc = self.capture_as_doc(|f| {
-                        f.inline = true;
-                        f.visit(&arg);
-                    });
+                    let receiver_doc = self.node_doc(&receiver);
+                    let arg_doc = self.node_doc(&arg);
                     let nest_width = self.indent_width() + self.indent_str.len();
                     let doc = receiver_doc
                         .append(Doc::text(" "))

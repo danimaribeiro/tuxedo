@@ -202,10 +202,17 @@ updated `scripts/results/*.txt` alongside the fix.
   **Node dispatch is an exhaustive `match`, not `impl Visit`** (`src/format/dispatch.rs`).
   `Visit`'s default for an un-overridden node walks the children and emits nothing for the
   node itself, which silently deletes syntax. Every Prism node type must be listed in
-  `dispatch.rs`, either under `formatted` (with its `fmt_*` method) or under `verbatim`
-  (source text copied through unchanged). To add a formatter for a node, move it from
-  `verbatim` to `formatted`. A node type added by a Prism upgrade is a compile error until
-  it is listed.
+  `dispatch.rs`, under one of three groups: `leaf` (its `fmt_*` returns a `Doc`),
+  `formatted` (its `fmt_*` writes to `self.output`) or `verbatim` (source text copied
+  through unchanged). To add a formatter for a node, move it out of `verbatim`. A node type
+  added by a Prism upgrade is a compile error until it is listed.
+
+  `leaf` is where every node type is headed. Use `self.node_doc(&child)` to get a child as
+  a `Doc`: native for a `leaf` node, and for the rest still the node's string output
+  wrapped as one opaque `Doc::text`, which is what makes nested collections render more
+  than once and what `forces_list_break` exists to work around. Moving a node type from
+  `formatted` to `leaf` must not change output — verify by formatting `test-projects/rails`
+  and `test-projects/thor` before and after and diffing the trees.
 
   **Layout goes through the `Doc` IR** (`src/format/doc.rs`), the only module that names
   `pretty`. Build a `Doc` out of `text`/`line`/`softline`/`hardline`/`if_break`, mark a

@@ -112,8 +112,10 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_constant_read_node(
+        &mut self,
+        node: &ruby_prism::ConstantReadNode<'_>,
+    ) -> super::doc::Doc {
+        super::bytes_doc(node.name().as_slice())
     }
 }
