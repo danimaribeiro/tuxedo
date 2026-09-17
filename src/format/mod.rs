@@ -299,6 +299,23 @@ struct CommentSpan {
     text: String,
 }
 
+/// A `Doc` being assembled left to right for a construct whose children
+/// are not all on the `Doc` path yet.
+///
+/// Each child is written into `output` as it is added, so the next one
+/// measures the column it will really start at -- a hash value has to see
+/// its key, a splat's expression has to see the `*`. The text is dropped
+/// once the run ends (`end_run`); only the `Doc`s are kept. Without it a
+/// child that still writes strings would decide its own layout as though
+/// its parent had written nothing, and lay out an overlong value flat.
+///
+/// It goes away as the children move onto `Doc` themselves, at which
+/// point nothing needs a column to be built (issues #22, #23).
+struct InlineRun {
+    start: usize,
+    leaves: Vec<Doc>,
+}
+
 struct CaptureSnapshot {
     comment_cursor: usize,
     pending_heredocs_len: usize,
@@ -482,7 +499,7 @@ impl Formatter {
         width
     }
 
-    /// Renders a bracketed, comma-or-other-separated group (array literal,
+    /// Builds a bracketed, comma-or-other-separated group (array literal,
     /// hash literal, parenthesized call argument list, ...) as a single Doc
     /// group implementing Tuxedo's block-indentation spec: either the whole
     /// thing fits on one line, or the opening bracket sits alone, every
@@ -496,23 +513,22 @@ impl Formatter {
     /// flat -- arrays/call args: `[1, 2]`, `(1, 2)`), passed in so callers
     /// control the flat-mode spacing while sharing the same broken-mode
     /// layout.
-    fn wrap_bracketed_group(
-        &mut self,
+    fn bracketed_group_doc(
+        &self,
         open: &str,
         open_sep: Doc,
         body: Doc,
         close_sep: Doc,
         close: &str,
-    ) -> String {
+    ) -> Doc {
         let nest_width = self.indent_str.len();
         // The closing token must be indented *together with* close_sep, not
         // appended after the indent ends -- an indent only applies to a line
         // break whose subsequent content is still inside the same subtree.
-        let doc = Doc::text(open)
+        Doc::text(open)
             .append(open_sep.append(body).indent(nest_width))
             .append(close_sep.append(Doc::text(close)))
-            .group();
-        self.render_doc_to_string(doc)
+            .group()
     }
 
     /// Captures whatever `render` writes to `self.output` into an owned
@@ -523,6 +539,25 @@ impl Formatter {
     /// the normal way, and treated as an unsplittable block of text.
     fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
         Doc::text(self.capture_to_string(render))
+    }
+
+    /// The same as `capture_as_doc` for everything the caller sees, but
+    /// `render` writes into `output` where its text will actually sit and
+    /// the text is only lifted back out afterwards, instead of being
+    /// rendered into a detached buffer.
+    ///
+    /// Use this wherever the old string emitter wrote in place and the
+    /// result goes straight back at the same position. Everything `render`
+    /// can look at is then what it used to see: `current_column` is the
+    /// real one, `capture_depth` stays put (so a nested list still takes
+    /// its comment branch, and an adjacent-literal run still wraps), and
+    /// the bytes are identical. `capture_as_doc` is for the other case --
+    /// a child being *measured* for a group that may still move it, where
+    /// there is no position to render at yet.
+    fn spliced_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
+        let start = self.output.len();
+        render(self);
+        Doc::text(self.output.split_off(start))
     }
 
     fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
@@ -572,7 +607,7 @@ impl Formatter {
     /// token, start of the closing one). A comment anywhere in it forces
     /// the expanded shape too, with each comment kept next to its item --
     /// see `write_commented_bracketed_items`.
-    fn write_bracketed_items(
+    fn bracketed_items_doc(
         &mut self,
         open: &str,
         open_sep: Doc,
@@ -580,29 +615,32 @@ impl Formatter {
         close_sep: Doc,
         close: &str,
         span: Option<(usize, usize)>,
-    ) {
+    ) -> Doc {
         if let Some((start, end)) = span
             && !self.single_line
             && self.capture_depth == 0
             && self.has_pending_comment_in(start, end)
         {
-            self.write_commented_bracketed_items(open, items, close, (start, end));
-            return;
+            // The one shape still laid out imperatively: it consumes
+            // comments from `comment_cursor` as it writes, and a comment
+            // has no `Doc` form yet (issue #40). Written where it will
+            // sit and lifted straight back out, so it is the same bytes
+            // as writing it in place -- see `spliced_doc`.
+            return self.spliced_doc(|f| {
+                f.write_commented_bracketed_items(open, items, close, (start, end))
+            });
         }
         if items.iter().any(forces_list_break) {
-            self.write_expanded_bracketed_items(open, items, close);
-            return;
+            return self.expanded_bracketed_items_doc(open, items, close);
         }
         let snap = self.capture_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_capture_snapshot(snap);
-            self.write_expanded_bracketed_items(open, items, close);
-            return;
+            return self.expanded_bracketed_items_doc(open, items, close);
         }
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-        let rendered = self.wrap_bracketed_group(open, open_sep, body, close_sep, close);
-        self.output.push_str(&rendered);
+        self.bracketed_group_doc(open, open_sep, body, close_sep, close)
     }
 
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
@@ -813,27 +851,30 @@ impl Formatter {
             .push_str(std::str::from_utf8(bytes).unwrap_or(""));
     }
 
-    /// Writes a must-break bracketed list: opening token alone, every item
-    /// on its own line at indent+1, closing token alone at the current
+    /// The must-break bracketed list: opening token alone, every item on
+    /// its own line at indent+1, closing token alone at the current
     /// indent. Used when at least one item already hard-breaks (see
-    /// `forces_list_break`), so a Doc group can't choose "fits on one
-    /// line" -- it already doesn't -- and capturing those items as
-    /// `Doc::text` would bake in newlines the nest can't shift.
-    fn write_expanded_bracketed_items(
+    /// `forces_list_break`), so a group can't choose "fits on one line" --
+    /// it already doesn't.
+    ///
+    /// The breaks are [`Doc::hardline`]s rather than raw newlines, which
+    /// is what lets this shape sit inside an enclosing group and force it
+    /// open on its own instead of the enclosing construct having to ask
+    /// `forces_list_break` up front (issues #22, #23).
+    fn expanded_bracketed_items_doc(
         &mut self,
         open: &str,
         items: &[ruby_prism::Node<'_>],
         close: &str,
-    ) {
-        self.output.push_str(open);
-        self.output.push('\n');
+    ) -> Doc {
+        let nest_width = self.indent_str.len();
         self.indent += 1;
-        self.write_indent();
-        self.write_expanded_items(items);
-        self.output.push('\n');
+        let body = self.expanded_items_doc(items, true);
         self.indent -= 1;
-        self.write_indent();
-        self.output.push_str(close);
+        Doc::text(open)
+            .append(Doc::hardline().append(body).indent(nest_width))
+            .append(Doc::hardline())
+            .append(Doc::text(close))
     }
 
     /// The expanded shape of `write_expanded_bracketed_items`, for a list
@@ -895,27 +936,43 @@ impl Formatter {
         self.output.push_str(close);
     }
 
-    /// Writes `items` one-per-line at the current indent, comma-separated,
-    /// with the first item continuing on the current line. Caller is
-    /// responsible for any leading indent (so this works both as the body
-    /// of `write_expanded_bracketed_items` and for a bare keyword-arg list
-    /// that's already sitting at the right column).
-    fn write_expanded_items(&mut self, items: &[ruby_prism::Node<'_>]) {
-        let last = items.len().saturating_sub(1);
+    /// `items` one per line at the current indent, comma-separated.
+    /// `first_on_new_line` says whether the first item starts a line of
+    /// its own (inside a bracket that has just broken) or continues the
+    /// line already being written (a bare keyword-argument list, which has
+    /// no bracket to sit under).
+    ///
+    /// Each item is rendered into `output` at the column and indent it
+    /// will actually occupy and only then lifted back out, rather than
+    /// captured into a detached buffer: an item that measures where it
+    /// starts (an interpolated literal, a nested argument list) has to see
+    /// the real column, and one that lays out its own body (a `do...end`
+    /// block) has to see the real indent. The separators are rebuilt as
+    /// `Doc`s, so they render back to the same bytes -- a `hardline`
+    /// inside the caller's `indent` is exactly the newline plus
+    /// `write_indent` this used to push by hand.
+    fn expanded_items_doc(
+        &mut self,
+        items: &[ruby_prism::Node<'_>],
+        first_on_new_line: bool,
+    ) -> Doc {
+        let start = self.output.len();
+        let mut leaves = Vec::with_capacity(items.len());
         for (i, item) in items.iter().enumerate() {
-            if i > 0 {
+            if i > 0 || first_on_new_line {
                 self.output.push('\n');
                 self.write_indent();
             }
+            let item_start = self.output.len();
             self.inline = true;
             self.visit(item);
-            while self.output.ends_with('\n') {
+            while self.output.len() > item_start && self.output.ends_with('\n') {
                 self.output.pop();
             }
-            if i != last {
-                self.output.push(',');
-            }
+            leaves.push(Doc::text(self.output[item_start..].to_string()));
         }
+        self.output.truncate(start);
+        Doc::join(leaves, Doc::text(",").append(Doc::hardline()))
     }
 
     /// Bare command args that already span lines, or whose flat form
@@ -1032,7 +1089,10 @@ impl Formatter {
 
         let has_args = !items.is_empty();
         if parenthesized && has_args {
-            self.write_bracketed_items("(", Doc::softline(), &items, Doc::softline(), ")", span);
+            let doc =
+                self.bracketed_items_doc("(", Doc::softline(), &items, Doc::softline(), ")", span);
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
             return;
         }
 
@@ -1346,6 +1406,56 @@ impl Formatter {
         if !inline {
             self.output.push('\n');
         }
+    }
+
+    /// Starts an [`InlineRun`] at the current end of `output`.
+    fn begin_run(&self) -> InlineRun {
+        InlineRun {
+            start: self.output.len(),
+            leaves: Vec::new(),
+        }
+    }
+
+    /// Appends literal text to a run.
+    fn run_text(&mut self, run: &mut InlineRun, text: impl Into<String>) {
+        let text = text.into();
+        self.output.push_str(&text);
+        run.leaves.push(Doc::text(text));
+    }
+
+    /// `run_text` from source bytes, matching `write_bytes`.
+    fn run_bytes(&mut self, run: &mut InlineRun, bytes: &[u8]) {
+        let text = std::str::from_utf8(bytes).unwrap_or("").to_string();
+        self.run_text(run, text);
+    }
+
+    /// Appends a child node to a run, inline.
+    ///
+    /// A node that builds a `Doc` is kept as that `Doc`, so the enclosing
+    /// group lays it out for real; it is also rendered into `output` and
+    /// the text thrown away, purely to carry the column forward. A node
+    /// that still writes strings is rendered into `output` where it sits
+    /// and that text becomes its leaf.
+    fn run_node(&mut self, run: &mut InlineRun, node: &ruby_prism::Node<'_>) {
+        let start = self.output.len();
+        self.inline = true;
+        match self.leaf_doc(node) {
+            Some(doc) => {
+                let rendered = self.render_doc_to_string(doc.clone());
+                self.output.push_str(&rendered);
+                run.leaves.push(doc);
+            }
+            None => {
+                self.visit(node);
+                run.leaves.push(Doc::text(self.output[start..].to_string()));
+            }
+        }
+    }
+
+    /// Ends a run: drops the text it wrote and returns what it built.
+    fn end_run(&mut self, run: InlineRun) -> Doc {
+        self.output.truncate(run.start);
+        Doc::concat(run.leaves)
     }
 
     /// The `Doc` for `node` rendered inline, wherever a construct needs one

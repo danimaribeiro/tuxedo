@@ -51,3 +51,15 @@ def app
   @app ||
     @app_build_lock.synchronize { @app ||= begin; stack = default_middleware_stack; config.middleware.build(endpoint); end }
 end
+
+# A `{ }` body with more than one statement keeps them on their own lines
+# wherever it appears -- including inside an argument list, where it used
+# to be captured as text and collapsed onto one line with `;`.
+queue_adapter.with(
+  stopping: ->(job) {
+    jobs << job
+    false
+  }
+) do
+  perform_enqueued_jobs
+end

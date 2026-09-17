@@ -37,13 +37,12 @@ Running tuxedo format...
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2332  Layout/LineLength [Safe Correctable]
-  694   Layout/MultilineMethodCallIndentation [Safe Correctable]
+  2274  Layout/LineLength [Safe Correctable]
+  686   Layout/MultilineMethodCallIndentation [Safe Correctable]
   173   Layout/HeredocIndentation [Safe Correctable]
   147   Layout/ClosingHeredocIndentation [Safe Correctable]
   52    Layout/MultilineOperationIndentation [Safe Correctable]
   52    Layout/SpaceAroundOperators [Safe Correctable]
-  51    Layout/ArrayAlignment [Safe Correctable]
   23    Layout/ArgumentAlignment [Safe Correctable]
   22    Layout/BlockEndNewline [Safe Correctable]
   20    Layout/SpaceBeforeSemicolon [Safe Correctable]
@@ -53,15 +52,16 @@ Running tuxedo format...
   15    Layout/SpaceInsideBlockBraces [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
   13    Layout/FirstArgumentIndentation [Safe Correctable]
-  13    Layout/IndentationWidth [Safe Correctable]
-  12    Layout/ExtraSpacing [Safe Correctable]
-  8     Layout/DefEndAlignment [Safe Correctable]
-  8     Layout/FirstArrayElementIndentation [Safe Correctable]
+  6     Layout/ArrayAlignment [Safe Correctable]
+  6     Layout/ExtraSpacing [Safe Correctable]
   6     Layout/FirstArrayElementLineBreak [Safe Correctable]
+  6     Layout/IndentationWidth [Safe Correctable]
   6     Layout/MultilineArrayLineBreaks [Safe Correctable]
   6     Layout/SpaceInsideStringInterpolation [Safe Correctable]
   5     Layout/CaseIndentation [Safe Correctable]
   4     Layout/ElseAlignment [Safe Correctable]
+  4     Layout/EmptyLineBetweenDefs [Safe Correctable]
+  4     Layout/FirstHashElementIndentation [Safe Correctable]
 
 ======================================================================
   rails
@@ -69,8 +69,8 @@ Running tuxedo format...
   meaning     0 files refused: formatting would have changed the AST
   parse       3464 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    74910 total, 35 displaced
-  layout      3741 offenses across 32 distinct cops
+  comments    74910 total, 33 displaced
+  layout      3606 offenses across 32 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.

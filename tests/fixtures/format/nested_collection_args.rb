@@ -76,3 +76,19 @@ VALID_UNSCOPING_VALUES = Set
     ]
   )
   .freeze
+
+# A nested collection is measured at the column it is laid out at, not as
+# if it started the line: this hash is 119 columns wide, so it fits a line
+# of its own but not one that already has two of indent and a comma to
+# come.
+assert_equal(
+  {
+    "controller" => "people",
+    "action" => "shown",
+    "id" => "1",
+    "format" => "jsonpp",
+    "locale" => "enus",
+    "page" => "2"
+  },
+  permitted.to_h
+)

@@ -227,8 +227,8 @@ impl Formatter {
     ) {
         let leaves = self.parameter_leaves(node);
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-        let rendered =
-            self.wrap_bracketed_group(open, Doc::softline(), body, Doc::softline(), close);
+        let doc = self.bracketed_group_doc(open, Doc::softline(), body, Doc::softline(), close);
+        let rendered = self.render_doc_to_string(doc);
         self.output.push_str(&rendered);
     }
 
