@@ -208,6 +208,32 @@ regenerate before trusting them: `scripts/format-verify.sh rails`, `scripts/form
 thor`, `scripts/lint-baseline.sh rails`, `scripts/lint-baseline.sh thor` — commit the
 updated `scripts/results/*.txt` alongside the fix.
 
+## Code comments
+
+A comment earns its place by explaining something the code cannot say for
+itself: why a surprising choice is the right one, what breaks if it is undone,
+which trap the next reader is about to walk into. Write those freely — the
+ones already in `src/format/` are the house style, and they are why the
+formatter is followable at all.
+
+Two things do *not* belong in a comment, because a better place already holds
+them:
+
+- **Issue numbers, PR numbers and changelog.** `(issue #22)`, `(see PR #35)`,
+  "this used to write strings". Git history records when and why every line
+  arrived, and it stays accurate when the ticket is closed or renumbered — a
+  comment does not. `git log -L` and `git blame` are the tools for that
+  question.
+- **Notes to whoever picks up the next ticket.** "this goes away once the
+  writes are leaves", "waits on `fmt_statements_node` returning a `Doc`".
+  Write those **in the ticket**, where the person who needs them is already
+  looking and where they get closed out with the work. In the code they rot
+  silently, because nothing fails when they go stale.
+
+Describe what is true now. If a bridge or workaround exists, say what it is
+working around in the present tense (`a comment has no Doc form`) and leave
+its removal plan to the issue that owns it.
+
 ## Architecture
 
 - `src/main.rs` — CLI entry point (clap-based). Two subcommands: `format` and `check`.

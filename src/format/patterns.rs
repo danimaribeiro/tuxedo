@@ -1,6 +1,6 @@
 //! Pattern-matching nodes that only occur inside `in`/`=>` patterns, plus
 //! the handful of keyword constructs (`defined?`, `undef`, `BEGIN`/`END`,
-//! flip-flop) that used to fall through to the verbatim fallback.
+//! flip-flop) that carry a keyword of their own and nothing else.
 //!
 //! `fmt_array_pattern_node`/`fmt_hash_pattern_node` live in `collections`
 //! next to the literals they mirror.
@@ -12,9 +12,6 @@
 //! points (an adjacent-string-literal concatenation, say) is now laid out
 //! by the enclosing group, which can see what precedes it on the line,
 //! instead of being rendered on its own and pasted in.
-//!
-//! `BEGIN`/`END` lay out a statement list of their own and so still write
-//! strings -- they need `hardline` bodies, which is issue #40.
 //!
 //! [`InlineRun`]: super::InlineRun
 
