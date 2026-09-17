@@ -423,21 +423,38 @@ impl Formatter {
         self.indent * self.indent_str.len()
     }
 
-    /// Renders a `Doc` value to a string, using the width still available on
-    /// the current output line before `line_length` is hit.
+    /// Renders a `Doc` value to a string, laid out where it will actually
+    /// sit: its first line continues the output line written so far, and
+    /// every line it breaks onto starts at the indent in effect.
     ///
-    /// The document is laid out inside the indent already in effect, so
-    /// every `Doc::indent` in it counts levels *relative* to the statement
-    /// rather than columns from the left margin. That is what lets one
-    /// construct's `Doc` be nested inside another's: an absolute indent
-    /// would be right only for whichever of the two was rendered at the
-    /// top, and would double-count in the other.
+    /// Both of those are told to the printer in absolute columns -- the
+    /// document is padded out to the current column and rendered against
+    /// the full `line_length` -- rather than by handing it the width left
+    /// on the current line. The difference shows up on the second and
+    /// later lines: with a remaining width, a document that starts at
+    /// column 90 is measured as having 10 columns to play with *on every
+    /// line*, including the ones that begin back at the statement's own
+    /// indent with the whole line ahead of them. A nested group would then
+    /// break for want of room it actually has, and the deeper it sat the
+    /// less room it thought it had.
+    ///
+    /// The indent each `Doc::indent` counts from is the statement's, not
+    /// the left margin, which is what lets one construct's `Doc` nest
+    /// inside another's: an indent relative to the left margin would be
+    /// right only for whichever of the two was rendered at the top, and
+    /// would double-count in the other.
+    ///
+    /// `trailing_reserve` comes off the line length instead of the column,
+    /// so it holds room at the *end* of the line for something not in the
+    /// document yet (a block's ` do |x|` header).
     fn render_doc_to_string(&self, doc: Doc) -> String {
-        let width = self
-            .line_length
-            .saturating_sub(self.current_column())
-            .saturating_sub(self.trailing_reserve);
-        doc.indent(self.indent_width()).render(width)
+        let column = self.current_column();
+        let width = self.line_length.saturating_sub(self.trailing_reserve);
+        let padded = Doc::text(" ".repeat(column)).append(doc.indent(self.indent_width()));
+        let rendered = padded.render(width);
+        // The pad is one space per column and nothing breaks inside it, so
+        // it is exactly `column` bytes at the front of the result.
+        rendered[column..].to_string()
     }
 
     /// The width of a `do...end` block's header line (` do` plus an
