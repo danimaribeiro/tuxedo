@@ -328,7 +328,7 @@ struct Formatter {
     line_starts: Vec<usize>,
     source: String,
     /// Verbatim heredoc bodies, indexed by the marker written into
-    /// `output` after each opening tag. See `write_heredoc` and
+    /// `output` after each opening tag. See `heredoc_doc` and
     /// `splice_heredoc_bodies`.
     pending_heredocs: Vec<String>,
     /// Source line of the last heredoc terminator emitted. Prism ends a
@@ -361,7 +361,7 @@ struct Formatter {
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
-/// `write_heredoc` and `splice_heredoc_bodies`. Unicode private-use
+/// `heredoc_doc` and `splice_heredoc_bodies`. Unicode private-use
 /// characters, which cannot appear in Ruby source that Prism accepted.
 const HEREDOC_MARK_START: char = '\u{E000}';
 const HEREDOC_MARK_END: char = '\u{E001}';
@@ -1070,8 +1070,8 @@ impl Formatter {
         opening.starts_with(b"<<")
     }
 
-    /// Emits a heredoc: the opening tag goes here, inline, but the body is
-    /// deferred.
+    /// The `Doc` for a heredoc: the opening tag is all the node renders
+    /// where it sits, and the body is deferred.
     ///
     /// A heredoc is the one Ruby construct whose text does not live where
     /// its node sits. `foo(<<~SQL, x)` means "emit `<<~SQL`, keep
@@ -1089,17 +1089,12 @@ impl Formatter {
     /// a `<<-SQL` changes the SQL), so it is never reformatted, and never
     /// re-indented — not even for `<<~`, where Ruby itself strips the
     /// margin at runtime.
-    fn write_heredoc(&mut self, opening: &[u8], body: String, body_end: usize) {
+    fn heredoc_doc(&mut self, opening: &[u8], body: String, body_end: usize) -> Doc {
         let terminator_line = self.line_of(body_end.saturating_sub(1));
         self.heredoc_end_line = Some(
             self.heredoc_end_line
                 .map_or(terminator_line, |seen| seen.max(terminator_line)),
         );
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.write_bytes(opening);
         let index = self.pending_heredocs.len();
         self.pending_heredocs.push(body);
         // A marker rather than an offset into `output`: argument lists are
@@ -1107,12 +1102,9 @@ impl Formatter {
         // offset taken there points into that temporary and not into the
         // final output. A marker travels with the text wherever it is
         // spliced.
-        self.output.push(HEREDOC_MARK_START);
-        self.output.push_str(&index.to_string());
-        self.output.push(HEREDOC_MARK_END);
-        if !inline {
-            self.output.push('\n');
-        }
+        bytes_doc(opening).append(Doc::text(format!(
+            "{HEREDOC_MARK_START}{index}{HEREDOC_MARK_END}"
+        )))
     }
 
     /// Splices every deferred heredoc body into `output`, each one just
@@ -1320,9 +1312,11 @@ impl Formatter {
     }
 
     /// `write_leaf` for a node whose `fmt_*` returns a `Doc` instead of
-    /// writing to `output`: indent, render against the width left on the
-    /// line, terminate. Rendering happens *after* the indent is written so
-    /// the width `render_doc_to_string` computes accounts for it.
+    /// writing to `output`: render against the width left on the line,
+    /// terminate. The indent is written by `visit` before the `fmt_*`
+    /// runs, not here, so that both building the `Doc` and rendering it
+    /// see the column the node actually starts at -- a literal with a
+    /// `#{ }` hole in it measures that column while it builds.
     ///
     /// `inline` is passed in rather than read from `self` because building
     /// the `Doc` happens first and can clobber the flag on the way
@@ -1330,9 +1324,6 @@ impl Formatter {
     /// reads the flag before running its closure, so this has to use the
     /// value from before the `fmt_*` call to lay a node out the same way.
     fn write_leaf_doc(&mut self, inline: bool, doc: Doc) {
-        if !inline {
-            self.write_indent();
-        }
         let rendered = self.render_doc_to_string(doc);
         self.output.push_str(&rendered);
         if !inline {

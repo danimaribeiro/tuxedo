@@ -33,7 +33,7 @@ impl Formatter {
         bytes_doc(node.location().as_slice())
     }
 
-    pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
+    pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) -> Doc {
         if let Some(opening) = node.opening_loc()
             && Self::is_heredoc_opening(opening.as_slice())
         {
@@ -46,8 +46,7 @@ impl Formatter {
                 .map_or(node.content_loc().end_offset(), |c| c.end_offset());
             let body = self.heredoc_body(body_start, body_end);
             let opening = opening.as_slice().to_vec();
-            self.write_heredoc(&opening, body, body_end);
-            return;
+            return self.heredoc_doc(&opening, body, body_end);
         }
 
         if node.opening_loc().is_some() {
@@ -57,18 +56,14 @@ impl Formatter {
             // corrupts anything containing `\"` or `\n` — e.g. `"a\"b\nc"`
             // would come back out as `"a"b` followed by a real newline and
             // `c"`, which isn't even valid Ruby.
-            let bytes = node.location().as_slice();
-            self.write_leaf(|f| f.write_bytes(bytes));
+            bytes_doc(node.location().as_slice())
         } else {
             // A %w()/%i() word-list element has no quote delimiters of its
             // own in source (the location is just the bare word) — verbatim
             // copying would drop the quotes it needs as a standalone string.
-            let unescaped = node.unescaped();
-            self.write_leaf(|f| {
-                f.output.push('"');
-                f.write_bytes(unescaped);
-                f.output.push('"');
-            });
+            Doc::text("\"")
+                .append(bytes_doc(node.unescaped()))
+                .append(Doc::text("\""))
         }
     }
 
@@ -141,21 +136,17 @@ impl Formatter {
     pub(super) fn fmt_interpolated_x_string_node(
         &mut self,
         node: &ruby_prism::InterpolatedXStringNode<'_>,
-    ) {
+    ) -> Doc {
         let opening = node.opening_loc().as_slice();
         let closing = node.closing_loc().as_slice();
         let parts = node.parts();
-        self.write_leaf(|f| {
-            f.write_bytes(opening);
-            f.fmt_interpolated_parts(&parts);
-            f.write_bytes(closing);
-        });
+        self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
     }
 
     pub(super) fn fmt_interpolated_string_node(
         &mut self,
         node: &ruby_prism::InterpolatedStringNode<'_>,
-    ) {
+    ) -> Doc {
         let opening = node.opening_loc().map(|loc| loc.as_slice());
         let closing = node.closing_loc().map(|loc| loc.as_slice());
         let parts = node.parts();
@@ -179,8 +170,7 @@ impl Formatter {
                 _ => String::new(),
             };
             let opening_bytes = opening_loc.as_slice().to_vec();
-            self.write_heredoc(&opening_bytes, body, body_end);
-            return;
+            return self.heredoc_doc(&opening_bytes, body, body_end);
         }
 
         // No delimiters of its own means this isn't one literal at all —
@@ -190,116 +180,91 @@ impl Formatter {
         // parts here are *complete* literals carrying their own quotes,
         // not the bare fragments that sit between `#{}` holes inside a
         // single pair of quotes. Emitting their contents the way
-        // `fmt_interpolated_parts` does would strip every quote and turn
+        // `interpolated_literal_doc` does would strip every quote and turn
         // `x = "foo" "bar"` into `x = foobar` — still valid Ruby, and a
         // completely different program. Copy each part verbatim instead.
         if opening.is_none() {
-            self.write_implicit_string_concat(&parts);
-            return;
+            return self.implicit_string_concat_doc(&parts);
         }
 
-        self.write_leaf(|f| {
-            if let Some(opening) = opening {
-                f.write_bytes(opening);
-            }
-            f.fmt_interpolated_parts(&parts);
-            if let Some(closing) = closing {
-                f.write_bytes(closing);
-            }
-        });
+        self.interpolated_literal_doc(opening, &parts, closing)
     }
 
     pub(super) fn fmt_interpolated_symbol_node(
         &mut self,
         node: &ruby_prism::InterpolatedSymbolNode<'_>,
-    ) {
+    ) -> Doc {
         let opening = node.opening_loc().map(|loc| loc.as_slice());
         let closing = node.closing_loc().map(|loc| loc.as_slice());
         let parts = node.parts();
-        self.write_leaf(|f| {
-            if let Some(opening) = opening {
-                f.write_bytes(opening);
-            }
-            f.fmt_interpolated_parts(&parts);
-            if let Some(closing) = closing {
-                f.write_bytes(closing);
-            }
-        });
+        self.interpolated_literal_doc(opening, &parts, closing)
     }
 
     pub(super) fn fmt_interpolated_regular_expression_node(
         &mut self,
         node: &ruby_prism::InterpolatedRegularExpressionNode<'_>,
-    ) {
+    ) -> Doc {
         let opening = node.opening_loc().as_slice();
         let closing = node.closing_loc().as_slice();
         let parts = node.parts();
-        self.write_leaf(|f| {
-            f.write_bytes(opening);
-            f.fmt_interpolated_parts(&parts);
-            f.write_bytes(closing);
-        });
+        self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
     }
 
     /// Adjacent string literals (`"foo" "bar"`). A newline between parts
     /// without a trailing `\` is a new statement, so overflow wraps with
-    /// `\` and the continuation at one indent. Parts that fit stay on one
-    /// line with a single space. A `{ }` body that's still being forced
-    /// flat (`single_line`) never introduces those breaks.
-    fn write_implicit_string_concat(&mut self, parts: &ruby_prism::NodeList<'_>) {
-        let slices: Vec<Vec<u8>> = parts
+    /// `\` and the continuation at one indent — a `group` whose separator
+    /// is a `line` preceded by an `if_break` that contributes the `\` only
+    /// in the broken shape. Parts that fit stay on one line with a single
+    /// space. A `{ }` body that's still being forced flat (`single_line`)
+    /// never introduces those breaks, and neither does a single part,
+    /// which has no separator to break at, nor a run being captured as
+    /// `Doc::text` for an enclosing group (`capture_depth`), where a raw
+    /// newline would be baked into the leaf and the group's nest could
+    /// only ever shift its first line.
+    fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
+        let leaves: Vec<Doc> = parts
             .iter()
-            .map(|part| part.location().as_slice().to_vec())
+            .map(|part| bytes_doc(part.location().as_slice()))
             .collect();
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
+
+        if self.single_line || self.capture_depth > 0 || leaves.len() <= 1 {
+            return Doc::join(leaves, Doc::text(" "));
         }
 
-        let join_flat = self.single_line || self.capture_depth > 0 || slices.len() <= 1 || {
-            let parts_width: usize = slices
-                .iter()
-                .map(|s| unicode_width::UnicodeWidthStr::width(String::from_utf8_lossy(s).as_ref()))
-                .sum();
-            let seps = slices.len().saturating_sub(1);
-            let flat_width = parts_width + seps;
-            self.current_column()
-                .saturating_add(flat_width)
-                .saturating_add(self.trailing_reserve)
-                <= self.line_length
-        };
-
-        if join_flat {
-            for (i, slice) in slices.iter().enumerate() {
-                if i > 0 {
-                    self.output.push(' ');
-                }
-                self.write_bytes(slice);
-            }
-        } else {
-            for (i, slice) in slices.iter().enumerate() {
-                if i > 0 {
-                    self.output.push_str(" \\");
-                    self.output.push('\n');
-                    self.indent += 1;
-                    self.write_indent();
-                    self.indent -= 1;
-                }
-                self.write_bytes(slice);
-            }
-        }
-
-        if !inline {
-            self.output.push('\n');
-        }
+        let separator = Doc::if_break(Doc::text(" \\"), Doc::nil()).append(Doc::line());
+        Doc::join(leaves, separator)
+            .indent(self.indent_str.len())
+            .group()
     }
 
-    /// Renders the parts of an interpolated string/symbol/regexp literal:
-    /// literal text segments are copied verbatim from source (preserving
-    /// their original escaping) and `#{ }`/`#@ivar` segments are rendered
-    /// inline, collapsing any internal statements onto one line the way a
-    /// `{ }` block body does.
-    pub(super) fn fmt_interpolated_parts(&mut self, parts: &ruby_prism::NodeList<'_>) {
+    /// An interpolated literal (`"a#{b}c"`, `:"a#{b}"`, `/a#{b}/`,
+    /// `` `a#{b}` ``) as a `Doc`: the delimiters and each literal text
+    /// segment as their own leaves, each `#{ }`/`#@ivar` hole as one
+    /// opaque leaf. Literal segments are copied verbatim from source
+    /// (preserving their original escaping); a hole is rendered inline,
+    /// collapsing any internal statements onto one line the way a `{ }`
+    /// block body does.
+    ///
+    /// The run is written into `output` in place and only lifted back out
+    /// once the last part is done, rather than rendered into a detached
+    /// buffer: a hole renders through the string emitter, which measures
+    /// `current_column` to decide how much room it has, so everything
+    /// ahead of it on the line — the opening delimiter and every earlier
+    /// part — has to really be there while it renders. `bounds` records
+    /// where each leaf ended so the run can be cut back apart afterwards.
+    pub(super) fn interpolated_literal_doc(
+        &mut self,
+        opening: Option<&[u8]>,
+        parts: &ruby_prism::NodeList<'_>,
+        closing: Option<&[u8]>,
+    ) -> Doc {
+        let start = self.output.len();
+        let mut bounds: Vec<usize> = Vec::new();
+
+        if let Some(opening) = opening {
+            self.write_bytes(opening);
+            bounds.push(self.output.len());
+        }
         for part in parts.iter() {
             if let Some(string) = part.as_string_node() {
                 self.write_bytes(string.content_loc().as_slice());
@@ -316,6 +281,21 @@ impl Formatter {
             } else {
                 self.write_bytes(part.location().as_slice());
             }
+            bounds.push(self.output.len());
         }
+        if let Some(closing) = closing {
+            self.write_bytes(closing);
+            bounds.push(self.output.len());
+        }
+
+        let text = self.output.split_off(start);
+        let mut leaves = Vec::with_capacity(bounds.len());
+        let mut from = 0;
+        for bound in bounds {
+            let to = bound - start;
+            leaves.push(Doc::text(text[from..to].to_string()));
+            from = to;
+        }
+        Doc::concat(leaves)
     }
 }

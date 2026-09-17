@@ -42,6 +42,15 @@ macro_rules! dispatch {
                         ruby_prism::Node::$leaf_variant { .. } => {
                             if let Some(concrete) = node.$leaf_cast() {
                                 let inline = self.inline;
+                                // Before the `fmt_*`, not just before the
+                                // render: a `fmt_*` that measures the
+                                // current column while it builds (an
+                                // interpolated literal, an implicit string
+                                // concat) has to see the indent it will be
+                                // laid out after.
+                                if !inline {
+                                    self.write_indent();
+                                }
                                 let doc = self.$leaf_fmt(&concrete);
                                 self.write_leaf_doc(inline, doc);
                             }
@@ -99,9 +108,11 @@ macro_rules! dispatch {
 }
 
 dispatch! {
-    // Nodes that render as a single run of text with no line points of
-    // their own. Composing one into an enclosing group is free: it can be
-    // measured without being rendered first.
+    // Nodes whose `fmt_*` builds a `Doc`. Composing one into an enclosing
+    // group is free -- it can be measured without being rendered first --
+    // and any line points it carries of its own (an adjacent-literal
+    // concatenation's `\` wraps) are decided by the printer along with
+    // everything around them.
     leaf {
         LocalVariableReadNode => as_local_variable_read_node => fmt_local_variable_read_node,
         GlobalVariableReadNode => as_global_variable_read_node => fmt_global_variable_read_node,
@@ -124,6 +135,11 @@ dispatch! {
         BackReferenceReadNode => as_back_reference_read_node => fmt_back_reference_read_node,
         XStringNode => as_x_string_node => fmt_x_string_node,
         ParenthesesNode => as_parentheses_node => fmt_parentheses_node,
+        StringNode => as_string_node => fmt_string_node,
+        InterpolatedStringNode => as_interpolated_string_node => fmt_interpolated_string_node,
+        InterpolatedSymbolNode => as_interpolated_symbol_node => fmt_interpolated_symbol_node,
+        InterpolatedRegularExpressionNode => as_interpolated_regular_expression_node => fmt_interpolated_regular_expression_node,
+        InterpolatedXStringNode => as_interpolated_x_string_node => fmt_interpolated_x_string_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
@@ -214,14 +230,9 @@ dispatch! {
         InNode => as_in_node => fmt_in_node,
         AndNode => as_and_node => fmt_and_node,
         OrNode => as_or_node => fmt_or_node,
-        StringNode => as_string_node => fmt_string_node,
-        InterpolatedStringNode => as_interpolated_string_node => fmt_interpolated_string_node,
-        InterpolatedSymbolNode => as_interpolated_symbol_node => fmt_interpolated_symbol_node,
-        InterpolatedRegularExpressionNode => as_interpolated_regular_expression_node => fmt_interpolated_regular_expression_node,
         RangeNode => as_range_node => fmt_range_node,
         HashNode => as_hash_node => fmt_hash_node,
         KeywordHashNode => as_keyword_hash_node => fmt_keyword_hash_node,
-        InterpolatedXStringNode => as_interpolated_x_string_node => fmt_interpolated_x_string_node,
         AssocNode => as_assoc_node => fmt_assoc_node,
         AssocSplatNode => as_assoc_splat_node => fmt_assoc_splat_node,
         HashPatternNode => as_hash_pattern_node => fmt_hash_pattern_node,
