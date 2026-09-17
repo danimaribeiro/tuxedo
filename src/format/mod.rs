@@ -145,14 +145,6 @@ fn statements_force_list_break(stmts: Option<ruby_prism::StatementsNode<'_>>) ->
     stmts.is_some_and(|s| s.body().iter().any(|n| forces_list_break(&n)))
 }
 
-/// True for an `IfNode` that's actually a ternary (`predicate ? a : b`) --
-/// Prism represents both with the same node type, distinguished only by the
-/// absence of an `if`/`elsif` keyword location.
-fn is_ternary_if(node: &ruby_prism::Node<'_>) -> bool {
-    node.as_if_node()
-        .is_some_and(|n| n.if_keyword_loc().is_none())
-}
-
 /// Like `forces_list_break`, but for a hash element (`AssocNode`/
 /// `AssocSplatNode`): looks at the value being assigned rather than the
 /// element itself, since a hash element is never itself a node
@@ -763,46 +755,36 @@ impl Formatter {
         }
         self.inline = true;
 
-        let start_len = self.output.len();
         write_target(self);
         self.output.push(' ');
         self.output.push_str(op);
         self.output.push(' ');
-        let prefix_len = self.output.len() - start_len;
 
-        // An `if`/`case` value should have its continuation lines/`end`
-        // align under the `=` (rubocop's Layout/EndAlignment stock default
-        // is `keyword`: align `end` with the keyword that opens the value,
-        // not with the assignment target -- confirmed against
-        // scripts/format-verify.rubocop.yml, which deliberately does not
-        // override it, as opposed to a project's own .rubocop.yml, which
-        // may). Everything else -- a wrapped array/hash/call-args literal
-        // (block-indented at a fixed depth regardless of the assignment
-        // target's length), adjacent string literals (`"foo" "bar"`), a
-        // `do...end`/`{ }` block, a lambda literal, or an implicit/explicit
-        // `begin` -- manages its own body indentation relative to the
-        // statement's own indent instead.
-        let skip_alignment = matches!(
-            value,
-            ruby_prism::Node::BeginNode { .. }
-                | ruby_prism::Node::LambdaNode { .. }
-                | ruby_prism::Node::ArrayNode { .. }
-                | ruby_prism::Node::HashNode { .. }
-                | ruby_prism::Node::CallNode { .. }
-                | ruby_prism::Node::InterpolatedStringNode { .. }
-        ) || has_real_block(value)
-            || is_ternary_if(value);
-        let extra_indent = if skip_alignment {
-            0
-        } else {
-            prefix_len / self.indent_str.len()
-        };
-        self.indent += extra_indent;
-
+        // The value renders at the statement's own indent -- never aligned
+        // under the `=`.
+        //
+        // RuboCop's stock `Layout/EndAlignment` is `keyword`: it wants an
+        // `if`/`case`/`begin` value's `end` under the column its opening
+        // keyword sits at. But that column is set by the length of the
+        // assignment target, so renaming `message` to `msg` reindents the
+        // whole value -- the bracket alignment this project rejects
+        // (AGENTS.md, property 2), reached through `=` instead of a
+        // bracket. `x << if ...` was already exempt from it; `=` was not.
+        //
+        // The old approximation of that alignment divided a raw character
+        // offset by the indent width and floored it, so it only landed on
+        // the keyword's column when the target's length happened to be an
+        // exact multiple of the indent -- and was off by up to one space
+        // otherwise, which is where rubocop's "Use 2 (not 1)"
+        // `Layout/IndentationWidth` complaints came from. It applied to
+        // every value that did not opt out, including `&&`/`||` pairs and
+        // the other operators that wrap, not just the keyword constructs
+        // it was written for.
+        //
+        // See `test-projects/thor/lib/thor/parser/option.rb`'s
+        // `type = case value ... when ... end`.
         self.inline = true;
         self.visit(value);
-
-        self.indent -= extra_indent;
 
         if !inline && !self.output.ends_with('\n') {
             self.output.push('\n');
