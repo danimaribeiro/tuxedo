@@ -165,14 +165,17 @@ planning the work, and record what you learn back in it.
 | --- | --- | --- |
 | 1. Safety net | An unfinished node passes through unchanged and never disappears | Done, PR #33 |
 | 2. Comment attachment | Comments stay beside the code they describe | Done, PR #34 |
-| 3. Finish the Doc migration | The capture and snapshot workarounds in `mod.rs` go away | In progress, PR #35 merged |
+| 3. Finish the Doc migration | The capture and snapshot workarounds in `mod.rs` go away | In progress; PRs #35, #45, #46, #47 merged |
 | 4. Formatter cleanups | Config, block indentation and CLI gaps are closed | #26 done, PR #12; #25, #27 open |
 | 5. Linter | `tuxedo check` reports real diagnostics with RuboCop cop names | Not started |
 
 Milestone 3 is where the work is. #22 is a tracking issue; the actual work is #36 to
 #43, one per file, and they must be done roughly in that order — #40 (statements and
 comments) is the keystone, because every construct with a body contains a
-`StatementsNode`, and #41, #42 and #43 all depend on it. #24 (whether to replace
+`StatementsNode`, and #41, #42 and #43 all depend on it. #36, #37 and #38 are done
+(PRs #45, #46, #47), which leaves 90 node types on `formatted`; #39 is next. Three of
+#38's node types were deferred rather than finished: `BEGIN`/`END` need a `hardline`
+body and moved to #40, and `ShareableConstantNode` moved to #39. #24 (whether to replace
 `pretty`) gets settled inside #40, not afterwards: `line_suffix` for trailing comments
 is the only capability still missing, so whichever way #40 goes decides it.
 
@@ -202,6 +205,10 @@ its parse section names an exact file plus the parse error — each points strai
 bug, no further digging needed. `lint-baseline.sh`'s per-cop delta table is the secondary guide, for
 "which RuboCop-ecosystem thing changed and by how much." Pick whichever entry looks worth
 tackling and go straight to it.
+
+`format-verify.sh` and `lint-baseline.sh` need `ruby` and `rubocop` on `PATH`; if the
+shell has neither, they are under mise (`mise exec ruby -- …`, or put
+`~/.local/share/mise/installs/ruby/<version>/bin` on `PATH` first).
 
 If the saved reports look stale (or you've just fixed something and want to confirm),
 regenerate before trusting them: `scripts/format-verify.sh rails`, `scripts/format-verify.sh
