@@ -1,207 +1,201 @@
-use super::Formatter;
+use super::doc::Doc;
+use super::{Formatter, bytes_doc};
 
 impl Formatter {
     pub(super) fn fmt_local_variable_write_node(
         &mut self,
         node: &ruby_prism::LocalVariableWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "=", &node.value())
     }
 
     pub(super) fn fmt_local_variable_operator_write_node(
         &mut self,
         node: &ruby_prism::LocalVariableOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment(node.name().as_slice(), op, &node.value());
+        self.assignment_doc(node.name().as_slice(), op, &node.value())
     }
 
     pub(super) fn fmt_local_variable_or_write_node(
         &mut self,
         node: &ruby_prism::LocalVariableOrWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "||=", &node.value())
     }
 
     pub(super) fn fmt_local_variable_and_write_node(
         &mut self,
         node: &ruby_prism::LocalVariableAndWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "&&=", &node.value())
     }
 
     pub(super) fn fmt_instance_variable_write_node(
         &mut self,
         node: &ruby_prism::InstanceVariableWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "=", &node.value())
     }
 
     pub(super) fn fmt_instance_variable_operator_write_node(
         &mut self,
         node: &ruby_prism::InstanceVariableOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment(node.name().as_slice(), op, &node.value());
+        self.assignment_doc(node.name().as_slice(), op, &node.value())
     }
 
     pub(super) fn fmt_instance_variable_or_write_node(
         &mut self,
         node: &ruby_prism::InstanceVariableOrWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "||=", &node.value())
     }
 
     pub(super) fn fmt_instance_variable_and_write_node(
         &mut self,
         node: &ruby_prism::InstanceVariableAndWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "&&=", &node.value())
     }
 
-    pub(super) fn fmt_constant_write_node(&mut self, node: &ruby_prism::ConstantWriteNode<'_>) {
-        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    pub(super) fn fmt_constant_write_node(
+        &mut self,
+        node: &ruby_prism::ConstantWriteNode<'_>,
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "=", &node.value())
     }
 
     pub(super) fn fmt_constant_operator_write_node(
         &mut self,
         node: &ruby_prism::ConstantOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment(node.name().as_slice(), op, &node.value());
+        self.assignment_doc(node.name().as_slice(), op, &node.value())
     }
 
     pub(super) fn fmt_constant_or_write_node(
         &mut self,
         node: &ruby_prism::ConstantOrWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "||=", &node.value())
     }
 
     pub(super) fn fmt_constant_and_write_node(
         &mut self,
         node: &ruby_prism::ConstantAndWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "&&=", &node.value())
     }
 
     pub(super) fn fmt_global_variable_write_node(
         &mut self,
         node: &ruby_prism::GlobalVariableWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "=", &node.value())
     }
 
     pub(super) fn fmt_global_variable_operator_write_node(
         &mut self,
         node: &ruby_prism::GlobalVariableOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment(node.name().as_slice(), op, &node.value());
+        self.assignment_doc(node.name().as_slice(), op, &node.value())
     }
 
     pub(super) fn fmt_global_variable_or_write_node(
         &mut self,
         node: &ruby_prism::GlobalVariableOrWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "||=", &node.value())
     }
 
     pub(super) fn fmt_global_variable_and_write_node(
         &mut self,
         node: &ruby_prism::GlobalVariableAndWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "&&=", &node.value())
     }
 
     pub(super) fn fmt_class_variable_write_node(
         &mut self,
         node: &ruby_prism::ClassVariableWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "=", &node.value())
     }
 
     pub(super) fn fmt_class_variable_operator_write_node(
         &mut self,
         node: &ruby_prism::ClassVariableOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment(node.name().as_slice(), op, &node.value());
+        self.assignment_doc(node.name().as_slice(), op, &node.value())
     }
 
     pub(super) fn fmt_class_variable_or_write_node(
         &mut self,
         node: &ruby_prism::ClassVariableOrWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "||=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "||=", &node.value())
     }
 
     pub(super) fn fmt_class_variable_and_write_node(
         &mut self,
         node: &ruby_prism::ClassVariableAndWriteNode<'_>,
-    ) {
-        self.write_assignment(node.name().as_slice(), "&&=", &node.value());
+    ) -> Doc {
+        self.assignment_doc(node.name().as_slice(), "&&=", &node.value())
     }
 
     pub(super) fn fmt_constant_path_write_node(
         &mut self,
         node: &ruby_prism::ConstantPathWriteNode<'_>,
-    ) {
-        let target = node.target();
-        self.write_assignment_to(|f| f.visit(&target.as_node()), "=", &node.value());
+    ) -> Doc {
+        let target = node.target().as_node();
+        self.assignment_to_doc(&target, "=", &node.value())
     }
 
     pub(super) fn fmt_constant_path_operator_write_node(
         &mut self,
         node: &ruby_prism::ConstantPathOperatorWriteNode<'_>,
-    ) {
-        let target = node.target();
+    ) -> Doc {
+        let target = node.target().as_node();
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_assignment_to(|f| f.visit(&target.as_node()), op, &node.value());
+        self.assignment_to_doc(&target, op, &node.value())
     }
 
     pub(super) fn fmt_constant_path_or_write_node(
         &mut self,
         node: &ruby_prism::ConstantPathOrWriteNode<'_>,
-    ) {
-        let target = node.target();
-        self.write_assignment_to(|f| f.visit(&target.as_node()), "||=", &node.value());
+    ) -> Doc {
+        let target = node.target().as_node();
+        self.assignment_to_doc(&target, "||=", &node.value())
     }
 
     pub(super) fn fmt_constant_path_and_write_node(
         &mut self,
         node: &ruby_prism::ConstantPathAndWriteNode<'_>,
-    ) {
-        let target = node.target();
-        self.write_assignment_to(|f| f.visit(&target.as_node()), "&&=", &node.value());
+    ) -> Doc {
+        let target = node.target().as_node();
+        self.assignment_to_doc(&target, "&&=", &node.value())
     }
 
-    pub(super) fn fmt_multi_write_node(&mut self, node: &ruby_prism::MultiWriteNode<'_>) {
-        let inline = self.inline;
-        self.inline = false;
-        if !inline {
-            self.write_indent();
-        }
-
-        self.write_multi_targets(node.lefts(), node.rest(), node.rights());
-
-        self.output.push_str(" = ");
-        self.inline = true;
-        self.visit(&node.value());
-        if !inline {
-            self.output.push('\n');
-        }
+    pub(super) fn fmt_multi_write_node(&mut self, node: &ruby_prism::MultiWriteNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_multi_targets(&mut run, node.lefts(), node.rest(), node.rights());
+        self.finish_assignment(run, "=", &node.value())
     }
 
-    /// Emits a comma-joined multiple-assignment target list
-    /// (`a, @b, (c, d), *rest`). Shared by `MultiWriteNode` and by the
-    /// nested `MultiTargetNode` that a parenthesized group parses as.
+    /// Appends a comma-joined multiple-assignment target list
+    /// (`a, @b, (c, d), *rest`) to `run`. Shared by `MultiWriteNode` and by
+    /// the nested `MultiTargetNode` that a parenthesized group parses as.
     ///
-    /// Every target is visited with `inline` set: a target list is always
-    /// one run of text, so leaf targets must not take the `write_leaf`
-    /// indent-and-newline path meant for statements.
-    fn write_multi_targets(
+    /// A target list is always one run of text, so it carries no line point
+    /// of its own: it either fits on the line the assignment starts or its
+    /// value breaks after the `=`.
+    fn run_multi_targets(
         &mut self,
+        run: &mut super::InlineRun,
         lefts: ruby_prism::NodeList<'_>,
         rest: Option<ruby_prism::Node<'_>>,
         rights: ruby_prism::NodeList<'_>,
@@ -209,72 +203,72 @@ impl Formatter {
         let mut first = true;
         for target in lefts.iter() {
             if !first {
-                self.output.push_str(", ");
+                self.run_text(run, ", ");
             }
             first = false;
-            self.inline = true;
-            self.visit(&target);
+            self.run_node(run, &target);
         }
         if let Some(rest) = rest {
             // A bare trailing comma (`a, b, = expr`) parses as an
             // `ImplicitRestNode` with nothing following it — it should stay
             // a bare comma, not grow an explicit `*` (that's only correct
             // for an actual anonymous splat target like `a, *, b = expr`,
-            // which parses as a `SplatNode` instead and is handled by the
-            // `visit` below).
+            // which parses as a `SplatNode` instead and goes through
+            // `run_node` below).
             if matches!(rest, ruby_prism::Node::ImplicitRestNode { .. }) {
-                self.output.push(',');
+                self.run_text(run, ",");
             } else {
                 if !first {
-                    self.output.push_str(", ");
+                    self.run_text(run, ", ");
                 }
-                self.inline = true;
-                self.visit(&rest);
+                self.run_node(run, &rest);
             }
             first = false;
         }
         for target in rights.iter() {
             if !first {
-                self.output.push_str(", ");
+                self.run_text(run, ", ");
             }
             first = false;
-            self.inline = true;
-            self.visit(&target);
+            self.run_node(run, &target);
         }
     }
 
     pub(super) fn fmt_call_operator_write_node(
         &mut self,
         node: &ruby_prism::CallOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_call_write(
+        self.call_write_doc(
             node.receiver(),
             node.call_operator_loc(),
             node.message_loc(),
             op,
             &node.value(),
-        );
+        )
     }
 
-    pub(super) fn fmt_call_or_write_node(&mut self, node: &ruby_prism::CallOrWriteNode<'_>) {
-        self.write_call_write(
+    pub(super) fn fmt_call_or_write_node(&mut self, node: &ruby_prism::CallOrWriteNode<'_>) -> Doc {
+        self.call_write_doc(
             node.receiver(),
             node.call_operator_loc(),
             node.message_loc(),
             "||=",
             &node.value(),
-        );
+        )
     }
 
-    pub(super) fn fmt_call_and_write_node(&mut self, node: &ruby_prism::CallAndWriteNode<'_>) {
-        self.write_call_write(
+    pub(super) fn fmt_call_and_write_node(
+        &mut self,
+        node: &ruby_prism::CallAndWriteNode<'_>,
+    ) -> Doc {
+        self.call_write_doc(
             node.receiver(),
             node.call_operator_loc(),
             node.message_loc(),
             "&&=",
             &node.value(),
-        );
+        )
     }
 
     /// Shared renderer for `receiver.attr op= value` (`CallOrWriteNode`,
@@ -284,181 +278,165 @@ impl Formatter {
     /// The message is taken from `message_loc` rather than `write_name`,
     /// which is the writer name Prism synthesizes (`padding=`) and not what
     /// the source says.
-    fn write_call_write(
+    fn call_write_doc(
         &mut self,
         receiver: Option<ruby_prism::Node<'_>>,
         call_operator: Option<ruby_prism::Location<'_>>,
         message: Option<ruby_prism::Location<'_>>,
         op: &str,
         value: &ruby_prism::Node<'_>,
-    ) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-
+    ) -> Doc {
+        let mut run = self.begin_run();
         if let Some(receiver) = receiver {
-            self.inline = true;
-            self.visit(&receiver);
+            self.run_node(&mut run, &receiver);
         }
         if let Some(call_operator) = call_operator {
-            self.write_bytes(call_operator.as_slice());
+            self.run_bytes(&mut run, call_operator.as_slice());
         }
         if let Some(message) = message {
-            self.write_bytes(message.as_slice());
+            self.run_bytes(&mut run, message.as_slice());
         }
-        self.output.push(' ');
-        self.output.push_str(op);
-        self.output.push(' ');
-
-        self.inline = true;
-        self.visit(value);
-
-        if !inline {
-            self.output.push('\n');
-        }
+        self.finish_assignment(run, op, value)
     }
 
     pub(super) fn fmt_local_variable_target_node(
         &mut self,
         node: &ruby_prism::LocalVariableTargetNode<'_>,
-    ) {
-        self.write_bytes(node.name().as_slice());
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_instance_variable_target_node(
         &mut self,
         node: &ruby_prism::InstanceVariableTargetNode<'_>,
-    ) {
-        self.write_bytes(node.name().as_slice());
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_class_variable_target_node(
         &mut self,
         node: &ruby_prism::ClassVariableTargetNode<'_>,
-    ) {
-        self.write_bytes(node.name().as_slice());
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_global_variable_target_node(
         &mut self,
         node: &ruby_prism::GlobalVariableTargetNode<'_>,
-    ) {
-        self.write_bytes(node.name().as_slice());
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
-    pub(super) fn fmt_constant_target_node(&mut self, node: &ruby_prism::ConstantTargetNode<'_>) {
-        self.write_bytes(node.name().as_slice());
+    pub(super) fn fmt_constant_target_node(
+        &mut self,
+        node: &ruby_prism::ConstantTargetNode<'_>,
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_constant_path_target_node(
         &mut self,
         node: &ruby_prism::ConstantPathTargetNode<'_>,
-    ) {
+    ) -> Doc {
+        let mut run = self.begin_run();
         // `parent` is absent for a cbase path (`::Foo, x = ...`), where the
         // leading `::` delimiter is the whole prefix.
         if let Some(parent) = node.parent() {
-            self.inline = true;
-            self.visit(&parent);
+            self.run_node(&mut run, &parent);
         }
-        self.write_bytes(node.delimiter_loc().as_slice());
-        self.write_bytes(node.name_loc().as_slice());
+        self.run_bytes(&mut run, node.delimiter_loc().as_slice());
+        self.run_bytes(&mut run, node.name_loc().as_slice());
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_call_target_node(&mut self, node: &ruby_prism::CallTargetNode<'_>) {
-        self.inline = true;
-        self.visit(&node.receiver());
-        self.write_bytes(node.call_operator_loc().as_slice());
+    pub(super) fn fmt_call_target_node(&mut self, node: &ruby_prism::CallTargetNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, &node.receiver());
+        self.run_bytes(&mut run, node.call_operator_loc().as_slice());
         // `name()` is the attribute-writer name Prism synthesizes (`a=`);
         // the source spelling of the message is `message_loc`.
-        self.write_bytes(node.message_loc().as_slice());
+        self.run_bytes(&mut run, node.message_loc().as_slice());
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_index_target_node(&mut self, node: &ruby_prism::IndexTargetNode<'_>) {
-        self.inline = true;
-        self.visit(&node.receiver());
-        self.write_bytes(node.opening_loc().as_slice());
+    pub(super) fn fmt_index_target_node(&mut self, node: &ruby_prism::IndexTargetNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, &node.receiver());
+        self.run_bytes(&mut run, node.opening_loc().as_slice());
         if let Some(arguments) = node.arguments() {
             for (i, argument) in arguments.arguments().iter().enumerate() {
                 if i > 0 {
-                    self.output.push_str(", ");
+                    self.run_text(&mut run, ", ");
                 }
-                self.inline = true;
-                self.visit(&argument);
+                self.run_node(&mut run, &argument);
             }
         }
-        self.write_bytes(node.closing_loc().as_slice());
+        self.run_bytes(&mut run, node.closing_loc().as_slice());
+        self.end_run(run)
     }
 
     /// A parenthesized destructuring group nested inside a larger target
     /// list (`a, (b, c) = 1, [2, 3]`).
-    pub(super) fn fmt_multi_target_node(&mut self, node: &ruby_prism::MultiTargetNode<'_>) {
+    pub(super) fn fmt_multi_target_node(&mut self, node: &ruby_prism::MultiTargetNode<'_>) -> Doc {
         let parenthesized = node.lparen_loc().is_some();
+        let mut run = self.begin_run();
         if parenthesized {
-            self.output.push('(');
+            self.run_text(&mut run, "(");
         }
-        self.write_multi_targets(node.lefts(), node.rest(), node.rights());
+        self.run_multi_targets(&mut run, node.lefts(), node.rest(), node.rights());
         if parenthesized {
-            self.output.push(')');
+            self.run_text(&mut run, ")");
         }
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_index_or_write_node(&mut self, node: &ruby_prism::IndexOrWriteNode<'_>) {
-        self.write_index_write(node.receiver(), node.arguments(), "||=", &node.value());
+    pub(super) fn fmt_index_or_write_node(
+        &mut self,
+        node: &ruby_prism::IndexOrWriteNode<'_>,
+    ) -> Doc {
+        self.index_write_doc(node.receiver(), node.arguments(), "||=", &node.value())
     }
 
-    pub(super) fn fmt_index_and_write_node(&mut self, node: &ruby_prism::IndexAndWriteNode<'_>) {
-        self.write_index_write(node.receiver(), node.arguments(), "&&=", &node.value());
+    pub(super) fn fmt_index_and_write_node(
+        &mut self,
+        node: &ruby_prism::IndexAndWriteNode<'_>,
+    ) -> Doc {
+        self.index_write_doc(node.receiver(), node.arguments(), "&&=", &node.value())
     }
 
     pub(super) fn fmt_index_operator_write_node(
         &mut self,
         node: &ruby_prism::IndexOperatorWriteNode<'_>,
-    ) {
+    ) -> Doc {
         let op = std::str::from_utf8(node.binary_operator_loc().as_slice()).unwrap_or("+=");
-        self.write_index_write(node.receiver(), node.arguments(), op, &node.value());
+        self.index_write_doc(node.receiver(), node.arguments(), op, &node.value())
     }
 
     /// Shared renderer for `receiver[args] op= value` (`IndexOrWriteNode`,
     /// `IndexAndWriteNode`, `IndexOperatorWriteNode`) — the compound-
     /// assignment counterpart to the plain `receiver[args] = value` case,
     /// which is a `CallNode` (`[]=`) handled in `calls.rs` instead.
-    fn write_index_write(
+    fn index_write_doc(
         &mut self,
         receiver: Option<ruby_prism::Node<'_>>,
         arguments: Option<ruby_prism::ArgumentsNode<'_>>,
         op: &str,
         value: &ruby_prism::Node<'_>,
-    ) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-
+    ) -> Doc {
+        let mut run = self.begin_run();
         if let Some(receiver) = receiver {
-            self.inline = true;
-            self.visit(&receiver);
+            self.run_node(&mut run, &receiver);
         }
-        self.output.push('[');
+        self.run_text(&mut run, "[");
         if let Some(arguments) = arguments {
             for (i, arg) in arguments.arguments().iter().enumerate() {
                 if i > 0 {
-                    self.output.push_str(", ");
+                    self.run_text(&mut run, ", ");
                 }
-                self.inline = true;
-                self.visit(&arg);
+                self.run_node(&mut run, &arg);
             }
         }
-        self.output.push(']');
-        self.output.push(' ');
-        self.output.push_str(op);
-        self.output.push(' ');
-
-        self.inline = true;
-        self.visit(value);
-
-        if !inline {
-            self.output.push('\n');
-        }
+        self.run_text(&mut run, "]");
+        self.finish_assignment(run, op, value)
     }
 }

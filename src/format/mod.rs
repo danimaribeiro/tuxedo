@@ -308,7 +308,7 @@ struct CommentSpan {
 /// once the run ends (`end_run`); only the `Doc`s are kept. Without it a
 /// child that still writes strings would decide its own layout as though
 /// its parent had written nothing, and lay out an overlong value flat.
-struct InlineRun {
+pub(super) struct InlineRun {
     start: usize,
     leaves: Vec<Doc>,
 }
@@ -791,56 +791,54 @@ impl Formatter {
         }
     }
 
-    fn write_assignment(&mut self, name: &[u8], op: &str, value: &ruby_prism::Node<'_>) {
-        self.write_assignment_to(|f| f.write_bytes(name), op, value);
+    /// `name op value` as a `Doc` -- the shape every simple write node
+    /// (`x = 1`, `@x ||= y`, `$x += 1`) reduces to.
+    fn assignment_doc(&mut self, name: &[u8], op: &str, value: &ruby_prism::Node<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_bytes(&mut run, name);
+        self.finish_assignment(run, op, value)
     }
 
-    fn write_assignment_to(
+    /// `assignment_doc` for a target that is a node rather than a name --
+    /// a constant path (`Foo::Bar = 1`).
+    fn assignment_to_doc(
         &mut self,
-        write_target: impl FnOnce(&mut Self),
+        target: &ruby_prism::Node<'_>,
         op: &str,
         value: &ruby_prism::Node<'_>,
-    ) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.inline = true;
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, target);
+        self.finish_assignment(run, op, value)
+    }
 
-        write_target(self);
-        self.output.push(' ');
-        self.output.push_str(op);
-        self.output.push(' ');
-
-        // The value renders at the statement's own indent -- never aligned
-        // under the `=`.
-        //
-        // RuboCop's stock `Layout/EndAlignment` is `keyword`: it wants an
-        // `if`/`case`/`begin` value's `end` under the column its opening
-        // keyword sits at. But that column is set by the length of the
-        // assignment target, so renaming `message` to `msg` reindents the
-        // whole value -- the bracket alignment this project rejects
-        // (AGENTS.md, property 2), reached through `=` instead of a
-        // bracket. `x << if ...` was already exempt from it; `=` was not.
-        //
-        // The old approximation of that alignment divided a raw character
-        // offset by the indent width and floored it, so it only landed on
-        // the keyword's column when the target's length happened to be an
-        // exact multiple of the indent -- and was off by up to one space
-        // otherwise, which is where rubocop's "Use 2 (not 1)"
-        // `Layout/IndentationWidth` complaints came from. It applied to
-        // every value that did not opt out, including `&&`/`||` pairs and
-        // the other operators that wrap, not just the keyword constructs
-        // it was written for.
-        //
-        // See `test-projects/thor/lib/thor/parser/option.rb`'s
-        // `type = case value ... when ... end`.
-        self.inline = true;
-        self.visit(value);
-
-        if !inline && !self.output.ends_with('\n') {
-            self.output.push('\n');
-        }
+    /// Closes an assignment whose target is already in `run`: ` op ` and
+    /// then the value.
+    ///
+    /// The value renders at the statement's own indent -- never aligned
+    /// under the `=`.
+    ///
+    /// RuboCop's stock `Layout/EndAlignment` is `keyword`: it wants an
+    /// `if`/`case`/`begin` value's `end` under the column its opening
+    /// keyword sits at. But that column is set by the length of the
+    /// assignment target, so renaming `message` to `msg` reindents the
+    /// whole value -- the bracket alignment this project rejects
+    /// (AGENTS.md, property 2), reached through `=` instead of a
+    /// bracket. `x << if ...` was already exempt from it; `=` was not.
+    ///
+    /// See `test-projects/thor/lib/thor/parser/option.rb`'s
+    /// `type = case value ... when ... end`.
+    fn finish_assignment(
+        &mut self,
+        mut run: InlineRun,
+        op: &str,
+        value: &ruby_prism::Node<'_>,
+    ) -> Doc {
+        self.run_text(&mut run, " ");
+        self.run_text(&mut run, op);
+        self.run_text(&mut run, " ");
+        self.run_node(&mut run, value);
+        self.end_run(run)
     }
 
     fn write_bytes(&mut self, bytes: &[u8]) {
@@ -1400,7 +1398,10 @@ impl Formatter {
     fn write_leaf_doc(&mut self, inline: bool, doc: Doc) {
         let rendered = self.render_doc_to_string(doc);
         self.output.push_str(&rendered);
-        if !inline {
+        // A node whose last child lays out its own multi-line body (`x = if
+        // a ... end`) has already ended the line; a second newline here
+        // would open a blank one.
+        if !inline && !rendered.ends_with('\n') {
             self.output.push('\n');
         }
     }
