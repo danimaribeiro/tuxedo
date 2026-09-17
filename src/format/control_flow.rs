@@ -86,7 +86,8 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
-            let header_line = self.line_of(node.predicate().location().start_offset());
+            let header_line =
+                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
             self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
@@ -95,6 +96,15 @@ impl Formatter {
             self.fmt_statements_node(&body);
         }
         if !single_line {
+            // A comment above `elsif`/`else`/`end` belongs to the branch
+            // it sits at the bottom of.
+            let closer = node
+                .subsequent()
+                .map(|s| s.location().start_offset())
+                .or_else(|| node.end_keyword_loc().map(|e| e.start_offset()));
+            if let Some(closer) = closer {
+                self.flush_comments_before(closer, node.statements().is_some());
+            }
             self.indent -= 1;
         }
 
@@ -139,6 +149,8 @@ impl Formatter {
             self.output.push_str("else; ");
         } else {
             self.output.push_str("else\n");
+            let header_line = self.line_of(node.else_keyword_loc().start_offset());
+            self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
 
@@ -149,6 +161,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; end");
         } else {
+            if let Some(end_keyword) = node.end_keyword_loc() {
+                self.flush_comments_before(end_keyword.start_offset(), node.statements().is_some());
+            }
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -187,12 +202,39 @@ impl Formatter {
                 self.output.push_str("; ");
             } else {
                 self.output.push('\n');
+                if let Some(begin_keyword) = node.begin_keyword_loc() {
+                    self.emit_trailing_comment_if_same_line(
+                        self.line_of(begin_keyword.start_offset()),
+                    );
+                }
                 self.indent += 1;
             }
         }
 
         if let Some(statements) = node.statements() {
             self.fmt_statements_node(&statements);
+        }
+
+        // Where each section of the body stops: a comment above `rescue`/
+        // `else`/`ensure`/`end` stays at the bottom of the section before
+        // it. An implicit `begin` (a `def`/block body with a `rescue`) has
+        // no `end` of its own; whoever owns that `end` flushes the last
+        // section.
+        let end_offset = node.end_keyword_loc().map(|l| l.start_offset());
+        let ensure_offset = node
+            .ensure_clause()
+            .map(|e| e.location().start_offset())
+            .or(end_offset);
+        let else_offset = node
+            .else_clause()
+            .map(|e| e.location().start_offset())
+            .or(ensure_offset);
+        let rescue_offset = node
+            .rescue_clause()
+            .map(|r| r.location().start_offset())
+            .or(else_offset);
+        if let Some(closer) = rescue_offset {
+            self.flush_comments_before(closer, node.statements().is_some());
         }
 
         if has_keyword && !single_line {
@@ -218,7 +260,7 @@ impl Formatter {
                 if single_line {
                     self.output.push_str("; ");
                 }
-                self.fmt_rescue_node(&rescue);
+                self.write_rescue_clause(&rescue, else_offset);
             }
             if let Some(else_clause) = node.else_clause() {
                 if single_line {
@@ -226,12 +268,18 @@ impl Formatter {
                 } else {
                     self.write_indent();
                     self.output.push_str("else\n");
+                    self.emit_trailing_comment_if_same_line(
+                        self.line_of(else_clause.else_keyword_loc().start_offset()),
+                    );
                     self.indent += 1;
                 }
                 if let Some(statements) = else_clause.statements() {
                     self.fmt_statements_node(&statements);
                 }
                 if !single_line {
+                    if let Some(closer) = ensure_offset {
+                        self.flush_comments_before(closer, else_clause.statements().is_some());
+                    }
                     self.indent -= 1;
                 }
             }
@@ -284,6 +332,12 @@ impl Formatter {
     }
 
     pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
+        self.write_rescue_clause(node, None);
+    }
+
+    /// `closer` is where the last `rescue` of the chain stops (the start
+    /// of the `else`/`ensure`/`end` that follows), if the caller knows it.
+    fn write_rescue_clause(&mut self, node: &ruby_prism::RescueNode<'_>, closer: Option<usize>) {
         let single_line = self.single_line;
         if !single_line {
             self.write_indent();
@@ -307,6 +361,17 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_end = node
+                .reference()
+                .map(|r| r.location().end_offset())
+                .or_else(|| {
+                    node.exceptions()
+                        .iter()
+                        .last()
+                        .map(|e| e.location().end_offset())
+                })
+                .unwrap_or_else(|| node.keyword_loc().end_offset());
+            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
             self.indent += 1;
         }
 
@@ -315,6 +380,13 @@ impl Formatter {
         }
 
         if !single_line {
+            let section_end = node
+                .subsequent()
+                .map(|s| s.location().start_offset())
+                .or(closer);
+            if let Some(section_end) = section_end {
+                self.flush_comments_before(section_end, node.statements().is_some());
+            }
             self.indent -= 1;
         }
 
@@ -322,7 +394,7 @@ impl Formatter {
             if single_line {
                 self.output.push_str("; ");
             }
-            self.fmt_rescue_node(&subsequent);
+            self.write_rescue_clause(&subsequent, closer);
         }
     }
 
@@ -336,6 +408,9 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            self.emit_trailing_comment_if_same_line(
+                self.line_of(node.ensure_keyword_loc().start_offset()),
+            );
             self.indent += 1;
         }
 
@@ -344,6 +419,10 @@ impl Formatter {
         }
 
         if !single_line {
+            self.flush_comments_before(
+                node.end_keyword_loc().start_offset(),
+                node.statements().is_some(),
+            );
             self.indent -= 1;
         }
     }
@@ -389,6 +468,9 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_line =
+                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
+            self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
 
@@ -396,6 +478,13 @@ impl Formatter {
             self.fmt_statements_node(&body);
         }
         if !single_line {
+            let closer = node
+                .else_clause()
+                .map(|e| e.location().start_offset())
+                .or_else(|| node.end_keyword_loc().map(|e| e.start_offset()));
+            if let Some(closer) = closer {
+                self.flush_comments_before(closer, node.statements().is_some());
+            }
             self.indent -= 1;
         }
 
@@ -462,6 +551,9 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_line =
+                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
+            self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
 
@@ -472,6 +564,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; end");
         } else {
+            if let Some(closing) = node.closing_loc() {
+                self.flush_comments_before(closing.start_offset(), node.statements().is_some());
+            }
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -522,6 +617,9 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_line =
+                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
+            self.emit_trailing_comment_if_same_line(header_line);
             self.indent += 1;
         }
 
@@ -532,6 +630,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; end");
         } else {
+            if let Some(closing) = node.closing_loc() {
+                self.flush_comments_before(closing.start_offset(), node.statements().is_some());
+            }
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -554,11 +655,17 @@ impl Formatter {
         self.visit(&node.collection());
         self.inline = false;
         self.output.push('\n');
+        let header_line = self.line_of(node.collection().location().end_offset().saturating_sub(1));
+        self.emit_trailing_comment_if_same_line(header_line);
 
         self.indent += 1;
         if let Some(body) = node.statements() {
             self.fmt_statements_node(&body);
         }
+        self.flush_comments_before(
+            node.end_keyword_loc().start_offset(),
+            node.statements().is_some(),
+        );
         self.indent -= 1;
 
         self.write_indent();
@@ -584,9 +691,11 @@ impl Formatter {
             self.output.push('\n');
         }
 
-        for when in node.conditions().iter() {
-            self.visit(&when);
-        }
+        self.write_case_clauses(
+            node.conditions().iter().collect(),
+            node.else_clause().map(|e| e.location().start_offset()),
+            node.end_keyword_loc().start_offset(),
+        );
 
         if let Some(consequent) = node.else_clause() {
             if !single_line {
@@ -605,12 +714,38 @@ impl Formatter {
         }
     }
 
+    /// Renders the `when`/`in` clauses of a `case`, telling each one where
+    /// it stops so it can keep a comment at the bottom of its body. A
+    /// comment between `case x` and the first clause goes above that
+    /// clause.
+    fn write_case_clauses(
+        &mut self,
+        clauses: Vec<ruby_prism::Node<'_>>,
+        else_offset: Option<usize>,
+        end_offset: usize,
+    ) {
+        for (i, clause) in clauses.iter().enumerate() {
+            if i == 0 {
+                self.flush_leading_comments(clause.location().start_offset(), false);
+            }
+            let closer = clauses
+                .get(i + 1)
+                .map(|next| next.location().start_offset())
+                .or(else_offset)
+                .unwrap_or(end_offset);
+            self.clause_closer = Some(closer);
+            self.visit(clause);
+            self.clause_closer = None;
+        }
+    }
+
     /// A `when` clause always ends by leaving a separator in place for
     /// whatever comes next (another `when`, an `else`, or `end`) --
     /// `; ` in single-line mode (see fmt_block_node), a real newline
     /// otherwise -- so callers never need to add one of their own.
     pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
         let single_line = self.single_line;
+        let closer = self.clause_closer.take();
         if !single_line {
             self.write_indent();
         }
@@ -627,6 +762,14 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_end = node
+                .conditions()
+                .iter()
+                .last()
+                .map_or(node.keyword_loc().end_offset(), |c| {
+                    c.location().end_offset()
+                });
+            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
             self.indent += 1;
         }
 
@@ -637,6 +780,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; ");
         } else {
+            if let Some(closer) = closer {
+                self.flush_comments_before(closer, node.statements().is_some());
+            }
             self.indent -= 1;
         }
     }
@@ -665,9 +811,11 @@ impl Formatter {
             self.output.push('\n');
         }
 
-        for in_clause in node.conditions().iter() {
-            self.visit(&in_clause);
-        }
+        self.write_case_clauses(
+            node.conditions().iter().collect(),
+            node.else_clause().map(|e| e.location().start_offset()),
+            node.end_keyword_loc().start_offset(),
+        );
 
         if let Some(consequent) = node.else_clause() {
             if !single_line {
@@ -693,6 +841,7 @@ impl Formatter {
     /// always leaves a separator in place for whatever comes next.
     pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
         let single_line = self.single_line;
+        let closer = self.clause_closer.take();
         if !single_line {
             self.write_indent();
         }
@@ -704,6 +853,8 @@ impl Formatter {
             self.output.push_str("; ");
         } else {
             self.output.push('\n');
+            let header_end = node.pattern().location().end_offset();
+            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
             self.indent += 1;
         }
 
@@ -714,6 +865,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; ");
         } else {
+            if let Some(closer) = closer {
+                self.flush_comments_before(closer, node.statements().is_some());
+            }
             self.indent -= 1;
         }
     }
@@ -802,12 +956,18 @@ impl Formatter {
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
         let op = node.operator_loc().as_slice();
         let op_str = std::str::from_utf8(op).unwrap_or("&&");
+        if self.write_verbatim_if_commented(&node.as_node()) {
+            return;
+        }
         self.fmt_binary_bool_node(node.left(), op_str, node.right());
     }
 
     pub(super) fn fmt_or_node(&mut self, node: &ruby_prism::OrNode<'_>) {
         let op = node.operator_loc().as_slice();
         let op_str = std::str::from_utf8(op).unwrap_or("||");
+        if self.write_verbatim_if_commented(&node.as_node()) {
+            return;
+        }
         self.fmt_binary_bool_node(node.left(), op_str, node.right());
     }
 

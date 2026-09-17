@@ -21,7 +21,7 @@
 #
 # What is reachable is a subset relation — everything Tuxedo emits is
 # something rubocop accepts — plus two invariants that hold regardless of
-# rubocop. This script measures all four:
+# rubocop. This script measures all five:
 #
 #   0. MEANING   The output is the same program. Tuxedo parses its own
 #                output and compares it to the source's AST (see
@@ -40,13 +40,18 @@
 #   2. IDEMPOTENT  format(format(x)) == format(x). A formatter that keeps
 #                changing its mind produces churn in every diff.
 #
-#   3. LAYOUT    `rubocop --only Layout` reports no offenses on the output,
+#   3. COMMENTS `scripts/comment-anchors.rb`: how many comments ended up next
+#                to different code than in the source. The meaning check
+#                already guarantees none is lost; a comment that drifts away
+#                from what it describes is the remaining way to ruin one.
+#
+#   4. LAYOUT    `rubocop --only Layout` reports no offenses on the output,
 #                against scripts/format-verify.rubocop.yml — which encodes
 #                the layout Tuxedo is aiming for (all-or-nothing expansion,
 #                block indentation), not rubocop's stock defaults. See the
 #                comments in that file.
 #
-# All four are ratchets, not pass/fail bars: Tuxedo is early, and the
+# All five are ratchets, not pass/fail bars: Tuxedo is early, and the
 # numbers are expected to start high and only ever go down. Record them
 # before a change and compare after.
 
@@ -98,7 +103,7 @@ format_err="$(mktemp)"
 
 # --- 0. Meaning (AST equivalence) -------------------------------------
 echo
-echo "[0/3] Meaning check (source AST == output AST)..."
+echo "[0/4] Meaning check (source AST == output AST)..."
 # Syntax errors are not counted: those files never parsed (see the parse
 # check's "skipped"), and tuxedo leaves them alone by design.
 meaning_changed="$(grep -c 'formatting would change what this code does' "$format_err" || true)"
@@ -113,7 +118,7 @@ rm -f "$format_err"
 
 # --- 1. Parse check ---------------------------------------------------
 echo
-echo "[1/3] Parse check (ruby -c)..."
+echo "[1/4] Parse check (ruby -c)..."
 parse_ok=0
 parse_regressed=0
 parse_skipped=0
@@ -139,7 +144,7 @@ done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
 
 # --- 2. Idempotence ---------------------------------------------------
 echo
-echo "[2/3] Idempotence check (format twice)..."
+echo "[2/4] Idempotence check (format twice)..."
 TWICE="$BASE/verify-twice"
 rm -rf "$TWICE"
 cp -r "$OUT" "$TWICE"
@@ -165,9 +170,19 @@ while IFS= read -r -d '' file; do
 done < <(find "$OUT" -name '*.rb' -print0 | sort -z)
 rm -rf "$TWICE"
 
-# --- 3. Layout conformance --------------------------------------------
+# --- 3. Comment placement ---------------------------------------------
 echo
-echo "[3/3] Layout conformance (rubocop --only Layout)..."
+echo "[3/4] Comment placement (scripts/comment-anchors.rb)..."
+comments_out="$(mktemp)"
+ruby "$ROOT/scripts/comment-anchors.rb" "$SRC" "$OUT" --list 25 >"$comments_out"
+grep DISPLACED "$comments_out" | cut -c1-160 || true
+comments_summary="$(tail -1 "$comments_out")"
+comments_summary="${comments_summary#comments: }"
+rm -f "$comments_out"
+
+# --- 4. Layout conformance --------------------------------------------
+echo
+echo "[4/4] Layout conformance (rubocop --only Layout)..."
 layout_offenses="n/a"
 if command -v rubocop >/dev/null 2>&1; then
   # Syntax errors would be reported as Lint/Syntax and drown out the Layout
@@ -208,6 +223,7 @@ printf "  meaning     %s files refused: formatting would have changed the AST\n"
 printf "  parse       %s ok, %s BROKEN by tuxedo (%s skipped, never parsed)\n" \
   "$parse_ok" "$parse_regressed" "$parse_skipped"
 printf "  idempotent  %s files change on a second format\n" "$unstable"
+printf "  comments    %s\n" "$comments_summary"
 printf "  layout      %s offenses across %s distinct cops\n" \
   "${layout_total:-n/a}" "${layout_offenses:-n/a}"
 echo "======================================================================"

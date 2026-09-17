@@ -64,6 +64,9 @@ impl Formatter {
         if single_line {
             self.output.push_str("; end");
         } else {
+            if let Some(end_keyword) = node.end_keyword_loc() {
+                self.flush_comments_before(end_keyword.start_offset(), node.body().is_some());
+            }
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -320,15 +323,21 @@ impl Formatter {
         self.output.push(' ');
         self.output.push_str(if brace { "{" } else { "do" });
 
+        let (opening_end, closing_start) = (
+            node.opening_loc().end_offset(),
+            node.closing_loc().start_offset(),
+        );
         if brace {
-            self.write_brace_block_body(node.body());
+            self.write_brace_block_body(node.body(), opening_end, closing_start);
         } else {
             self.output.push('\n');
+            self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
             self.indent += 1;
             if let Some(body) = node.body() {
                 self.inline = false;
                 self.visit(&body);
             }
+            self.flush_comments_before(closing_start, node.body().is_some());
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -351,14 +360,25 @@ impl Formatter {
             self.visit(&params);
         }
 
+        let (opening_end, closing_start) = (
+            node.opening_loc().end_offset(),
+            node.closing_loc().start_offset(),
+        );
         if brace {
-            self.write_brace_block_body(node.body());
+            self.write_brace_block_body(node.body(), opening_end, closing_start);
         } else {
             self.output.push('\n');
+            // `do |x| # why`: the header ends at the closing pipe when
+            // there are parameters, at `do` otherwise.
+            let header_end = node
+                .parameters()
+                .map_or(opening_end, |p| p.location().end_offset().max(opening_end));
+            self.emit_trailing_comment_if_same_line(self.line_of(header_end));
             self.indent += 1;
             if let Some(body) = node.body() {
                 self.visit(&body);
             }
+            self.flush_comments_before(closing_start, node.body().is_some());
             self.indent -= 1;
             self.write_indent();
             self.output.push_str("end");
@@ -371,8 +391,27 @@ impl Formatter {
     /// indent, `}` on its own line). A body with more than one statement
     /// always expands, regardless of width. A `{ }` nested inside another
     /// still-flat brace body stays flat.
-    fn write_brace_block_body(&mut self, body: Option<ruby_prism::Node<'_>>) {
+    ///
+    /// A comment anywhere between the braces also forces the expanded
+    /// shape: `{ # why` has no flat form that keeps the comment in place.
+    fn write_brace_block_body(
+        &mut self,
+        body: Option<ruby_prism::Node<'_>>,
+        opening_end: usize,
+        closing_start: usize,
+    ) {
+        let has_comment = self.has_pending_comment_in(opening_end, closing_start)
+            && !self.single_line
+            && self.capture_depth == 0;
         let Some(body) = body else {
+            if has_comment {
+                self.output.push('\n');
+                self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
+                self.indent += 1;
+                self.flush_comments_before(closing_start, false);
+                self.indent -= 1;
+                self.write_indent();
+            }
             self.output.push('}');
             return;
         };
@@ -400,7 +439,7 @@ impl Formatter {
             .as_statements_node()
             .is_some_and(|s| s.body().iter().count() > 1);
 
-        if !multiline_body {
+        if !multiline_body && !has_comment {
             let snap = self.capture_snapshot();
             let was_single_line = self.single_line;
             self.single_line = true;
@@ -426,13 +465,15 @@ impl Formatter {
             self.restore_capture_snapshot(snap);
         }
         self.output.push('\n');
+        self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
         self.indent += 1;
         self.inline = false;
         self.visit(&body);
-        self.indent -= 1;
         if !self.output.ends_with('\n') {
             self.output.push('\n');
         }
+        self.flush_comments_before(closing_start, true);
+        self.indent -= 1;
         self.write_indent();
         self.output.push('}');
     }

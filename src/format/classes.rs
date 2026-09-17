@@ -23,6 +23,7 @@ impl Formatter {
         if let Some(body) = node.body() {
             self.visit(&body);
         }
+        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
         self.indent -= 1;
 
         self.write_indent();
@@ -41,11 +42,14 @@ impl Formatter {
         self.inline = true;
         self.visit(&node.constant_path());
         self.output.push('\n');
+        let header_line = self.line_of(node.constant_path().location().end_offset());
+        self.emit_trailing_comment_if_same_line(header_line);
 
         self.indent += 1;
         if let Some(body) = node.body() {
             self.visit(&body);
         }
+        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
         self.indent -= 1;
 
         self.write_indent();
@@ -71,6 +75,7 @@ impl Formatter {
         if let Some(body) = node.body() {
             self.visit(&body);
         }
+        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
         self.indent -= 1;
 
         self.write_indent();

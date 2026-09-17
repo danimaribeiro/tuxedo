@@ -359,6 +359,11 @@ struct Formatter {
     /// so a surrounding Doc nest (e.g. `a || b { ... }`) only shifts the
     /// first line. Stay flat while capturing.
     capture_depth: usize,
+    /// Where the `when`/`in` clause about to be rendered stops: the start
+    /// of the next clause, the `else`, or the `end`. Set by the enclosing
+    /// `case` right before it visits each clause, which has no other way
+    /// to learn it; taken (and so cleared) by the clause.
+    clause_closer: Option<usize>,
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
@@ -392,6 +397,7 @@ impl Formatter {
             heredoc_end_line: None,
             trailing_reserve: 0,
             capture_depth: 0,
+            clause_closer: None,
         }
     }
 
@@ -556,6 +562,11 @@ impl Formatter {
     /// "flat" in the outer group, so sibling items share a line with the
     /// broken nested collection, and the nest can't reindent the baked-in
     /// continuation lines.
+    ///
+    /// `span` is the source range between the brackets (end of the opening
+    /// token, start of the closing one). A comment anywhere in it forces
+    /// the expanded shape too, with each comment kept next to its item --
+    /// see `write_commented_bracketed_items`.
     fn write_bracketed_items(
         &mut self,
         open: &str,
@@ -563,7 +574,16 @@ impl Formatter {
         items: &[ruby_prism::Node<'_>],
         close_sep: pretty::RcDoc<'static, ()>,
         close: &str,
+        span: Option<(usize, usize)>,
     ) {
+        if let Some((start, end)) = span
+            && !self.single_line
+            && self.capture_depth == 0
+            && self.has_pending_comment_in(start, end)
+        {
+            self.write_commented_bracketed_items(open, items, close, (start, end));
+            return;
+        }
         if items.iter().any(forces_list_break) {
             self.write_expanded_bracketed_items(open, items, close);
             return;
@@ -611,6 +631,111 @@ impl Formatter {
             self.output.push('\n');
             self.comment_cursor += 1;
         }
+    }
+
+    /// True if a comment that has not been emitted yet starts inside
+    /// `start..end`. A construct that could otherwise render on one line
+    /// (a `{ }` block, a bracketed list) must not when this holds: a `#`
+    /// comment runs to the end of its line, so there is no flat form that
+    /// keeps it next to the code it describes.
+    fn has_pending_comment_in(&self, start: usize, end: usize) -> bool {
+        self.comments[self.comment_cursor..]
+            .iter()
+            .take_while(|c| c.start < end)
+            .any(|c| c.start >= start)
+    }
+
+    /// Emits, as own-line comments at the current indent, every pending
+    /// comment that starts before `offset`. Called with the body's indent
+    /// still in effect, right before a keyword that closes or splits a
+    /// body (`end`, `else`, `when`, `rescue`, `}`, ...), so a comment
+    /// sitting at the bottom of a body stays inside it:
+    ///
+    /// ```ruby
+    /// def perform
+    ///   # Override in subclasses
+    /// end
+    /// ```
+    ///
+    /// Without this the comment stays pending until the next statement
+    /// list picks it up -- after the `end`, in a different scope.
+    ///
+    /// `after_statements` says whether the body had any statements: a
+    /// blank line the author left above the comment is kept only then,
+    /// since a blank line directly under the header is not
+    /// (Layout/EmptyLinesAround*Body).
+    fn flush_comments_before(&mut self, offset: usize, after_statements: bool) {
+        self.flush_comments(offset, after_statements, true);
+    }
+
+    /// `flush_comments_before` for a position that is not the bottom of a
+    /// body -- above the first `when` of a `case`, above a list item -- so
+    /// there is only one level a comment can sit at: the current one.
+    fn flush_leading_comments(&mut self, offset: usize, after_previous: bool) {
+        self.flush_comments(offset, after_previous, false);
+    }
+
+    fn flush_comments(&mut self, offset: usize, after_statements: bool, bottom_of_body: bool) {
+        if self.single_line || self.capture_depth > 0 {
+            return;
+        }
+        // A comment the author aligned with the branch keyword that follows
+        // (`# about the next branch` right above a `when`/`else`/`rescue`)
+        // describes that branch, not the body above it, and stays at the
+        // keyword's level. Only for keywords that open another branch:
+        // nothing follows an `end` for a comment to be about.
+        let closer_column = offset - self.line_starts[self.line_of(offset)];
+        let rest = &self.source[offset.min(self.source.len())..];
+        let closer_opens_branch = bottom_of_body
+            && ["else", "elsif", "when", "in", "rescue", "ensure"]
+                .iter()
+                .any(|keyword| {
+                    rest.strip_prefix(keyword).is_some_and(|after| {
+                        !after.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                    })
+                });
+
+        let mut first = true;
+        while self.comment_cursor < self.comments.len()
+            && self.comments[self.comment_cursor].start < offset
+        {
+            let start = self.comments[self.comment_cursor].start;
+            let line = self.line_of(start);
+            let column = start - self.line_starts[line];
+            let at_keyword_level =
+                closer_opens_branch && column <= closer_column && self.indent > 0;
+            if (after_statements || !first) && self.source_line_is_blank(line.wrapping_sub(1)) {
+                self.ensure_blank_line();
+            }
+            if !self.output.ends_with('\n') {
+                self.output.push('\n');
+            }
+            if at_keyword_level {
+                self.indent -= 1;
+                self.write_indent();
+                self.indent += 1;
+            } else {
+                self.write_indent();
+            }
+            let formatted =
+                Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+            self.output.push_str(&formatted);
+            self.output.push('\n');
+            self.comment_cursor += 1;
+            first = false;
+        }
+    }
+
+    fn source_line_is_blank(&self, line: usize) -> bool {
+        let Some(&start) = self.line_starts.get(line) else {
+            return false;
+        };
+        let end = self
+            .line_starts
+            .get(line + 1)
+            .copied()
+            .unwrap_or(self.source.len());
+        self.source[start..end].trim().is_empty()
     }
 
     fn flush_remaining_comments(&mut self) {
@@ -720,6 +845,65 @@ impl Formatter {
         self.output.push_str(close);
     }
 
+    /// The expanded shape of `write_expanded_bracketed_items`, for a list
+    /// with comments inside its brackets. Each comment stays where the
+    /// author put it relative to the items:
+    ///
+    /// ```ruby
+    /// foo(
+    ///   # own-line: above the item that follows it
+    ///   1, # trailing: after the item (and its comma) on the same line
+    ///   2
+    ///   # dangling: after the last item, above the closing bracket
+    /// )
+    /// ```
+    fn write_commented_bracketed_items(
+        &mut self,
+        open: &str,
+        items: &[ruby_prism::Node<'_>],
+        close: &str,
+        (opening_end, closing_start): (usize, usize),
+    ) {
+        self.output.push_str(open);
+        self.output.push('\n');
+        // `foo( # why`: nothing to attach it to but the list itself.
+        self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
+        self.indent += 1;
+        let last = items.len().saturating_sub(1);
+        for (i, item) in items.iter().enumerate() {
+            self.flush_leading_comments(item.location().start_offset(), i > 0);
+            self.write_indent();
+            self.inline = true;
+            self.visit(item);
+            while self.output.ends_with('\n') {
+                self.output.pop();
+            }
+            if i != last {
+                self.output.push(',');
+            }
+            self.output.push('\n');
+
+            // A trailing comment belongs to this item if it is on the
+            // line the item ends on and before the next item starts
+            // (`1, 2, # two` is about `2`).
+            let item_end_line = self.line_of(item.location().end_offset().saturating_sub(1));
+            let next_start = items
+                .get(i + 1)
+                .map_or(closing_start, |next| next.location().start_offset());
+            let is_trailing = self
+                .comments
+                .get(self.comment_cursor)
+                .is_some_and(|c| c.start < next_start && self.line_of(c.start) == item_end_line);
+            if is_trailing {
+                self.emit_trailing_comment_if_same_line(item_end_line);
+            }
+        }
+        self.flush_comments_before(closing_start, !items.is_empty());
+        self.indent -= 1;
+        self.write_indent();
+        self.output.push_str(close);
+    }
+
     /// Writes `items` one-per-line at the current indent, comma-separated,
     /// with the first item continuing on the current line. Caller is
     /// responsible for any leading indent (so this works both as the body
@@ -799,6 +983,10 @@ impl Formatter {
     /// real block it belongs inside the argument list (comma-joined with
     /// any positional args), not after the closing paren.
     fn write_call_args(&mut self, node: &ruby_prism::CallNode<'_>, parenthesized: bool) {
+        let span = node
+            .opening_loc()
+            .zip(node.closing_loc())
+            .map(|(open, close)| (open.end_offset(), close.start_offset()));
         let positional: Vec<_> = node
             .arguments()
             .map(|a| a.arguments().iter().collect())
@@ -807,7 +995,7 @@ impl Formatter {
             Some(b @ ruby_prism::Node::BlockArgumentNode { .. }) => Some(b),
             _ => None,
         };
-        self.write_arg_list(parenthesized, positional, block_pass);
+        self.write_arg_list(parenthesized, positional, block_pass, span);
     }
 
     /// Shared argument-list renderer for calls, `super`, and `yield`.
@@ -833,6 +1021,7 @@ impl Formatter {
         parenthesized: bool,
         mut items: Vec<ruby_prism::Node<'a>>,
         block_pass: Option<ruby_prism::Node<'a>>,
+        span: Option<(usize, usize)>,
     ) {
         if items.is_empty() && block_pass.is_none() && !parenthesized {
             return;
@@ -858,6 +1047,7 @@ impl Formatter {
                 &items,
                 pretty::RcDoc::line_(),
                 ")",
+                span,
             );
             return;
         }
@@ -1051,6 +1241,104 @@ impl Formatter {
             self.comment_cursor += 1;
         }
         self.write_leaf(|f| f.output.push_str(&text));
+    }
+
+    /// Safety valve for a comment in a place the emitter has nowhere to
+    /// put it: between the operands of an operator, or between the links
+    /// of a method chain.
+    ///
+    /// ```ruby
+    /// methods = public_instance_methods(true) -
+    ///   # Except for public instance methods of Base and its ancestors
+    ///   Base.public_instance_methods(true)
+    /// ```
+    ///
+    /// Those constructs are rendered through captured one-line strings, so
+    /// the comment would stay pending and surface after the statement,
+    /// describing nothing. If a pending comment sits in one of `node`'s
+    /// gaps (see `has_comment_in_gaps`), copies `node` through verbatim
+    /// instead and returns true: an unformatted expression beats a
+    /// misplaced comment.
+    ///
+    /// Not while capturing (the verbatim text may span lines, which a
+    /// captured leaf must not), and not if the node may contain a heredoc
+    /// (see `write_verbatim`'s known gap) -- both fall back to the old
+    /// behavior. Goes away once these constructs are built as Docs.
+    fn write_verbatim_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> bool {
+        if self.single_line || self.capture_depth > 0 {
+            return false;
+        }
+        let location = node.location();
+        let (start, end) = (location.start_offset(), location.end_offset());
+        // Cheap pre-check before walking the expression.
+        if !self.has_pending_comment_in(start, end) || !self.has_comment_in_gaps(node) {
+            return false;
+        }
+        if self
+            .source
+            .get(start..end)
+            .unwrap_or_default()
+            .contains("<<")
+        {
+            return false;
+        }
+        self.write_verbatim(node);
+        true
+    }
+
+    /// True if a pending comment sits *between* the parts of a chain or
+    /// operator expression: after a receiver and before the `.method` or
+    /// operator that follows it, or between an operator and its right-hand
+    /// side. Walks down the receiver / left-hand spine, since
+    /// `a.b # why` + `.c` nests the commented link inside the outer call.
+    ///
+    /// Deliberately not "anywhere inside `node`": a comment inside a
+    /// receiver's own brackets (`{ # why ... }.freeze`) is that list's to
+    /// place, and going verbatim there would give up formatting the list.
+    fn has_comment_in_gaps(&self, node: &ruby_prism::Node<'_>) -> bool {
+        if let Some(call) = node.as_call_node() {
+            let Some(receiver) = call.receiver() else {
+                return false;
+            };
+            let gap_start = receiver.location().end_offset();
+            let is_operator = call.call_operator_loc().is_none()
+                && !call
+                    .name()
+                    .as_slice()
+                    .first()
+                    .is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'[');
+            let gap_end = if is_operator {
+                call.arguments()
+                    .and_then(|a| a.arguments().iter().next())
+                    .map(|arg| arg.location().start_offset())
+            } else {
+                call.message_loc().map(|m| m.start_offset())
+            };
+            return gap_end.is_some_and(|end| self.has_pending_comment_in(gap_start, end))
+                || self.has_comment_in_gaps(&receiver);
+        }
+        let (left, right) = if let Some(and) = node.as_and_node() {
+            (and.left(), and.right())
+        } else if let Some(or) = node.as_or_node() {
+            (or.left(), or.right())
+        } else if let Some(parens) = node.as_parentheses_node() {
+            // `(a -\n # why\n b).uniq`
+            return parens.body().is_some_and(|body| {
+                body.as_statements_node().is_some_and(|statements| {
+                    statements
+                        .body()
+                        .iter()
+                        .any(|s| self.has_comment_in_gaps(&s))
+                })
+            });
+        } else {
+            return false;
+        };
+        self.has_pending_comment_in(
+            left.location().end_offset(),
+            right.location().start_offset(),
+        ) || self.has_comment_in_gaps(&left)
+            || self.has_comment_in_gaps(&right)
     }
 
     fn write_leaf(&mut self, write: impl FnOnce(&mut Self)) {
