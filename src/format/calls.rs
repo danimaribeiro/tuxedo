@@ -106,7 +106,7 @@ impl Formatter {
             .collect();
         self.indent -= 1;
 
-        let nest_width = self.indent_width() + self.indent_str.len();
+        let nest_width = self.indent_str.len();
         let tail = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
         let doc = base_doc.append(tail.indent(nest_width).group());
         Some(self.render_doc_to_string(doc))
@@ -262,7 +262,7 @@ impl Formatter {
                 if let Some(arg) = single_arg {
                     let receiver_doc = self.node_doc(&receiver);
                     let arg_doc = self.node_doc(&arg);
-                    let nest_width = self.indent_width() + self.indent_str.len();
+                    let nest_width = self.indent_str.len();
                     let doc = receiver_doc
                         .append(Doc::text(" "))
                         .append(Doc::text(name_str.to_string()))

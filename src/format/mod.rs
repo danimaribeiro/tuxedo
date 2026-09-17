@@ -426,24 +426,26 @@ impl Formatter {
     }
 
     /// The absolute column the current indent level starts at, i.e. how many
-    /// spaces `write_indent` would emit right now. A `Doc` rendered via
-    /// `render_doc_to_string` is laid out as if starting fresh at column 0,
-    /// so any construct that nests its wrapped continuation lines needs to
-    /// add this in as the baseline — otherwise a wrapped Doc's continuation
-    /// lines would ignore how deeply the surrounding code is already
-    /// indented and dedent back toward the left margin.
+    /// spaces `write_indent` would emit right now.
     fn indent_width(&self) -> usize {
         self.indent * self.indent_str.len()
     }
 
     /// Renders a `Doc` value to a string, using the width still available on
     /// the current output line before `line_length` is hit.
+    ///
+    /// The document is laid out inside the indent already in effect, so
+    /// every `Doc::indent` in it counts levels *relative* to the statement
+    /// rather than columns from the left margin. That is what lets one
+    /// construct's `Doc` be nested inside another's: an absolute indent
+    /// would be right only for whichever of the two was rendered at the
+    /// top, and would double-count in the other.
     fn render_doc_to_string(&self, doc: Doc) -> String {
         let width = self
             .line_length
             .saturating_sub(self.current_column())
             .saturating_sub(self.trailing_reserve);
-        doc.render(width)
+        doc.indent(self.indent_width()).render(width)
     }
 
     /// The width of a `do...end` block's header line (` do` plus an
@@ -493,14 +495,13 @@ impl Formatter {
         close_sep: Doc,
         close: &str,
     ) -> String {
-        let indent_width = self.indent_width();
-        let nest_width = indent_width + self.indent_str.len();
+        let nest_width = self.indent_str.len();
         // The closing token must be indented *together with* close_sep, not
         // appended after the indent ends -- an indent only applies to a line
         // break whose subsequent content is still inside the same subtree.
         let doc = Doc::text(open)
             .append(open_sep.append(body).indent(nest_width))
-            .append(close_sep.append(Doc::text(close)).indent(indent_width))
+            .append(close_sep.append(Doc::text(close)))
             .group();
         self.render_doc_to_string(doc)
     }

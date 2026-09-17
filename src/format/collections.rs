@@ -188,7 +188,7 @@ impl Formatter {
             }
             let leaves = captured.into_iter().map(Doc::text);
             let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-            let nest_width = f.indent_width() + f.indent_str.len();
+            let nest_width = f.indent_str.len();
             let doc = body.indent(nest_width).group();
             let rendered = f.render_doc_to_string(doc);
             f.output.push_str(&rendered);

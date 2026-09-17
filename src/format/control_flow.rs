@@ -912,7 +912,7 @@ impl Formatter {
             let predicate_doc = self.node_doc(&predicate);
             let true_doc = self.capture_ternary_branch_as_doc(&true_branch);
             let false_doc = self.capture_ternary_branch_as_doc(&false_branch);
-            let nest_width = self.indent_width() + self.indent_str.len();
+            let nest_width = self.indent_str.len();
             let doc = predicate_doc.append(Doc::text(" ?")).append(
                 Doc::line()
                     .append(true_doc)
@@ -997,7 +997,7 @@ impl Formatter {
         } else {
             let left_doc = self.node_doc(&left);
             let right_doc = self.node_doc(&right);
-            let nest_width = self.indent_width() + self.indent_str.len();
+            let nest_width = self.indent_str.len();
             let doc = left_doc
                 .append(Doc::text(format!(" {op_str}")))
                 .append(Doc::line().append(right_doc).indent(nest_width).group());
