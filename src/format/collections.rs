@@ -180,13 +180,12 @@ impl Formatter {
                 return;
             }
             let snap = f.capture_snapshot();
-            let captured: Vec<String> = elements.iter().map(|e| f.capture_inline(e)).collect();
-            if captured.iter().any(|s| s.contains('\n')) {
+            let leaves: Vec<Doc> = elements.iter().map(|e| f.node_doc(e)).collect();
+            if leaves.iter().any(Doc::breaks) {
                 f.restore_capture_snapshot(snap);
                 f.write_expanded_items(elements);
                 return;
             }
-            let leaves = captured.into_iter().map(Doc::text);
             let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
             let nest_width = f.indent_str.len();
             let doc = body.indent(nest_width).group();

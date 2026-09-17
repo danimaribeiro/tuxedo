@@ -551,12 +551,13 @@ impl Formatter {
     }
 
     /// Parenthesized/bracketed list: expand all-or-nothing if any item
-    /// already hard-breaks *or* captures as multi-line (a nested array/
-    /// hash/call that wrapped during capture). Captured newlines can't go
-    /// through `wrap_bracketed_group` -- `Doc::text` with a raw `\n` stays
-    /// "flat" in the outer group, so sibling items share a line with the
-    /// broken nested collection, and the nest can't reindent the baked-in
-    /// continuation lines.
+    /// already hard-breaks *or* comes back from `node_doc` multi-line (a
+    /// nested array/hash/call that wrapped). The second case has to be
+    /// asked about rather than left to the printer, because such an item is
+    /// still a captured `Doc::text` leaf with newlines baked in: the
+    /// printer measures it as one long line, so sibling items would share a
+    /// line with an already-broken collection, at an indent nothing can
+    /// correct. See `Doc::breaks`.
     ///
     /// `span` is the source range between the brackets (end of the opening
     /// token, start of the closing one). A comment anywhere in it forces
@@ -584,13 +585,12 @@ impl Formatter {
             return;
         }
         let snap = self.capture_snapshot();
-        let captured: Vec<String> = items.iter().map(|item| self.capture_inline(item)).collect();
-        if captured.iter().any(|s| s.contains('\n')) {
+        let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
+        if leaves.iter().any(Doc::breaks) {
             self.restore_capture_snapshot(snap);
             self.write_expanded_bracketed_items(open, items, close);
             return;
         }
-        let leaves = captured.into_iter().map(Doc::text);
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
         let rendered = self.wrap_bracketed_group(open, open_sep, body, close_sep, close);
         self.output.push_str(&rendered);

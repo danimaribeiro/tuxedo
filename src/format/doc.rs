@@ -28,12 +28,36 @@ use pretty::RcDoc;
 /// A document: a tree of text and line points that renders to a string
 /// once a width is chosen.
 #[derive(Clone)]
-pub(super) struct Doc(RcDoc<'static, ()>);
+pub(super) struct Doc {
+    doc: RcDoc<'static, ()>,
+    /// Whether this document is already multi-line no matter how much room
+    /// it is given -- see [`Doc::breaks`].
+    breaks: bool,
+}
 
 impl Doc {
+    fn new(doc: RcDoc<'static, ()>, breaks: bool) -> Self {
+        Doc { doc, breaks }
+    }
+
+    /// Whether this document occupies more than one line whatever width it
+    /// is rendered at: it contains a [`hardline`](Doc::hardline), or a
+    /// `text` leaf with a newline baked into it (captured output from a
+    /// construct that has not moved onto `Doc` yet).
+    ///
+    /// A collection asks this of its items to decide between its flat and
+    /// its expanded shape. It has to be asked rather than left to the
+    /// printer because the two cases differ: `hardline` does force the
+    /// enclosing group open, but a newline inside a `text` leaf does not --
+    /// the printer measures that leaf as one long line and can lay the
+    /// group out flat around content that is already broken.
+    pub(super) fn breaks(&self) -> bool {
+        self.breaks
+    }
+
     /// The empty document.
     pub(super) fn nil() -> Self {
-        Doc(RcDoc::nil())
+        Doc::new(RcDoc::nil(), false)
     }
 
     /// Literal text, measured by display width (not bytes) — so a wide
@@ -44,23 +68,25 @@ impl Doc {
     /// but it is measured as if it were one long line and the printer's
     /// indentation does not apply to it, so a group containing one can be
     /// laid out as though it fit. Today that is how captured string output
-    /// gets embedded in a `Doc`; every caller that does it guards against
-    /// the case by hand, and those guards go away with the last capture
-    /// (issues #22, #23).
+    /// gets embedded in a `Doc`; [`Doc::breaks`] reports the case so the
+    /// enclosing construct can pick its expanded shape by hand, and both go
+    /// away with the last capture (issues #22, #23).
     pub(super) fn text(text: impl Into<String>) -> Self {
-        Doc(RcDoc::text(text.into()))
+        let text = text.into();
+        let breaks = text.contains('\n');
+        Doc::new(RcDoc::text(text), breaks)
     }
 
     /// A line point that is a single space when its group fits flat.
     pub(super) fn line() -> Self {
-        Doc(RcDoc::line())
+        Doc::new(RcDoc::line(), false)
     }
 
     /// A line point that is nothing at all when its group fits flat —
     /// where a break is allowed but no separator is wanted, such as just
     /// inside a bracket.
     pub(super) fn softline() -> Self {
-        Doc(RcDoc::line_())
+        Doc::new(RcDoc::line_(), false)
     }
 
     /// An unconditional line break, which also forces every group
@@ -73,7 +99,7 @@ impl Doc {
     /// build `Doc`s of their own (issue #22).
     #[allow(dead_code)]
     pub(super) fn hardline() -> Self {
-        Doc(RcDoc::hardline())
+        Doc::new(RcDoc::hardline(), true)
     }
 
     /// `broken` when the enclosing group breaks, `flat` when it fits —
@@ -86,25 +112,29 @@ impl Doc {
     /// this module.
     #[allow(dead_code)]
     pub(super) fn if_break(broken: Doc, flat: Doc) -> Self {
-        Doc(broken.0.flat_alt(flat.0))
+        Doc::new(broken.doc.flat_alt(flat.doc), broken.breaks && flat.breaks)
     }
 
     /// The documents one after another.
     pub(super) fn concat(docs: impl IntoIterator<Item = Doc>) -> Self {
-        Doc(RcDoc::concat(docs.into_iter().map(|d| d.0)))
+        docs.into_iter().fold(Doc::nil(), Doc::append)
     }
 
     /// The documents one after another with `separator` between each pair.
     pub(super) fn join(docs: impl IntoIterator<Item = Doc>, separator: Doc) -> Self {
-        Doc(RcDoc::intersperse(
-            docs.into_iter().map(|d| d.0),
-            separator.0,
-        ))
+        let mut out = Doc::nil();
+        for (i, doc) in docs.into_iter().enumerate() {
+            if i > 0 {
+                out = out.append(separator.clone());
+            }
+            out = out.append(doc);
+        }
+        out
     }
 
     /// `other` directly after `self`.
     pub(super) fn append(self, other: Doc) -> Self {
-        Doc(self.0.append(other.0))
+        Doc::new(self.doc.append(other.doc), self.breaks || other.breaks)
     }
 
     /// Marks `self` as a unit that is laid out flat if it fits on the rest
@@ -112,19 +142,19 @@ impl Doc {
     /// inside it. Line points inside a nested group are decided
     /// separately, by that group.
     pub(super) fn group(self) -> Self {
-        Doc(self.0.group())
+        Doc::new(self.doc.group(), self.breaks)
     }
 
     /// Indents the lines that `self`'s own line points introduce by
     /// `spaces` columns. Only breaks *inside* `self` are affected, and the
     /// indent is relative to the one already in effect.
     pub(super) fn indent(self, spaces: usize) -> Self {
-        Doc(self.0.nest(spaces as isize))
+        Doc::new(self.doc.nest(spaces as isize), self.breaks)
     }
 
     /// Lays the document out for a line `width` columns wide.
     pub(super) fn render(&self, width: usize) -> String {
-        self.0.pretty(width).to_string()
+        self.doc.pretty(width).to_string()
     }
 }
 
@@ -192,6 +222,38 @@ mod tests {
         };
         assert_eq!(doc(8), "日本語 x");
         assert_eq!(doc(7), "日本語\nx");
+    }
+
+    #[test]
+    fn breaks_reports_a_hardline_anywhere_inside() {
+        assert!(!list(&["1", "2"]).breaks());
+        assert!(
+            Doc::text("a")
+                .append(Doc::line())
+                .append(Doc::hardline())
+                .group()
+                .indent(2)
+                .breaks()
+        );
+    }
+
+    /// Captured output from a construct that has not moved onto `Doc` yet
+    /// arrives as one `text` leaf with newlines in it. The printer measures
+    /// that as a single long line and lays the group out flat around it, so
+    /// only `breaks` can see that the result is multi-line.
+    #[test]
+    fn breaks_reports_a_newline_baked_into_a_text_leaf() {
+        let captured = || Doc::text("if x\n  y\nend");
+        assert!(captured().breaks());
+        assert!(list(&["1", "2"]).append(captured()).breaks());
+        assert_eq!(
+            Doc::text("[")
+                .append(captured())
+                .append(Doc::text("]"))
+                .group()
+                .render(80),
+            "[if x\n  y\nend]"
+        );
     }
 
     #[test]
