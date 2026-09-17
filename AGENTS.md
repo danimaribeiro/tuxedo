@@ -166,7 +166,7 @@ planning the work, and record what you learn back in it.
 | 1. Safety net | An unfinished node passes through unchanged and never disappears | Done, PR #33 |
 | 2. Comment attachment | Comments stay beside the code they describe | Done, PR #34 |
 | 3. Finish the Doc migration | The capture and snapshot workarounds in `mod.rs` go away | In progress, PR #35 merged |
-| 4. Formatter cleanups | Config, block indentation and CLI gaps are closed | #25, #26, #27 open |
+| 4. Formatter cleanups | Config, block indentation and CLI gaps are closed | #26 done, PR #12; #25, #27 open |
 | 5. Linter | `tuxedo check` reports real diagnostics with RuboCop cop names | Not started |
 
 Milestone 3 is where the work is. #22 is a tracking issue; the actual work is #36 to
