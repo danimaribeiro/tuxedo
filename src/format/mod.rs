@@ -308,7 +308,7 @@ struct CommentSpan {
 /// once the run ends (`end_run`); only the `Doc`s are kept. Without it a
 /// child that still writes strings would decide its own layout as though
 /// its parent had written nothing, and lay out an overlong value flat.
-struct InlineRun {
+pub(super) struct InlineRun {
     start: usize,
     leaves: Vec<Doc>,
 }
