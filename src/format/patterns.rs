@@ -191,7 +191,7 @@ impl Formatter {
     pub(super) fn fmt_shareable_constant_node(
         &mut self,
         node: &ruby_prism::ShareableConstantNode<'_>,
-    ) {
-        self.visit(&node.write());
+    ) -> Doc {
+        self.node_doc(&node.write())
     }
 }
