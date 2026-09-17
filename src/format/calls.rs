@@ -1,6 +1,5 @@
 use super::{Formatter, has_real_block, manages_own_indentation};
 use pretty::RcDoc as Doc;
-use ruby_prism::Visit;
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
@@ -127,11 +126,17 @@ impl Formatter {
                 self.write_indent();
             }
 
-            let is_index = name_str == "[]" || name_str == "[]=";
-            let is_identifier_call = name_str
+            // An operator method called with an explicit `.`/`&.`
+            // (`a&.+(1)`, `env&.[]("k")`, `x&.!= y`) is written as an
+            // ordinary method call, and has to stay one: the sugar forms
+            // below (`a + 1`, `env["k"]`) have no way to spell `&.`.
+            let explicit_dot = node.call_operator_loc().is_some();
+            let is_index = (name_str == "[]" || name_str == "[]=") && !explicit_dot;
+            let is_named_call = name_str
                 .chars()
                 .next()
                 .is_some_and(|c| c.is_alphanumeric() || c == '_');
+            let is_identifier_call = is_named_call || explicit_dot;
 
             if is_index {
                 self.inline = true;
@@ -155,7 +160,10 @@ impl Formatter {
                     self.inline = true;
                     self.visit(&value);
                 }
-            } else if matches!(name_str, "!" | "~" | "+@" | "-@") && node.arguments().is_none() {
+            } else if matches!(name_str, "!" | "~" | "+@" | "-@")
+                && node.arguments().is_none()
+                && !explicit_dot
+            {
                 // A unary operator method (defined as `def +@`/`def -@`/
                 // `def ~`/`def !`) is called in prefix notation (`+x`),
                 // unlike every other operator method here, which is infix
@@ -163,11 +171,38 @@ impl Formatter {
                 // assumes infix and would render this receiver-first
                 // (`x +@`, dropping the fact there's no actual right-hand
                 // side) -- invalid Ruby.
-                self.output
-                    .push_str(name_str.strip_suffix('@').unwrap_or(name_str));
+                //
+                // `not x` is the `!` method too, but binds far looser:
+                // `not a == b` is `!(a == b)` while `!a == b` is
+                // `(!a) == b`. Keep the keyword, and its parentheses.
+                let is_not_keyword = node
+                    .message_loc()
+                    .is_some_and(|loc| loc.as_slice() == b"not");
+                let not_parenthesized = is_not_keyword && node.opening_loc().is_some();
+                if is_not_keyword {
+                    self.output
+                        .push_str(if not_parenthesized { "not(" } else { "not " });
+                } else {
+                    self.output
+                        .push_str(name_str.strip_suffix('@').unwrap_or(name_str));
+                }
+                // `+ 1.second` calls `+@` on `1.second`; `+1.second` calls
+                // `second` on the literal `+1`. Only a space keeps a sign
+                // from fusing with a numeric literal that follows it.
+                let receiver_starts_with_digit = self
+                    .source
+                    .as_bytes()
+                    .get(receiver.location().start_offset())
+                    .is_some_and(u8::is_ascii_digit);
+                if matches!(name_str, "+@" | "-@") && receiver_starts_with_digit {
+                    self.output.push(' ');
+                }
                 self.inline = true;
                 self.visit(&receiver);
-            } else if is_identifier_call && node.is_attribute_write() {
+                if not_parenthesized {
+                    self.output.push(')');
+                }
+            } else if is_named_call && node.is_attribute_write() {
                 self.inline = true;
                 self.visit(&receiver);
                 let op = node

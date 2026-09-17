@@ -2,6 +2,8 @@ Building tuxedo (release)...
 Preparing working copy...
 Running tuxedo format...
 
+[0/3] Meaning check (source AST == output AST)...
+
 [1/3] Parse check (ruby -c)...
 
 [2/3] Idempotence check (format twice)...
@@ -17,14 +19,14 @@ Running tuxedo format...
   11   Layout/CaseIndentation [Safe Correctable]
   3    Layout/MultilineMethodCallIndentation [Safe Correctable]
   2    Layout/BeginEndAlignment [Safe Correctable]
-  1    Layout/TrailingWhitespace [Safe Correctable]
 
 ======================================================================
   thor
 ----------------------------------------------------------------------
+  meaning     0 files refused: formatting would have changed the AST
   parse       76 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
   idempotent  0 files change on a second format
-  layout      114 offenses across 10 distinct cops
+  layout      113 offenses across 9 distinct cops
 ======================================================================
 
 Output kept at test-projects/thor/verify for inspection.

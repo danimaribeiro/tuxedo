@@ -21,7 +21,15 @@
 #
 # What is reachable is a subset relation — everything Tuxedo emits is
 # something rubocop accepts — plus two invariants that hold regardless of
-# rubocop. This script measures all three:
+# rubocop. This script measures all four:
+#
+#   0. MEANING   The output is the same program. Tuxedo parses its own
+#                output and compares it to the source's AST (see
+#                src/format/verify.rs); on a mismatch it refuses to write
+#                the file and reports it. Counted here as the number of
+#                files refused. `ruby -c` cannot see this: `defined?(Foo)`
+#                coming out as `Foo` is valid Ruby and a different program.
+#                This is the number that matters most.
 #
 #   1. PARSE     Output is still valid Ruby. Measured as a regression count
 #                against the source: a file that parsed before formatting
@@ -38,7 +46,7 @@
 #                block indentation), not rubocop's stock defaults. See the
 #                comments in that file.
 #
-# All three are ratchets, not pass/fail bars: Tuxedo is early, and the
+# All four are ratchets, not pass/fail bars: Tuxedo is early, and the
 # numbers are expected to start high and only ever go down. Record them
 # before a change and compare after.
 
@@ -84,7 +92,24 @@ rm -rf "$OUT"
 cp -r "$SRC" "$OUT"
 
 echo "Running tuxedo format..."
-"$TUXEDO_BIN" format --quiet "$OUT" >/dev/null
+format_err="$(mktemp)"
+# Exits 2 when any file was refused; that is what the next section counts.
+"$TUXEDO_BIN" format --quiet "$OUT" >/dev/null 2>"$format_err" || true
+
+# --- 0. Meaning (AST equivalence) -------------------------------------
+echo
+echo "[0/3] Meaning check (source AST == output AST)..."
+# Syntax errors are not counted: those files never parsed (see the parse
+# check's "skipped"), and tuxedo leaves them alone by design.
+meaning_changed="$(grep -c 'formatting would change what this code does' "$format_err" || true)"
+if [ "$meaning_changed" -gt 0 ]; then
+  # The error line names the file; the two lines after it show where the
+  # ASTs first diverge.
+  grep -A2 'formatting would change what this code does' "$format_err" |
+    sed -e "s#$OUT/##" -e 's/:formatting would change.*$//' -e 's/^error: /  CHANGED: /' |
+    cut -c1-200 | head -60 || true
+fi
+rm -f "$format_err"
 
 # --- 1. Parse check ---------------------------------------------------
 echo
@@ -118,7 +143,8 @@ echo "[2/3] Idempotence check (format twice)..."
 TWICE="$BASE/verify-twice"
 rm -rf "$TWICE"
 cp -r "$OUT" "$TWICE"
-"$TUXEDO_BIN" format --quiet "$TWICE" >/dev/null
+# Exit status and stderr were already accounted for in the first pass.
+"$TUXEDO_BIN" format --quiet "$TWICE" >/dev/null 2>&1 || true
 unstable=0
 while IFS= read -r -d '' file; do
   rel="${file#"$OUT"/}"
@@ -177,6 +203,8 @@ echo
 echo "======================================================================"
 echo "  $PROJECT"
 echo "----------------------------------------------------------------------"
+printf "  meaning     %s files refused: formatting would have changed the AST\n" \
+  "$meaning_changed"
 printf "  parse       %s ok, %s BROKEN by tuxedo (%s skipped, never parsed)\n" \
   "$parse_ok" "$parse_regressed" "$parse_skipped"
 printf "  idempotent  %s files change on a second format\n" "$unstable"
@@ -186,6 +214,13 @@ echo "======================================================================"
 echo
 echo "Output kept at test-projects/$PROJECT/verify for inspection."
 echo "Report saved to scripts/results/$PROJECT-format-verify.txt"
+
+if [ "$meaning_changed" -gt 0 ]; then
+  echo
+  echo "Meaning changes are the highest-priority failures: tuxedo's output was a"
+  echo "different program. The files were left untouched, but each one is a bug."
+  exit 1
+fi
 
 if [ "$parse_regressed" -gt 0 ]; then
   echo

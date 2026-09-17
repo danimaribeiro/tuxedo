@@ -33,9 +33,14 @@ Run `format-compare.sh` first.
 ## format-verify.sh \<project\>
 
 The metric that matters more than `format-compare.sh`'s similarity score.
-Checks three properties that must hold regardless of RuboCop, as ratchets
+Checks four properties that must hold regardless of RuboCop, as ratchets
 (numbers should only go down over time, never treated as a pass/fail bar):
 
+0. **Meaning** — the output is the same program as the source. Tuxedo parses
+   its own output and compares ASTs (`src/format/verify.rs`); on a mismatch it
+   refuses to write the file. This counts the refused files and prints where
+   each pair of ASTs first diverges. It is the highest-priority number:
+   `ruby -c` cannot see `defined?(Foo)` coming out as `Foo`.
 1. **Parse** — output is still valid Ruby (a parse regression is a bug, full
    stop; files that never parsed to begin with, like ERB templates under a
    `.rb` name, are excluded rather than counted as failures).

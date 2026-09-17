@@ -64,14 +64,16 @@ super(
   other_arg
 )
 
-yield(
-  if condition
-    "a"
-  else
-    "b"
-  end,
-  other_arg
-)
+def each
+  yield(
+    if condition
+      "a"
+    else
+      "b"
+    end,
+    other_arg
+  )
+end
 
 foo((x if cond), other_arg)
 foo(cond ? a : b, other_arg)

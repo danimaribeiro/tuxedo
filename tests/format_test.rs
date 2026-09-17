@@ -34,7 +34,7 @@ fn format_fixtures() {
         let input = fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
 
-        let output = tuxedo::format(&input);
+        let output = tuxedo::format(&input).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
 
         assert_eq!(
             input,
@@ -43,7 +43,8 @@ fn format_fixtures() {
             path.display()
         );
 
-        let reformatted = tuxedo::format(&output);
+        let reformatted =
+            tuxedo::format(&output).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         assert_eq!(
             output,
             reformatted,

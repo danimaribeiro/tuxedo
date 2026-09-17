@@ -93,27 +93,51 @@ fn main() {
     }
 }
 
-fn run_format(args: FormatArgs, _config: tuxedo::Config) {
+/// Exit status when at least one file could not be formatted (a syntax
+/// error, or output that failed the AST-equivalence check) -- distinct from
+/// 1, which `--check` uses for "would reformat".
+const EXIT_ERROR: i32 = 2;
+
+fn run_format(args: FormatArgs, config: tuxedo::Config) {
+    let format_config = &config.format;
+
     if args.paths.is_empty() {
         let source = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
         if args.ast {
             let result = ruby_prism::parse(source.as_bytes());
             println!("{:#?}", result.node());
-        } else {
-            print!("{}", tuxedo::format(&source));
+            return;
+        }
+        match tuxedo::format_with_config(&source, format_config) {
+            Ok(formatted) => print!("{formatted}"),
+            Err(e) => {
+                eprintln!("error: stdin:{e}");
+                std::process::exit(EXIT_ERROR);
+            }
         }
         return;
     }
 
     let check_mode = args.check;
     let quiet = args.quiet;
+    let errors = std::sync::atomic::AtomicUsize::new(0);
+    let errors_ref = &errors;
 
     let result = tuxedo::walk_and_process(
         &args.paths,
         args.jobs,
         args.no_ignore,
         move |path, source| {
-            let formatted = tuxedo::format(source);
+            let formatted = match tuxedo::format_with_config(source, format_config) {
+                Ok(formatted) => formatted,
+                Err(e) => {
+                    // Left exactly as it was: never write a file we could
+                    // not format faithfully.
+                    eprintln!("error: {}:{e}", path.display());
+                    errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    return None;
+                }
+            };
             if formatted == source {
                 return None;
             }
@@ -135,21 +159,26 @@ fn run_format(args: FormatArgs, _config: tuxedo::Config) {
         },
     );
 
-    let unchanged = result.total - result.changed;
+    let errors = errors.load(std::sync::atomic::Ordering::Relaxed);
+    let unchanged = result.total - result.changed - errors;
 
     if check_mode {
         eprintln!(
-            "{} files checked: {} would be reformatted, {} already formatted",
-            result.total, result.changed, unchanged
+            "{} files checked: {} would be reformatted, {} already formatted, {} could not be formatted",
+            result.total, result.changed, unchanged, errors
         );
-        if result.changed > 0 {
-            std::process::exit(1);
-        }
     } else if !quiet {
         eprintln!(
-            "{} files checked: {} reformatted, {} unchanged",
-            result.total, result.changed, unchanged
+            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted",
+            result.total, result.changed, unchanged, errors
         );
+    }
+
+    if errors > 0 {
+        std::process::exit(EXIT_ERROR);
+    }
+    if check_mode && result.changed > 0 {
+        std::process::exit(1);
     }
 }
 

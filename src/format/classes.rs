@@ -1,5 +1,4 @@
 use super::Formatter;
-use ruby_prism::Visit;
 
 impl Formatter {
     pub(super) fn fmt_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {

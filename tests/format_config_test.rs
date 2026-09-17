@@ -20,13 +20,13 @@ fn indent_size_4() {
         indent_size: 4,
         ..Default::default()
     };
-    let output = tuxedo::format_with_config(CLASS_INPUT, &config);
+    let output = tuxedo::format_with_config(CLASS_INPUT, &config).unwrap();
     insta::assert_snapshot!(output);
 }
 
 #[test]
 fn indent_size_default() {
     let config = FormatConfig::default();
-    let output = tuxedo::format_with_config(CLASS_INPUT, &config);
+    let output = tuxedo::format_with_config(CLASS_INPUT, &config).unwrap();
     insta::assert_snapshot!(output);
 }

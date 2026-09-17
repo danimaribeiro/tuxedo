@@ -1,5 +1,4 @@
 use super::Formatter;
-use ruby_prism::Visit;
 
 /// A method/class/module definition -- rubocop's Layout/EmptyLineBetweenDefs
 /// wants a blank line before/after each of these by default

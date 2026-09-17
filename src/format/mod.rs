@@ -1,15 +1,16 @@
 use crate::config::FormatConfig;
-use ruby_prism::Visit;
-
 mod assignment;
 mod calls;
 mod classes;
 mod collections;
 mod control_flow;
 mod defs;
+mod dispatch;
 mod literals;
+mod patterns;
 mod statements;
 mod variables;
+mod verify;
 
 /// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
 /// a `&block` pass) -- of either shape. Used where a block of any kind, not
@@ -164,6 +165,20 @@ pub(super) fn assoc_forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
     false
 }
 
+/// A block's or lambda's parameter list, if it has one written in the
+/// source. Prism also fills the `parameters` slot for a block that only
+/// *uses* implicit parameters (`it`, `_1`) -- a marker node with no text of
+/// its own, which must not be rendered as a parameter list.
+fn explicit_parameters(params: Option<ruby_prism::Node<'_>>) -> Option<ruby_prism::Node<'_>> {
+    params.filter(|p| {
+        !matches!(
+            p,
+            ruby_prism::Node::NumberedParametersNode { .. }
+                | ruby_prism::Node::ItParametersNode { .. }
+        )
+    })
+}
+
 /// Prism groups `foo(a, k: 1, j: 2)`'s keyword pairs into one
 /// `KeywordHashNode`. Flatten those pairs so a call's argument list wraps
 /// one-argument-per-line the same way RuboCop counts arguments.
@@ -179,12 +194,88 @@ fn flatten_keyword_hash_args(items: Vec<ruby_prism::Node<'_>>) -> Vec<ruby_prism
     out
 }
 
-pub fn format(source: &str) -> String {
+/// Why a source could not be formatted. In both cases the caller must leave
+/// the source exactly as it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormatError {
+    /// The source is not valid Ruby. Prism recovers from errors and still
+    /// hands back a tree, but that tree has holes in it, and formatting
+    /// from it would write those holes back as if they were the program.
+    Syntax {
+        message: String,
+        /// 1-based.
+        line: usize,
+        /// 1-based, in bytes.
+        column: usize,
+    },
+    /// The formatted output does not parse to the same AST as the source:
+    /// a bug in Tuxedo, caught before it could reach the file. See
+    /// `verify`.
+    AstMismatch { detail: String },
+}
+
+impl std::fmt::Display for FormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FormatError::Syntax {
+                message,
+                line,
+                column,
+            } => write!(f, "{line}:{column}: syntax error: {message}"),
+            FormatError::AstMismatch { detail } => write!(
+                f,
+                "formatting would change what this code does, so it was left untouched \
+                 (this is a bug in tuxedo, please report it)\n  {detail}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for FormatError {}
+
+pub fn format(source: &str) -> Result<String, FormatError> {
     format_with_config(source, &FormatConfig::default())
 }
 
-pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
+pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
+    let result = format_unverified(source, config)?;
+    if result != source {
+        let before = verify::fingerprint(source);
+        let after = verify::fingerprint(&result);
+        match (before, after) {
+            (Some(before), Some(after)) if before == after => {}
+            (Some(before), Some(after)) => {
+                return Err(FormatError::AstMismatch {
+                    detail: verify::first_difference(&before, &after),
+                });
+            }
+            _ => {
+                return Err(FormatError::AstMismatch {
+                    detail: "output is not valid Ruby".to_string(),
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Formats without the AST-equivalence check. Only for measuring what the
+/// check costs and what it catches; never for writing files.
+pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
     let parsed = ruby_prism::parse(source.as_bytes());
+    if let Some(error) = parsed.errors().next() {
+        let offset = error.location().start_offset();
+        let starts = line_starts(source);
+        let line = match starts.binary_search(&offset) {
+            Ok(i) => i,
+            Err(i) => i - 1,
+        };
+        return Err(FormatError::Syntax {
+            message: error.message().to_string(),
+            line: line + 1,
+            column: offset - starts[line] + 1,
+        });
+    }
     let node = parsed.node();
 
     let mut formatter = Formatter::new(source, &parsed, config);
@@ -193,8 +284,20 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> String {
     formatter.splice_heredoc_bodies();
     let trimmed = formatter.output.trim_end_matches('\n');
     let mut result = trimmed.to_string();
-    result.push('\n');
-    result
+    if !result.is_empty() {
+        result.push('\n');
+    }
+    // `__END__` and everything after it is the program's `DATA`, not code:
+    // copied byte for byte, down to whether it ends in a newline.
+    if let Some(data) = parsed.data_loc() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&String::from_utf8_lossy(data.as_slice()));
+    } else if result.is_empty() {
+        result.push('\n');
+    }
+    Ok(result)
 }
 
 struct CommentSpan {
@@ -350,7 +453,7 @@ impl Formatter {
             return 0;
         }
         let mut width = " do".len();
-        if let Some(params) = block.parameters() {
+        if let Some(params) = explicit_parameters(block.parameters()) {
             // Bare pipe-delimited block params never wrap (see
             // fmt_block_parameters_node), so this is always a single line.
             let captured = self.capture_as_doc(|f| {
@@ -910,11 +1013,44 @@ impl Formatter {
 
     /// The verbatim source of a heredoc body, from `body_start` through the
     /// end of its terminator line.
+    ///
+    /// A body always begins at the start of a line, but its first *node*
+    /// may not: in `<<~MSG` the leading whitespace of the first line is not
+    /// part of the first part's location (and the first part may be a
+    /// `#{}` hole). Dropping it leaves that line at column 0, which
+    /// changes how much margin Ruby strips from every other line.
     fn heredoc_body(&self, body_start: usize, body_end: usize) -> String {
+        let body_start = self.source.as_bytes()[..body_start.min(self.source.len())]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map_or(0, |newline| newline + 1);
         self.source
             .get(body_start..body_end)
             .unwrap_or_default()
             .to_string()
+    }
+
+    /// Copies `node`'s source text through unchanged: the fallback for
+    /// every node type that has no formatter of its own yet (see
+    /// `dispatch`). Unformatted is always better than wrong.
+    ///
+    /// Comments inside the node are part of the copied text, so the comment
+    /// cursor skips past them rather than emitting them a second time.
+    ///
+    /// Known gap: a heredoc opened inside `node` has its body on the lines
+    /// *after* the node's location, so it is not copied. The
+    /// AST-equivalence check in `format_with_config` catches that and
+    /// refuses the file.
+    fn write_verbatim(&mut self, node: &ruby_prism::Node<'_>) {
+        let location = node.location();
+        let (start, end) = (location.start_offset(), location.end_offset());
+        let text = self.source.get(start..end).unwrap_or_default().to_string();
+        while self.comment_cursor < self.comments.len()
+            && (start..end).contains(&self.comments[self.comment_cursor].start)
+        {
+            self.comment_cursor += 1;
+        }
+        self.write_leaf(|f| f.output.push_str(&text));
     }
 
     fn write_leaf(&mut self, write: impl FnOnce(&mut Self)) {
@@ -926,591 +1062,5 @@ impl Formatter {
         if !inline {
             self.output.push('\n');
         }
-    }
-}
-
-impl Visit<'_> for Formatter {
-    fn visit_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
-        self.fmt_statements_node(node);
-    }
-
-    fn visit_call_node(&mut self, node: &ruby_prism::CallNode<'_>) {
-        self.fmt_call_node(node);
-    }
-
-    fn visit_super_node(&mut self, node: &ruby_prism::SuperNode<'_>) {
-        self.fmt_super_node(node);
-    }
-
-    fn visit_forwarding_super_node(&mut self, node: &ruby_prism::ForwardingSuperNode<'_>) {
-        self.fmt_forwarding_super_node(node);
-    }
-
-    fn visit_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
-        self.fmt_def_node(node);
-    }
-
-    fn visit_required_parameter_node(&mut self, node: &ruby_prism::RequiredParameterNode<'_>) {
-        self.fmt_required_parameter_node(node);
-    }
-
-    fn visit_optional_parameter_node(&mut self, node: &ruby_prism::OptionalParameterNode<'_>) {
-        self.fmt_optional_parameter_node(node);
-    }
-
-    fn visit_rest_parameter_node(&mut self, node: &ruby_prism::RestParameterNode<'_>) {
-        self.fmt_rest_parameter_node(node);
-    }
-
-    fn visit_implicit_rest_node(&mut self, node: &ruby_prism::ImplicitRestNode<'_>) {
-        self.fmt_implicit_rest_node(node);
-    }
-
-    fn visit_required_keyword_parameter_node(
-        &mut self,
-        node: &ruby_prism::RequiredKeywordParameterNode<'_>,
-    ) {
-        self.fmt_required_keyword_parameter_node(node);
-    }
-
-    fn visit_optional_keyword_parameter_node(
-        &mut self,
-        node: &ruby_prism::OptionalKeywordParameterNode<'_>,
-    ) {
-        self.fmt_optional_keyword_parameter_node(node);
-    }
-
-    fn visit_keyword_rest_parameter_node(
-        &mut self,
-        node: &ruby_prism::KeywordRestParameterNode<'_>,
-    ) {
-        self.fmt_keyword_rest_parameter_node(node);
-    }
-
-    fn visit_no_keywords_parameter_node(&mut self, node: &ruby_prism::NoKeywordsParameterNode<'_>) {
-        self.fmt_no_keywords_parameter_node(node);
-    }
-
-    fn visit_forwarding_parameter_node(&mut self, node: &ruby_prism::ForwardingParameterNode<'_>) {
-        self.fmt_forwarding_parameter_node(node);
-    }
-
-    // `...` as a call argument, forwarding a `...` parameter through.
-    fn visit_forwarding_arguments_node(&mut self, _node: &ruby_prism::ForwardingArgumentsNode<'_>) {
-        self.output.push_str("...");
-    }
-
-    fn visit_block_parameter_node(&mut self, node: &ruby_prism::BlockParameterNode<'_>) {
-        self.fmt_block_parameter_node(node);
-    }
-
-    fn visit_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) {
-        self.fmt_parameters_node(node);
-    }
-
-    fn visit_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) {
-        self.fmt_lambda_node(node);
-    }
-
-    fn visit_block_parameters_node(&mut self, node: &ruby_prism::BlockParametersNode<'_>) {
-        self.fmt_block_parameters_node(node);
-    }
-
-    fn visit_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
-        self.fmt_block_node(node);
-    }
-
-    fn visit_yield_node(&mut self, node: &ruby_prism::YieldNode<'_>) {
-        self.fmt_yield_node(node);
-    }
-
-    fn visit_return_node(&mut self, node: &ruby_prism::ReturnNode<'_>) {
-        self.fmt_return_node(node);
-    }
-
-    fn visit_break_node(&mut self, node: &ruby_prism::BreakNode<'_>) {
-        self.fmt_break_node(node);
-    }
-
-    fn visit_next_node(&mut self, node: &ruby_prism::NextNode<'_>) {
-        self.fmt_next_node(node);
-    }
-
-    fn visit_local_variable_read_node(&mut self, node: &ruby_prism::LocalVariableReadNode<'_>) {
-        self.fmt_local_variable_read_node(node);
-    }
-
-    fn visit_global_variable_read_node(&mut self, node: &ruby_prism::GlobalVariableReadNode<'_>) {
-        self.fmt_global_variable_read_node(node);
-    }
-
-    fn visit_instance_variable_read_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableReadNode<'_>,
-    ) {
-        self.fmt_instance_variable_read_node(node);
-    }
-
-    fn visit_class_variable_read_node(&mut self, node: &ruby_prism::ClassVariableReadNode<'_>) {
-        self.fmt_class_variable_read_node(node);
-    }
-
-    fn visit_self_node(&mut self, node: &ruby_prism::SelfNode<'_>) {
-        self.fmt_self_node(node);
-    }
-
-    fn visit_local_variable_write_node(&mut self, node: &ruby_prism::LocalVariableWriteNode<'_>) {
-        self.fmt_local_variable_write_node(node);
-    }
-
-    fn visit_local_variable_operator_write_node(
-        &mut self,
-        node: &ruby_prism::LocalVariableOperatorWriteNode<'_>,
-    ) {
-        self.fmt_local_variable_operator_write_node(node);
-    }
-
-    fn visit_local_variable_or_write_node(
-        &mut self,
-        node: &ruby_prism::LocalVariableOrWriteNode<'_>,
-    ) {
-        self.fmt_local_variable_or_write_node(node);
-    }
-
-    fn visit_local_variable_and_write_node(
-        &mut self,
-        node: &ruby_prism::LocalVariableAndWriteNode<'_>,
-    ) {
-        self.fmt_local_variable_and_write_node(node);
-    }
-
-    fn visit_instance_variable_write_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableWriteNode<'_>,
-    ) {
-        self.fmt_instance_variable_write_node(node);
-    }
-
-    fn visit_instance_variable_operator_write_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableOperatorWriteNode<'_>,
-    ) {
-        self.fmt_instance_variable_operator_write_node(node);
-    }
-
-    fn visit_instance_variable_or_write_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableOrWriteNode<'_>,
-    ) {
-        self.fmt_instance_variable_or_write_node(node);
-    }
-
-    fn visit_instance_variable_and_write_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableAndWriteNode<'_>,
-    ) {
-        self.fmt_instance_variable_and_write_node(node);
-    }
-
-    fn visit_constant_write_node(&mut self, node: &ruby_prism::ConstantWriteNode<'_>) {
-        self.fmt_constant_write_node(node);
-    }
-
-    fn visit_constant_operator_write_node(
-        &mut self,
-        node: &ruby_prism::ConstantOperatorWriteNode<'_>,
-    ) {
-        self.fmt_constant_operator_write_node(node);
-    }
-
-    fn visit_constant_or_write_node(&mut self, node: &ruby_prism::ConstantOrWriteNode<'_>) {
-        self.fmt_constant_or_write_node(node);
-    }
-
-    fn visit_constant_and_write_node(&mut self, node: &ruby_prism::ConstantAndWriteNode<'_>) {
-        self.fmt_constant_and_write_node(node);
-    }
-
-    fn visit_global_variable_write_node(&mut self, node: &ruby_prism::GlobalVariableWriteNode<'_>) {
-        self.fmt_global_variable_write_node(node);
-    }
-
-    fn visit_global_variable_operator_write_node(
-        &mut self,
-        node: &ruby_prism::GlobalVariableOperatorWriteNode<'_>,
-    ) {
-        self.fmt_global_variable_operator_write_node(node);
-    }
-
-    fn visit_global_variable_or_write_node(
-        &mut self,
-        node: &ruby_prism::GlobalVariableOrWriteNode<'_>,
-    ) {
-        self.fmt_global_variable_or_write_node(node);
-    }
-
-    fn visit_global_variable_and_write_node(
-        &mut self,
-        node: &ruby_prism::GlobalVariableAndWriteNode<'_>,
-    ) {
-        self.fmt_global_variable_and_write_node(node);
-    }
-
-    fn visit_class_variable_write_node(&mut self, node: &ruby_prism::ClassVariableWriteNode<'_>) {
-        self.fmt_class_variable_write_node(node);
-    }
-
-    fn visit_class_variable_operator_write_node(
-        &mut self,
-        node: &ruby_prism::ClassVariableOperatorWriteNode<'_>,
-    ) {
-        self.fmt_class_variable_operator_write_node(node);
-    }
-
-    fn visit_class_variable_or_write_node(
-        &mut self,
-        node: &ruby_prism::ClassVariableOrWriteNode<'_>,
-    ) {
-        self.fmt_class_variable_or_write_node(node);
-    }
-
-    fn visit_class_variable_and_write_node(
-        &mut self,
-        node: &ruby_prism::ClassVariableAndWriteNode<'_>,
-    ) {
-        self.fmt_class_variable_and_write_node(node);
-    }
-
-    fn visit_constant_path_write_node(&mut self, node: &ruby_prism::ConstantPathWriteNode<'_>) {
-        self.fmt_constant_path_write_node(node);
-    }
-
-    fn visit_constant_path_operator_write_node(
-        &mut self,
-        node: &ruby_prism::ConstantPathOperatorWriteNode<'_>,
-    ) {
-        self.fmt_constant_path_operator_write_node(node);
-    }
-
-    fn visit_constant_path_or_write_node(
-        &mut self,
-        node: &ruby_prism::ConstantPathOrWriteNode<'_>,
-    ) {
-        self.fmt_constant_path_or_write_node(node);
-    }
-
-    fn visit_constant_path_and_write_node(
-        &mut self,
-        node: &ruby_prism::ConstantPathAndWriteNode<'_>,
-    ) {
-        self.fmt_constant_path_and_write_node(node);
-    }
-
-    fn visit_multi_write_node(&mut self, node: &ruby_prism::MultiWriteNode<'_>) {
-        self.fmt_multi_write_node(node);
-    }
-
-    fn visit_index_or_write_node(&mut self, node: &ruby_prism::IndexOrWriteNode<'_>) {
-        self.fmt_index_or_write_node(node);
-    }
-
-    fn visit_index_and_write_node(&mut self, node: &ruby_prism::IndexAndWriteNode<'_>) {
-        self.fmt_index_and_write_node(node);
-    }
-
-    fn visit_index_operator_write_node(&mut self, node: &ruby_prism::IndexOperatorWriteNode<'_>) {
-        self.fmt_index_operator_write_node(node);
-    }
-
-    fn visit_call_operator_write_node(&mut self, node: &ruby_prism::CallOperatorWriteNode<'_>) {
-        self.fmt_call_operator_write_node(node);
-    }
-
-    fn visit_call_or_write_node(&mut self, node: &ruby_prism::CallOrWriteNode<'_>) {
-        self.fmt_call_or_write_node(node);
-    }
-
-    fn visit_call_and_write_node(&mut self, node: &ruby_prism::CallAndWriteNode<'_>) {
-        self.fmt_call_and_write_node(node);
-    }
-
-    fn visit_local_variable_target_node(&mut self, node: &ruby_prism::LocalVariableTargetNode<'_>) {
-        self.fmt_local_variable_target_node(node);
-    }
-
-    fn visit_instance_variable_target_node(
-        &mut self,
-        node: &ruby_prism::InstanceVariableTargetNode<'_>,
-    ) {
-        self.fmt_instance_variable_target_node(node);
-    }
-
-    fn visit_class_variable_target_node(&mut self, node: &ruby_prism::ClassVariableTargetNode<'_>) {
-        self.fmt_class_variable_target_node(node);
-    }
-
-    fn visit_global_variable_target_node(
-        &mut self,
-        node: &ruby_prism::GlobalVariableTargetNode<'_>,
-    ) {
-        self.fmt_global_variable_target_node(node);
-    }
-
-    fn visit_constant_target_node(&mut self, node: &ruby_prism::ConstantTargetNode<'_>) {
-        self.fmt_constant_target_node(node);
-    }
-
-    fn visit_constant_path_target_node(&mut self, node: &ruby_prism::ConstantPathTargetNode<'_>) {
-        self.fmt_constant_path_target_node(node);
-    }
-
-    fn visit_call_target_node(&mut self, node: &ruby_prism::CallTargetNode<'_>) {
-        self.fmt_call_target_node(node);
-    }
-
-    fn visit_index_target_node(&mut self, node: &ruby_prism::IndexTargetNode<'_>) {
-        self.fmt_index_target_node(node);
-    }
-
-    fn visit_multi_target_node(&mut self, node: &ruby_prism::MultiTargetNode<'_>) {
-        self.fmt_multi_target_node(node);
-    }
-
-    fn visit_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {
-        self.fmt_splat_node(node);
-    }
-
-    fn visit_block_argument_node(&mut self, node: &ruby_prism::BlockArgumentNode<'_>) {
-        self.fmt_block_argument_node(node);
-    }
-
-    fn visit_array_node(&mut self, node: &ruby_prism::ArrayNode<'_>) {
-        self.fmt_array_node(node);
-    }
-
-    fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
-        self.fmt_class_node(node);
-    }
-
-    fn visit_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
-        self.fmt_module_node(node);
-    }
-
-    fn visit_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'_>) {
-        self.fmt_singleton_class_node(node);
-    }
-
-    fn visit_constant_path_node(&mut self, node: &ruby_prism::ConstantPathNode<'_>) {
-        self.fmt_constant_path_node(node);
-    }
-
-    fn visit_constant_read_node(&mut self, node: &ruby_prism::ConstantReadNode<'_>) {
-        self.fmt_constant_read_node(node);
-    }
-
-    fn visit_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
-        self.fmt_if_node(node);
-    }
-
-    fn visit_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
-        self.fmt_else_node(node);
-    }
-
-    fn visit_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
-        self.fmt_begin_node(node);
-    }
-
-    fn visit_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
-        self.fmt_rescue_node(node);
-    }
-
-    fn visit_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
-        self.fmt_rescue_modifier_node(node);
-    }
-
-    fn visit_alias_method_node(&mut self, node: &ruby_prism::AliasMethodNode<'_>) {
-        self.fmt_alias_method_node(node);
-    }
-
-    fn visit_alias_global_variable_node(&mut self, node: &ruby_prism::AliasGlobalVariableNode<'_>) {
-        self.fmt_alias_global_variable_node(node);
-    }
-
-    fn visit_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
-        self.fmt_ensure_node(node);
-    }
-
-    fn visit_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
-        self.fmt_unless_node(node);
-    }
-
-    fn visit_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) {
-        self.fmt_while_node(node);
-    }
-
-    fn visit_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
-        self.fmt_until_node(node);
-    }
-
-    fn visit_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
-        self.fmt_for_node(node);
-    }
-
-    fn visit_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
-        self.fmt_case_node(node);
-    }
-
-    fn visit_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
-        self.fmt_when_node(node);
-    }
-
-    fn visit_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
-        self.fmt_case_match_node(node);
-    }
-
-    fn visit_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
-        self.fmt_in_node(node);
-    }
-
-    fn visit_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
-        self.fmt_and_node(node);
-    }
-
-    fn visit_or_node(&mut self, node: &ruby_prism::OrNode<'_>) {
-        self.fmt_or_node(node);
-    }
-
-    fn visit_true_node(&mut self, node: &ruby_prism::TrueNode<'_>) {
-        self.fmt_true_node(node);
-    }
-
-    fn visit_false_node(&mut self, node: &ruby_prism::FalseNode<'_>) {
-        self.fmt_false_node(node);
-    }
-
-    fn visit_nil_node(&mut self, node: &ruby_prism::NilNode<'_>) {
-        self.fmt_nil_node(node);
-    }
-
-    fn visit_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) {
-        self.fmt_integer_node(node);
-    }
-
-    fn visit_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
-        self.fmt_string_node(node);
-    }
-
-    fn visit_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {
-        self.fmt_symbol_node(node);
-    }
-
-    fn visit_regular_expression_node(&mut self, node: &ruby_prism::RegularExpressionNode<'_>) {
-        self.fmt_regular_expression_node(node);
-    }
-
-    fn visit_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) {
-        self.fmt_source_file_node(node);
-    }
-
-    fn visit_source_line_node(&mut self, node: &ruby_prism::SourceLineNode<'_>) {
-        self.fmt_source_line_node(node);
-    }
-
-    fn visit_interpolated_string_node(&mut self, node: &ruby_prism::InterpolatedStringNode<'_>) {
-        self.fmt_interpolated_string_node(node);
-    }
-
-    fn visit_interpolated_symbol_node(&mut self, node: &ruby_prism::InterpolatedSymbolNode<'_>) {
-        self.fmt_interpolated_symbol_node(node);
-    }
-
-    fn visit_interpolated_regular_expression_node(
-        &mut self,
-        node: &ruby_prism::InterpolatedRegularExpressionNode<'_>,
-    ) {
-        self.fmt_interpolated_regular_expression_node(node);
-    }
-
-    fn visit_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
-        self.fmt_float_node(node);
-    }
-
-    fn visit_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) {
-        self.fmt_rational_node(node);
-    }
-
-    fn visit_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) {
-        self.fmt_imaginary_node(node);
-    }
-
-    fn visit_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) {
-        self.fmt_range_node(node);
-    }
-
-    fn visit_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) {
-        self.fmt_hash_node(node);
-    }
-
-    fn visit_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) {
-        self.fmt_keyword_hash_node(node);
-    }
-
-    fn visit_numbered_reference_read_node(
-        &mut self,
-        node: &ruby_prism::NumberedReferenceReadNode<'_>,
-    ) {
-        self.fmt_numbered_reference_read_node(node);
-    }
-
-    fn visit_back_reference_read_node(&mut self, node: &ruby_prism::BackReferenceReadNode<'_>) {
-        self.fmt_back_reference_read_node(node);
-    }
-
-    fn visit_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) {
-        self.fmt_x_string_node(node);
-    }
-
-    fn visit_interpolated_x_string_node(&mut self, node: &ruby_prism::InterpolatedXStringNode<'_>) {
-        self.fmt_interpolated_x_string_node(node);
-    }
-
-    fn visit_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {
-        self.fmt_parentheses_node(node);
-    }
-
-    fn visit_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
-        self.fmt_assoc_node(node);
-    }
-
-    fn visit_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) {
-        self.fmt_assoc_splat_node(node);
-    }
-
-    fn visit_hash_pattern_node(&mut self, node: &ruby_prism::HashPatternNode<'_>) {
-        self.fmt_hash_pattern_node(node);
-    }
-
-    fn visit_array_pattern_node(&mut self, node: &ruby_prism::ArrayPatternNode<'_>) {
-        self.fmt_array_pattern_node(node);
-    }
-
-    fn visit_implicit_node(&mut self, node: &ruby_prism::ImplicitNode<'_>) {
-        self.fmt_implicit_node(node);
-    }
-
-    fn visit_match_required_node(&mut self, node: &ruby_prism::MatchRequiredNode<'_>) {
-        self.fmt_match_required_node(node);
-    }
-
-    fn visit_match_predicate_node(&mut self, node: &ruby_prism::MatchPredicateNode<'_>) {
-        self.fmt_match_predicate_node(node);
-    }
-
-    // `regex =~ str` where `regex` has named captures: Ruby defines the
-    // capture names as local variables as a side effect. `targets` names
-    // those locals but they aren't source text to emit -- only the `=~`
-    // call itself is.
-    fn visit_match_write_node(&mut self, node: &ruby_prism::MatchWriteNode<'_>) {
-        self.visit(&node.call().as_node());
     }
 }

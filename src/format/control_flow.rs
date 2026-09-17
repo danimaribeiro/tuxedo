@@ -1,6 +1,5 @@
 use super::Formatter;
 use pretty::RcDoc as Doc;
-use ruby_prism::Visit;
 
 impl Formatter {
     /// `value => pattern` -- the "rightward assignment" one-line pattern
