@@ -144,6 +144,19 @@ each of them is reachable at 100%:
 All five are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
 and should only ever go down. Record them before a change and compare after.
 
+### Verifying a change to the formatter
+
+The test suite cannot tell you whether a layout change made the output better or
+worse — fixtures only pin down what someone already thought to write down. Measure
+instead: build the binary from `main` and from your branch, format all of
+`test-projects/rails` and `test-projects/thor` with each, `diff -rq` the two trees and
+read every hunk. Show the before and after in the PR, and run `format-verify.sh` on
+both projects so the numbers back up the judgement.
+
+A change is allowed to change the output, and welcome to improve it. What it may not
+do is make the formatting worse, and **meaning, parse and idempotence may never
+regress** — the other numbers may move a little either way.
+
 There's also `scripts/lint-baseline.sh <project>` — runs full RuboCop (not just Layout)
 three ways (RuboCop's real defaults on the original source, on tuxedo's output, and the
 project's own `.rubocop.yml` on tuxedo's output) and reports a per-cop delta table.
@@ -154,45 +167,16 @@ with `format-verify.sh`/`lint-baseline.sh` before trusting stale numbers.
 
 There are two backlogs, and they answer different questions.
 
-**The plan** — GitHub issues, grouped into five milestones, with a roadmap doc at
+**The plan** — GitHub issues, grouped into milestones, with a roadmap doc at
 <https://claude.ai/code/artifact/a4eeb67b-2e0c-422a-af19-730c276f1055> holding the
 reasoning behind each one. Issue numbers follow the order of work, so the next thing
 to pick up is normally the lowest open number: `gh issue list`. The issue bodies carry
 the detail — which node types, which functions, which traps — so read the issue before
 planning the work, and record what you learn back in it.
 
-| Milestone | Outcome | State |
-| --- | --- | --- |
-| 1. Safety net | An unfinished node passes through unchanged and never disappears | Done, PR #33 |
-| 2. Comment attachment | Comments stay beside the code they describe | Done, PR #34 |
-| 3. Finish the Doc migration | The capture and snapshot workarounds in `mod.rs` go away | In progress; PRs #35, #45, #46, #47 merged |
-| 4. Formatter cleanups | Config, block indentation and CLI gaps are closed | #26 done, PR #12; #25, #27 open |
-| 5. Linter | `tuxedo check` reports real diagnostics with RuboCop cop names | Not started |
-
-Milestone 3 is where the work is. #22 is a tracking issue; the actual work is #36 to
-#43, one per file, and they must be done roughly in that order — #40 (statements and
-comments) is the keystone, because every construct with a body contains a
-`StatementsNode`, and #41, #42 and #43 all depend on it. #36, #37 and #38 are done
-(PRs #45, #46, #47), which leaves 90 node types on `formatted`; #39 is next. Three of
-#38's node types were deferred rather than finished: `BEGIN`/`END` need a `hardline`
-body and moved to #40, and `ShareableConstantNode` moved to #39. #24 (whether to replace
-`pretty`) gets settled inside #40, not afterwards: `line_suffix` for trailing comments
-is the only capability still missing, so whichever way #40 goes decides it.
-
-Milestone 4 is small and independent of that, so it's the thing to reach for if the Doc
-migration is blocked. Note #25 is half done: PR #33 wired `.tuxedo.toml` into `format`,
-but `run_check` still takes `_config` and ignores it.
-
-**Getting onto the `Doc` IR is the goal; byte-identical output is not.** Byte-identity
-was the rule while the migration started, and it is no longer — a step that makes the
-output better is welcome, and a number that moves the wrong way by a little is not a
-blocker. What a step must not do is make the formatting *worse*. The test suite cannot
-tell you either way — both bugs found in PR #35 were invisible to it — so measure:
-format all of `test-projects/rails` and `test-projects/thor` with the binary from `main`
-and with your branch, `diff -rq` the two trees, and read what actually changed. Show the
-before and after in the PR, and run `format-verify.sh` on both projects so the meaning,
-parse, idempotence, comment and Layout numbers back up the judgement. Meaning, parse and
-idempotence are the ones that may never regress.
+Which milestone is active, what is done, what is half done and what blocks what are
+all answered there and deliberately not here: repeated in this file they would be
+wrong within a PR or two, and nothing fails when they go stale.
 
 **The bugs** — `scripts/results/`, committed, holding the latest saved run against `rails`
 and `thor`. Don't keep a separate hand-written list of known issues here; it will drift the
@@ -226,7 +210,7 @@ formatter is followable at all.
 Two things do *not* belong in a comment, because a better place already holds
 them:
 
-- **Issue numbers, PR numbers and changelog.** `(issue #22)`, `(see PR #35)`,
+- **Issue numbers, PR numbers and changelog.** `(issue #123)`, `(see PR #456)`,
   "this used to write strings". Git history records when and why every line
   arrived, and it stays accurate when the ticket is closed or renumbered — a
   comment does not. `git log -L` and `git blame` are the tools for that
@@ -292,11 +276,10 @@ its removal plan to the issue that owns it.
   unit with `group` and a nested level with `indent`, and `render` it against a width;
   the group decides flat-or-broken, which is where all-or-nothing expansion comes from.
   Never reach for `pretty` directly — the wrapper is what keeps a printer swap
-  (issue #24) confined to one file. The formatter is mid-migration: everything not yet
-  ported still writes strings into `self.output` and gets spliced in as an opaque
-  `Doc::text` leaf by `capture_as_doc`, which is why `forces_list_break` and the
-  `contains('\n')` checks exist. Both go away as constructs learn to emit `hardline`
-  (issues #22, #23).
+  confined to one file. Not every construct builds a `Doc` yet: the rest still write
+  strings into `self.output` and get spliced in as an opaque `Doc::text` leaf by
+  `capture_as_doc`, which is why `forces_list_break` and the `contains('\n')` checks
+  exist.
 
   **Comments are placed by position, not attached to nodes.** `comment_cursor` walks the
   file's comments in order and whoever owns a source range consumes the ones inside it:
