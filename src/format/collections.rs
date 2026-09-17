@@ -1,61 +1,64 @@
 use super::doc::Doc;
-use super::{Formatter, assoc_forces_list_break};
+use super::{Formatter, assoc_forces_list_break, bytes_doc};
 
 impl Formatter {
-    pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {
-        self.output.push('*');
+    pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "*");
         if let Some(expression) = node.expression() {
-            self.inline = true;
-            self.visit(&expression);
+            self.run_node(&mut run, &expression);
         }
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_block_argument_node(&mut self, node: &ruby_prism::BlockArgumentNode<'_>) {
-        self.output.push('&');
+    pub(super) fn fmt_block_argument_node(
+        &mut self,
+        node: &ruby_prism::BlockArgumentNode<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "&");
         if let Some(expression) = node.expression() {
-            self.inline = true;
-            self.visit(&expression);
+            self.run_node(&mut run, &expression);
         }
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_array_node(&mut self, node: &ruby_prism::ArrayNode<'_>) {
+    pub(super) fn fmt_array_node(&mut self, node: &ruby_prism::ArrayNode<'_>) -> Doc {
         let opening = node.opening_loc().map(|loc| loc.as_slice());
         let elements: Vec<_> = node.elements().iter().collect();
 
         if opening.is_some_and(|o| o.len() >= 2 && matches!(&o[..2], b"%w" | b"%i" | b"%W" | b"%I"))
         {
-            self.fmt_percent_array(node, &elements);
-            return;
+            return self.fmt_percent_array(node, &elements);
         }
 
         let bracketed = opening.is_some();
 
+        // An array with no brackets of its own (`return 1, 2`, the right
+        // -hand side of `a, b = 1, 2`) has nothing to expand into, and an
+        // empty one has nothing to expand.
         if !bracketed || elements.is_empty() {
-            self.write_leaf(|f| {
-                if bracketed {
-                    f.output.push('[');
+            let mut run = self.begin_run();
+            if bracketed {
+                self.run_text(&mut run, "[");
+            }
+            for (i, element) in elements.iter().enumerate() {
+                if i > 0 {
+                    self.run_text(&mut run, ", ");
                 }
-                for (i, element) in elements.iter().enumerate() {
-                    if i > 0 {
-                        f.output.push_str(", ");
-                    }
-                    f.inline = true;
-                    f.visit(element);
-                }
-                if bracketed {
-                    f.output.push(']');
-                }
-            });
-            return;
+                self.run_node(&mut run, element);
+            }
+            if bracketed {
+                self.run_text(&mut run, "]");
+            }
+            return self.end_run(run);
         }
 
         let span = node
             .opening_loc()
             .zip(node.closing_loc())
             .map(|(open, close)| (open.end_offset(), close.start_offset()));
-        self.write_leaf(|f| {
-            f.write_bracketed_items("[", Doc::softline(), &elements, Doc::softline(), "]", span);
-        });
+        self.bracketed_items_doc("[", Doc::softline(), &elements, Doc::softline(), "]", span)
     }
 
     /// Renders a `%w()`/`%i()`/`%W()`/`%I()` word/symbol list, preserving
@@ -66,31 +69,23 @@ impl Formatter {
         &mut self,
         node: &ruby_prism::ArrayNode<'_>,
         elements: &[ruby_prism::Node<'_>],
-    ) {
+    ) -> Doc {
         let opening = node.opening_loc().unwrap().as_slice().to_vec();
         let closing = node.closing_loc().unwrap().as_slice().to_vec();
 
         if elements.is_empty() {
-            self.write_leaf(|f| {
-                f.write_bytes(&opening);
-                f.write_bytes(&closing);
-            });
-            return;
+            return bytes_doc(&opening).append(bytes_doc(&closing));
         }
 
-        self.write_leaf(|f| {
-            let leaves: Vec<_> = elements
-                .iter()
-                .map(|element| f.fmt_percent_array_word(element))
-                .collect();
+        let leaves: Vec<_> = elements
+            .iter()
+            .map(|element| self.fmt_percent_array_word(element))
+            .collect();
 
-            let opening = String::from_utf8_lossy(&opening).into_owned();
-            let closing = String::from_utf8_lossy(&closing).into_owned();
-            let body = Doc::join(leaves, Doc::line());
-            let rendered =
-                f.wrap_bracketed_group(&opening, Doc::softline(), body, Doc::softline(), &closing);
-            f.output.push_str(&rendered);
-        });
+        let opening = String::from_utf8_lossy(&opening).into_owned();
+        let closing = String::from_utf8_lossy(&closing).into_owned();
+        let body = Doc::join(leaves, Doc::line());
+        self.bracketed_group_doc(&opening, Doc::softline(), body, Doc::softline(), &closing)
     }
 
     /// Renders one element of a `%w`/`%i`/`%W`/`%I` list as its bare word,
@@ -111,38 +106,37 @@ impl Formatter {
             // than through `unescaped()`) also preserves an escaped space
             // like `\ ` as-is instead of resolving it to an actual space,
             // which would silently merge two words back into one.
-            Doc::text(String::from_utf8_lossy(element.location().as_slice()).into_owned())
+            bytes_doc(element.location().as_slice())
         }
     }
 
-    pub(super) fn fmt_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) {
+    pub(super) fn fmt_range_node(&mut self, node: &ruby_prism::RangeNode<'_>) -> Doc {
+        let mut run = self.begin_run();
         if let Some(left) = node.left() {
-            self.inline = true;
-            self.visit(&left);
+            self.run_node(&mut run, &left);
         }
-        let op = std::str::from_utf8(node.operator_loc().as_slice()).unwrap_or("..");
-        self.output.push_str(op);
+        self.run_bytes(&mut run, node.operator_loc().as_slice());
         if let Some(right) = node.right() {
-            self.inline = true;
-            self.visit(&right);
+            self.run_node(&mut run, &right);
         }
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) {
+    pub(super) fn fmt_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) -> Doc {
         let elements: Vec<_> = node.elements().iter().collect();
         let braces = (
             node.opening_loc().end_offset(),
             node.closing_loc().start_offset(),
         );
-        self.fmt_hash_elements(&elements, Some(braces));
+        self.fmt_hash_elements(&elements, Some(braces))
     }
 
     /// Bare keyword arguments at a call site (`foo(a, k: 1, j: 2)`). Prism
     /// parses these as a `KeywordHashNode`, *not* a `HashNode` — they are
     /// the same comma-joined pairs but carry no braces of their own.
-    pub(super) fn fmt_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) {
+    pub(super) fn fmt_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) -> Doc {
         let elements: Vec<_> = node.elements().iter().collect();
-        self.fmt_hash_elements(&elements, None);
+        self.fmt_hash_elements(&elements, None)
     }
 
     /// Renders a run of `key => value` / `key: value` pairs, optionally
@@ -155,59 +149,49 @@ impl Formatter {
         &mut self,
         elements: &[ruby_prism::Node<'_>],
         braces: Option<(usize, usize)>,
-    ) {
+    ) -> Doc {
         let braced = braces.is_some();
         if elements.is_empty() {
-            if braced {
-                self.write_leaf(|f| f.output.push_str("{}"));
-            }
-            return;
+            return if braced { Doc::text("{}") } else { Doc::nil() };
         }
 
         if braced {
-            self.write_leaf(|f| {
-                f.write_bracketed_items("{", Doc::line(), elements, Doc::line(), "}", braces);
-            });
-            return;
+            return self.bracketed_items_doc("{", Doc::line(), elements, Doc::line(), "}", braces);
         }
 
         // Bare keyword args at a call site with no braces of their own.
         // Call args flatten KeywordHashNode before wrapping, so this is
-        // the fallback if a keyword hash is visited directly.
-        self.write_leaf(|f| {
-            if elements.iter().any(assoc_forces_list_break) {
-                f.write_expanded_items(elements);
-                return;
-            }
-            let snap = f.capture_snapshot();
-            let leaves: Vec<Doc> = elements.iter().map(|e| f.node_doc(e)).collect();
-            if leaves.iter().any(Doc::breaks) {
-                f.restore_capture_snapshot(snap);
-                f.write_expanded_items(elements);
-                return;
-            }
-            let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-            let nest_width = f.indent_str.len();
-            let doc = body.indent(nest_width).group();
-            let rendered = f.render_doc_to_string(doc);
-            f.output.push_str(&rendered);
-        });
+        // the fallback if a keyword hash is visited directly. With no
+        // bracket to break after, the first pair stays on the line the
+        // call is already on.
+        if elements.iter().any(assoc_forces_list_break) {
+            return self.expanded_items_doc(elements, false);
+        }
+        let snap = self.capture_snapshot();
+        let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
+        if leaves.iter().any(Doc::breaks) {
+            self.restore_capture_snapshot(snap);
+            return self.expanded_items_doc(elements, false);
+        }
+        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
+        body.indent(self.indent_str.len()).group()
     }
 
     /// A double-splat entry inside a hash literal or keyword argument list
     /// (`{ a: 1, **rest }`, `foo(**opts)`). The bare `**` form used to
     /// forward an anonymous kwrest has no value.
-    pub(super) fn fmt_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) {
-        self.write_bytes(node.operator_loc().as_slice());
+    pub(super) fn fmt_assoc_splat_node(&mut self, node: &ruby_prism::AssocSplatNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_bytes(&mut run, node.operator_loc().as_slice());
         if let Some(value) = node.value() {
-            self.inline = true;
-            self.visit(&value);
+            self.run_node(&mut run, &value);
         }
+        self.end_run(run)
     }
 
-    pub(super) fn fmt_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) {
-        self.inline = true;
-        self.visit(&node.key());
+    pub(super) fn fmt_assoc_node(&mut self, node: &ruby_prism::AssocNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, &node.key());
         let value = node.value();
         // Shorthand `key:` (3.1+ hash-literal value-omission, or a pattern
         // -match bind) has an `ImplicitNode` standing in for the omitted
@@ -216,30 +200,29 @@ impl Formatter {
         // rewrite `{ x: }` into `{ x: x }`, or worse, turn a pattern-match
         // bind into a match against an existing variable's current value.
         if matches!(value, ruby_prism::Node::ImplicitNode { .. }) {
-            return;
+            return self.end_run(run);
         }
+        // `key => value` keeps whichever operator the source wrote;
+        // `key: value` has none of its own -- the `:` is part of the key.
+        self.run_text(&mut run, " ");
         if let Some(op) = node.operator_loc() {
-            self.output.push(' ');
-            self.output
-                .push_str(std::str::from_utf8(op.as_slice()).unwrap_or("=>"));
-            self.output.push(' ');
-        } else {
-            self.output.push(' ');
+            self.run_bytes(&mut run, op.as_slice());
+            self.run_text(&mut run, " ");
         }
-        self.inline = true;
-        self.visit(&value);
+        self.run_node(&mut run, &value);
+        self.end_run(run)
     }
 
     /// `{ key: value, ... }` / `ClassName[key: value, ...]` as a pattern
     /// (as opposed to `fmt_hash_node`'s hash *literal*) -- e.g. the
     /// right-hand side of `expr => { key: value }` or `expr in
-    /// ClassName[key:]`. Kept as a plain imperative leaf rather than a
-    /// Doc-wrapped group like the literal: patterns are short in practice
+    /// ClassName[key:]`. Kept as a flat one-line shape rather than a
+    /// breakable group like the literal: patterns are short in practice
     /// and rarely need to wrap.
-    pub(super) fn fmt_hash_pattern_node(&mut self, node: &ruby_prism::HashPatternNode<'_>) {
+    pub(super) fn fmt_hash_pattern_node(&mut self, node: &ruby_prism::HashPatternNode<'_>) -> Doc {
+        let mut run = self.begin_run();
         if let Some(constant) = node.constant() {
-            self.inline = true;
-            self.visit(&constant);
+            self.run_node(&mut run, &constant);
         }
 
         let opening = node
@@ -252,39 +235,41 @@ impl Formatter {
             .unwrap_or_else(|| b"}".to_vec());
         let braced = opening == b"{";
 
-        self.write_bytes(&opening);
+        self.run_bytes(&mut run, &opening);
         let elements: Vec<_> = node.elements().iter().collect();
         let has_content = !elements.is_empty() || node.rest().is_some();
         if braced && has_content {
-            self.output.push(' ');
+            self.run_text(&mut run, " ");
         }
         for (i, element) in elements.iter().enumerate() {
             if i > 0 {
-                self.output.push_str(", ");
+                self.run_text(&mut run, ", ");
             }
-            self.inline = true;
-            self.visit(element);
+            self.run_node(&mut run, element);
         }
         if let Some(rest) = node.rest() {
             if !elements.is_empty() {
-                self.output.push_str(", ");
+                self.run_text(&mut run, ", ");
             }
-            self.inline = true;
-            self.visit(&rest);
+            self.run_node(&mut run, &rest);
         }
         if braced && has_content {
-            self.output.push(' ');
+            self.run_text(&mut run, " ");
         }
-        self.write_bytes(&closing);
+        self.run_bytes(&mut run, &closing);
+        self.end_run(run)
     }
 
     /// `[a, b, *rest, c]` / `ClassName[a, b]` as a pattern (as opposed to
     /// `fmt_array_node`'s array *literal*). Same rationale as
-    /// `fmt_hash_pattern_node` for staying a plain imperative leaf.
-    pub(super) fn fmt_array_pattern_node(&mut self, node: &ruby_prism::ArrayPatternNode<'_>) {
+    /// `fmt_hash_pattern_node` for staying one flat line.
+    pub(super) fn fmt_array_pattern_node(
+        &mut self,
+        node: &ruby_prism::ArrayPatternNode<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
         if let Some(constant) = node.constant() {
-            self.inline = true;
-            self.visit(&constant);
+            self.run_node(&mut run, &constant);
         }
 
         let opening = node
@@ -295,35 +280,23 @@ impl Formatter {
             .closing_loc()
             .map(|l| l.as_slice().to_vec())
             .unwrap_or_else(|| b"]".to_vec());
-        self.write_bytes(&opening);
+        self.run_bytes(&mut run, &opening);
 
-        let mut wrote_any = false;
-        for required in node.requireds().iter() {
-            if wrote_any {
-                self.output.push_str(", ");
+        let items: Vec<_> = node
+            .requireds()
+            .iter()
+            .chain(node.rest())
+            .chain(node.posts().iter())
+            .collect();
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                self.run_text(&mut run, ", ");
             }
-            self.inline = true;
-            self.visit(&required);
-            wrote_any = true;
-        }
-        if let Some(rest) = node.rest() {
-            if wrote_any {
-                self.output.push_str(", ");
-            }
-            self.inline = true;
-            self.visit(&rest);
-            wrote_any = true;
-        }
-        for post in node.posts().iter() {
-            if wrote_any {
-                self.output.push_str(", ");
-            }
-            self.inline = true;
-            self.visit(&post);
-            wrote_any = true;
+            self.run_node(&mut run, item);
         }
 
-        self.write_bytes(&closing);
+        self.run_bytes(&mut run, &closing);
+        self.end_run(run)
     }
 
     /// The omitted value of a shorthand `key:` entry (hash-literal
@@ -332,5 +305,7 @@ impl Formatter {
     /// practice. Renders nothing; kept only so an unexpected direct visit
     /// doesn't fall through to prism's default (which would print the
     /// implied variable's read/target, defeating the point).
-    pub(super) fn fmt_implicit_node(&mut self, _node: &ruby_prism::ImplicitNode<'_>) {}
+    pub(super) fn fmt_implicit_node(&mut self, _node: &ruby_prism::ImplicitNode<'_>) -> Doc {
+        Doc::nil()
+    }
 }

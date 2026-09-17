@@ -13,7 +13,7 @@ error = "Failed to execute 'close' on WebSocket: " \
 # the group is composed into the enclosing one rather than rendered flat.
 raise RecordNotSaved.new(
   "Failed to remove the existing associated record. " \
-    "The record failed to save after its foreign key was set to nil.",
+    "The record failed to save after its foreign key was set to nil in the database.",
   target
 )
 warn(

@@ -91,13 +91,13 @@ impl Doc {
 
     /// An unconditional line break, which also forces every group
     /// containing it to break. This is how a construct that is always
-    /// multi-line (a `do...end` body, a statement list) reports that fact
-    /// to the collection it sits inside, instead of the caller testing for
-    /// it up front.
+    /// multi-line (an expanded collection, and in time a `do...end` body
+    /// or a statement list) reports that fact to whatever it sits inside,
+    /// instead of the caller testing for it up front.
     ///
-    /// Unused so far: it is what replaces `forces_list_break` once bodies
-    /// build `Doc`s of their own (issue #22).
-    #[allow(dead_code)]
+    /// A collection that has already decided to expand is built out of
+    /// these; `forces_list_break` goes away as the constructs that force
+    /// the decision learn to emit them too (issue #22).
     pub(super) fn hardline() -> Self {
         Doc::new(RcDoc::hardline(), true)
     }
