@@ -88,7 +88,7 @@
 # existing part boundaries with a trailing `\` when they overflow, at one
 # indent from the statement. A `{ }` / brace-lambda body that does not
 # fit on the current line expands like `do...end` instead of staying
-# `single_line`. See `write_implicit_string_concat` and
+# `single_line`. See `implicit_string_concat_doc` and
 # `write_brace_block_body`, plus `tests/fixtures/format/string_concatenation.rb`
 # and `tests/fixtures/format/blocks.rb`.
 #

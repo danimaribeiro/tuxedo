@@ -100,10 +100,10 @@ impl Formatter {
     fn fmt_percent_array_word(&mut self, element: &ruby_prism::Node<'_>) -> Doc {
         if let Some(interpolated) = element.as_interpolated_string_node() {
             let parts = interpolated.parts();
-            self.capture_as_doc(|f| f.fmt_interpolated_parts(&parts))
+            self.interpolated_literal_doc(None, &parts, None)
         } else if let Some(interpolated) = element.as_interpolated_symbol_node() {
             let parts = interpolated.parts();
-            self.capture_as_doc(|f| f.fmt_interpolated_parts(&parts))
+            self.interpolated_literal_doc(None, &parts, None)
         } else {
             // A plain word (StringNode for %w/%W, SymbolNode for %i/%I) has
             // no delimiters in source at all -- its raw location is

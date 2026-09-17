@@ -103,14 +103,11 @@ impl Doc {
     }
 
     /// `broken` when the enclosing group breaks, `flat` when it fits —
-    /// Prettier's `ifBreak`. A trailing comma that only appears in the
-    /// expanded form is the usual case (Tuxedo does not emit one, but the
-    /// primitive is what `line`/`softline` are special cases of).
-    ///
-    /// Unused so far: kept because it is the general form `line` and
-    /// `softline` are special cases of, and the vocabulary is the point of
-    /// this module.
-    #[allow(dead_code)]
+    /// Prettier's `ifBreak`, and the general form `line` and `softline`
+    /// are special cases of. The trailing `\` an adjacent-string-literal
+    /// concatenation needs only in its wrapped shape is the case that uses
+    /// it (see `implicit_string_concat_doc`); a trailing comma would be
+    /// the other usual one, but Tuxedo does not emit those.
     pub(super) fn if_break(broken: Doc, flat: Doc) -> Self {
         Doc::new(broken.doc.flat_alt(flat.doc), broken.breaks && flat.breaks)
     }
