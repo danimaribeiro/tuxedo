@@ -180,11 +180,16 @@ Milestone 4 is small and independent of that, so it's the thing to reach for if 
 migration is blocked. Note #25 is half done: PR #33 wired `.tuxedo.toml` into `format`,
 but `run_check` still takes `_config` and ignores it.
 
-**Every Doc-migration change must leave output byte-identical.** The test suite does not
-catch these regressions — both bugs found in PR #35 were invisible to it. Format all of
-`test-projects/rails` and `test-projects/thor` with the binary from `main` and with your
-branch, and `diff -rq` the two trees. Say so in the PR, and if a step deliberately changes
-output, show the before and after.
+**Getting onto the `Doc` IR is the goal; byte-identical output is not.** Byte-identity
+was the rule while the migration started, and it is no longer — a step that makes the
+output better is welcome, and a number that moves the wrong way by a little is not a
+blocker. What a step must not do is make the formatting *worse*. The test suite cannot
+tell you either way — both bugs found in PR #35 were invisible to it — so measure:
+format all of `test-projects/rails` and `test-projects/thor` with the binary from `main`
+and with your branch, `diff -rq` the two trees, and read what actually changed. Show the
+before and after in the PR, and run `format-verify.sh` on both projects so the meaning,
+parse, idempotence, comment and Layout numbers back up the judgement. Meaning, parse and
+idempotence are the ones that may never regress.
 
 **The bugs** — `scripts/results/`, committed, holding the latest saved run against `rails`
 and `thor`. Don't keep a separate hand-written list of known issues here; it will drift the
@@ -245,8 +250,9 @@ updated `scripts/results/*.txt` alongside the fix.
   a `Doc`: native for a `leaf` node, and for the rest still the node's string output
   wrapped as one opaque `Doc::text`, which is what makes nested collections render more
   than once and what `forces_list_break` exists to work around. Moving a node type from
-  `formatted` to `leaf` must not change output — verify by formatting `test-projects/rails`
-  and `test-projects/thor` before and after and diffing the trees.
+  `formatted` to `leaf` is allowed to change output, but not to make it worse — verify by
+  formatting `test-projects/rails` and `test-projects/thor` before and after, diffing the
+  trees, and reading every hunk.
 
   **Layout goes through the `Doc` IR** (`src/format/doc.rs`), the only module that names
   `pretty`. Build a `Doc` out of `text`/`line`/`softline`/`hardline`/`if_break`, mark a
