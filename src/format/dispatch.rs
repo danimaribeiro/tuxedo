@@ -199,6 +199,8 @@ dispatch! {
         CallOrWriteNode => as_call_or_write_node => fmt_call_or_write_node,
         CallAndWriteNode => as_call_and_write_node => fmt_call_and_write_node,
         ShareableConstantNode => as_shareable_constant_node => fmt_shareable_constant_node,
+        AliasMethodNode => as_alias_method_node => fmt_alias_method_node,
+        AliasGlobalVariableNode => as_alias_global_variable_node => fmt_alias_global_variable_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
@@ -233,8 +235,6 @@ dispatch! {
         BeginNode => as_begin_node => fmt_begin_node,
         RescueNode => as_rescue_node => fmt_rescue_node,
         RescueModifierNode => as_rescue_modifier_node => fmt_rescue_modifier_node,
-        AliasMethodNode => as_alias_method_node => fmt_alias_method_node,
-        AliasGlobalVariableNode => as_alias_global_variable_node => fmt_alias_global_variable_node,
         EnsureNode => as_ensure_node => fmt_ensure_node,
         UnlessNode => as_unless_node => fmt_unless_node,
         WhileNode => as_while_node => fmt_while_node,

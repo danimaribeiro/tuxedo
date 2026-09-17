@@ -1,4 +1,5 @@
 use super::Formatter;
+use super::doc::Doc;
 
 /// A method/class/module definition -- rubocop's Layout/EmptyLineBetweenDefs
 /// wants a blank line before/after each of these by default
@@ -233,20 +234,8 @@ impl Formatter {
     /// default visitor for this node visits `new_name`/`old_name` back to
     /// back with no keyword or separator at all, which is why it needs its
     /// own handler rather than falling through to that default.
-    pub(super) fn fmt_alias_method_node(&mut self, node: &ruby_prism::AliasMethodNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("alias ");
-        self.inline = true;
-        self.visit(&node.new_name());
-        self.output.push(' ');
-        self.inline = true;
-        self.visit(&node.old_name());
-        if !inline {
-            self.output.push('\n');
-        }
+    pub(super) fn fmt_alias_method_node(&mut self, node: &ruby_prism::AliasMethodNode<'_>) -> Doc {
+        self.alias_doc(&node.new_name(), &node.old_name())
     }
 
     /// `alias $new $old` -- the global-variable form of `alias`, a distinct
@@ -255,19 +244,21 @@ impl Formatter {
     pub(super) fn fmt_alias_global_variable_node(
         &mut self,
         node: &ruby_prism::AliasGlobalVariableNode<'_>,
-    ) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("alias ");
-        self.inline = true;
-        self.visit(&node.new_name());
-        self.output.push(' ');
-        self.inline = true;
-        self.visit(&node.old_name());
-        if !inline {
-            self.output.push('\n');
-        }
+    ) -> Doc {
+        self.alias_doc(&node.new_name(), &node.old_name())
+    }
+
+    /// `alias new old` for both forms above.
+    fn alias_doc(
+        &mut self,
+        new_name: &ruby_prism::Node<'_>,
+        old_name: &ruby_prism::Node<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "alias ");
+        self.run_node(&mut run, new_name);
+        self.run_text(&mut run, " ");
+        self.run_node(&mut run, old_name);
+        self.end_run(run)
     }
 }
