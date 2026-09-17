@@ -151,6 +151,14 @@ dispatch! {
         HashPatternNode => as_hash_pattern_node => fmt_hash_pattern_node,
         ArrayPatternNode => as_array_pattern_node => fmt_array_pattern_node,
         ImplicitNode => as_implicit_node => fmt_implicit_node,
+        AlternationPatternNode => as_alternation_pattern_node => fmt_alternation_pattern_node,
+        CapturePatternNode => as_capture_pattern_node => fmt_capture_pattern_node,
+        PinnedVariableNode => as_pinned_variable_node => fmt_pinned_variable_node,
+        PinnedExpressionNode => as_pinned_expression_node => fmt_pinned_expression_node,
+        FindPatternNode => as_find_pattern_node => fmt_find_pattern_node,
+        FlipFlopNode => as_flip_flop_node => fmt_flip_flop_node,
+        DefinedNode => as_defined_node => fmt_defined_node,
+        UndefNode => as_undef_node => fmt_undef_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
@@ -240,14 +248,11 @@ dispatch! {
         OrNode => as_or_node => fmt_or_node,
         MatchRequiredNode => as_match_required_node => fmt_match_required_node,
         MatchPredicateNode => as_match_predicate_node => fmt_match_predicate_node,
-        AlternationPatternNode => as_alternation_pattern_node => fmt_alternation_pattern_node,
-        CapturePatternNode => as_capture_pattern_node => fmt_capture_pattern_node,
-        PinnedVariableNode => as_pinned_variable_node => fmt_pinned_variable_node,
-        PinnedExpressionNode => as_pinned_expression_node => fmt_pinned_expression_node,
-        FindPatternNode => as_find_pattern_node => fmt_find_pattern_node,
-        FlipFlopNode => as_flip_flop_node => fmt_flip_flop_node,
-        DefinedNode => as_defined_node => fmt_defined_node,
-        UndefNode => as_undef_node => fmt_undef_node,
+        // The rest of patterns.rs is on `leaf`; these three are held back
+        // on something else. `BEGIN`/`END` lay out a statement list, which
+        // needs `hardline` bodies (issue #40). A shareable constant is a
+        // wrapper with no text of its own -- it becomes `node_doc` of the
+        // write it wraps, once the writes are leaves (issue #39).
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
         ShareableConstantNode => as_shareable_constant_node => fmt_shareable_constant_node,
