@@ -1,137 +1,143 @@
 //! Pattern-matching nodes that only occur inside `in`/`=>` patterns, plus
 //! the handful of keyword constructs (`defined?`, `undef`, `BEGIN`/`END`,
-//! flip-flop) that used to fall through to the verbatim fallback.
+//! flip-flop) that carry a keyword of their own and nothing else.
 //!
 //! `fmt_array_pattern_node`/`fmt_hash_pattern_node` live in `collections`
 //! next to the literals they mirror.
+//!
+//! All of these but `BEGIN`/`END` are a keyword or operator with one or
+//! two children joined by a fixed separator, so each is an [`InlineRun`]
+//! over `run_node` of its children and carries no line point of its own.
+//! What the `Doc` buys them is their *children*: one that carries line
+//! points (an adjacent-string-literal concatenation, say) is now laid out
+//! by the enclosing group, which can see what precedes it on the line,
+//! instead of being rendered on its own and pasted in.
+//!
+//! [`InlineRun`]: super::InlineRun
 
 use super::Formatter;
+use super::doc::Doc;
 
 impl Formatter {
     /// `Integer | Float`
     pub(super) fn fmt_alternation_pattern_node(
         &mut self,
         node: &ruby_prism::AlternationPatternNode<'_>,
-    ) {
-        self.write_leaf(|f| {
-            f.inline = true;
-            f.visit(&node.left());
-            f.output.push_str(" | ");
-            f.inline = true;
-            f.visit(&node.right());
-        });
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, &node.left());
+        self.run_text(&mut run, " | ");
+        self.run_node(&mut run, &node.right());
+        self.end_run(run)
     }
 
     /// `Integer => n`
-    pub(super) fn fmt_capture_pattern_node(&mut self, node: &ruby_prism::CapturePatternNode<'_>) {
-        self.write_leaf(|f| {
-            f.inline = true;
-            f.visit(&node.value());
-            f.output.push_str(" => ");
-            f.inline = true;
-            f.visit(&node.target().as_node());
-        });
+    pub(super) fn fmt_capture_pattern_node(
+        &mut self,
+        node: &ruby_prism::CapturePatternNode<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, &node.value());
+        self.run_text(&mut run, " => ");
+        self.run_node(&mut run, &node.target().as_node());
+        self.end_run(run)
     }
 
     /// `^var`
-    pub(super) fn fmt_pinned_variable_node(&mut self, node: &ruby_prism::PinnedVariableNode<'_>) {
-        self.write_leaf(|f| {
-            f.output.push('^');
-            f.inline = true;
-            f.visit(&node.variable());
-        });
+    pub(super) fn fmt_pinned_variable_node(
+        &mut self,
+        node: &ruby_prism::PinnedVariableNode<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "^");
+        self.run_node(&mut run, &node.variable());
+        self.end_run(run)
     }
 
     /// `^(expression)`
     pub(super) fn fmt_pinned_expression_node(
         &mut self,
         node: &ruby_prism::PinnedExpressionNode<'_>,
-    ) {
-        self.write_leaf(|f| {
-            f.output.push_str("^(");
-            f.inline = true;
-            f.visit(&node.expression());
-            f.output.push(')');
-        });
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "^(");
+        self.run_node(&mut run, &node.expression());
+        self.run_text(&mut run, ")");
+        self.end_run(run)
     }
 
     /// `[*, needle, *post]` / `Const[*, needle, *]` / `Const(*, needle, *)`
-    pub(super) fn fmt_find_pattern_node(&mut self, node: &ruby_prism::FindPatternNode<'_>) {
-        self.write_leaf(|f| {
-            if let Some(constant) = node.constant() {
-                f.inline = true;
-                f.visit(&constant);
-            }
-            let opening = node
-                .opening_loc()
-                .map(|l| l.as_slice().to_vec())
-                .unwrap_or_else(|| b"[".to_vec());
-            let closing = node
-                .closing_loc()
-                .map(|l| l.as_slice().to_vec())
-                .unwrap_or_else(|| b"]".to_vec());
-            f.write_bytes(&opening);
-            f.inline = true;
-            f.visit(&node.left().as_node());
-            for required in node.requireds().iter() {
-                f.output.push_str(", ");
-                f.inline = true;
-                f.visit(&required);
-            }
-            f.output.push_str(", ");
-            f.inline = true;
-            f.visit(&node.right());
-            f.write_bytes(&closing);
-        });
+    pub(super) fn fmt_find_pattern_node(&mut self, node: &ruby_prism::FindPatternNode<'_>) -> Doc {
+        let opening = node
+            .opening_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"[".to_vec());
+        let closing = node
+            .closing_loc()
+            .map(|l| l.as_slice().to_vec())
+            .unwrap_or_else(|| b"]".to_vec());
+
+        let mut run = self.begin_run();
+        if let Some(constant) = node.constant() {
+            self.run_node(&mut run, &constant);
+        }
+        self.run_bytes(&mut run, &opening);
+        self.run_node(&mut run, &node.left().as_node());
+        for required in node.requireds().iter() {
+            self.run_text(&mut run, ", ");
+            self.run_node(&mut run, &required);
+        }
+        self.run_text(&mut run, ", ");
+        self.run_node(&mut run, &node.right());
+        self.run_bytes(&mut run, &closing);
+        self.end_run(run)
     }
 
     /// `(a..b)` as a condition: Ruby's flip-flop. Same shape as a range.
-    pub(super) fn fmt_flip_flop_node(&mut self, node: &ruby_prism::FlipFlopNode<'_>) {
-        self.write_leaf(|f| {
-            if let Some(left) = node.left() {
-                f.inline = true;
-                f.visit(&left);
-            }
-            let op = node.operator_loc().as_slice().to_vec();
-            f.write_bytes(&op);
-            if let Some(right) = node.right() {
-                f.inline = true;
-                f.visit(&right);
-            }
-        });
+    pub(super) fn fmt_flip_flop_node(&mut self, node: &ruby_prism::FlipFlopNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        if let Some(left) = node.left() {
+            self.run_node(&mut run, &left);
+        }
+        self.run_bytes(&mut run, node.operator_loc().as_slice());
+        if let Some(right) = node.right() {
+            self.run_node(&mut run, &right);
+        }
+        self.end_run(run)
     }
 
     /// `defined?(x)` / `defined? x`. Parentheses are kept as written: they
     /// are not optional in general (`defined? a && b` asks about `a && b`,
     /// `defined?(a) && b` does not).
-    pub(super) fn fmt_defined_node(&mut self, node: &ruby_prism::DefinedNode<'_>) {
-        self.write_leaf(|f| {
-            let parenthesized = node.lparen_loc().is_some();
-            f.output.push_str(if parenthesized {
+    pub(super) fn fmt_defined_node(&mut self, node: &ruby_prism::DefinedNode<'_>) -> Doc {
+        let parenthesized = node.lparen_loc().is_some();
+        let mut run = self.begin_run();
+        self.run_text(
+            &mut run,
+            if parenthesized {
                 "defined?("
             } else {
                 "defined? "
-            });
-            f.inline = true;
-            f.visit(&node.value());
-            if parenthesized {
-                f.output.push(')');
-            }
-        });
+            },
+        );
+        self.run_node(&mut run, &node.value());
+        if parenthesized {
+            self.run_text(&mut run, ")");
+        }
+        self.end_run(run)
     }
 
     /// `undef foo, :bar`
-    pub(super) fn fmt_undef_node(&mut self, node: &ruby_prism::UndefNode<'_>) {
-        self.write_leaf(|f| {
-            f.output.push_str("undef ");
-            for (i, name) in node.names().iter().enumerate() {
-                if i > 0 {
-                    f.output.push_str(", ");
-                }
-                f.inline = true;
-                f.visit(&name);
+    pub(super) fn fmt_undef_node(&mut self, node: &ruby_prism::UndefNode<'_>) -> Doc {
+        let mut run = self.begin_run();
+        self.run_text(&mut run, "undef ");
+        for (i, name) in node.names().iter().enumerate() {
+            if i > 0 {
+                self.run_text(&mut run, ", ");
             }
-        });
+            self.run_node(&mut run, &name);
+        }
+        self.end_run(run)
     }
 
     /// `BEGIN { ... }`

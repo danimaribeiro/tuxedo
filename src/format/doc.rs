@@ -19,9 +19,9 @@
 //!
 //! Wrapping `pretty` rather than using it directly is what makes the
 //! printer replaceable: callers name none of its types, so swapping the
-//! body of this module for our own printer is a change to one file (issue
-//! #24). It also keeps the surface honest — everything the formatter is
-//! allowed to express is listed here.
+//! body of this module for our own printer is a change to one file. It
+//! also keeps the surface honest — everything the formatter is allowed to
+//! express is listed here.
 
 use pretty::RcDoc;
 
@@ -69,8 +69,7 @@ impl Doc {
     /// indentation does not apply to it, so a group containing one can be
     /// laid out as though it fit. Today that is how captured string output
     /// gets embedded in a `Doc`; [`Doc::breaks`] reports the case so the
-    /// enclosing construct can pick its expanded shape by hand, and both go
-    /// away with the last capture (issues #22, #23).
+    /// enclosing construct can pick its expanded shape by hand.
     pub(super) fn text(text: impl Into<String>) -> Self {
         let text = text.into();
         let breaks = text.contains('\n');
@@ -91,13 +90,9 @@ impl Doc {
 
     /// An unconditional line break, which also forces every group
     /// containing it to break. This is how a construct that is always
-    /// multi-line (an expanded collection, and in time a `do...end` body
-    /// or a statement list) reports that fact to whatever it sits inside,
-    /// instead of the caller testing for it up front.
-    ///
-    /// A collection that has already decided to expand is built out of
-    /// these; `forces_list_break` goes away as the constructs that force
-    /// the decision learn to emit them too (issue #22).
+    /// multi-line -- an expanded collection -- reports that fact to
+    /// whatever it sits inside, instead of the caller testing for it up
+    /// front.
     pub(super) fn hardline() -> Self {
         Doc::new(RcDoc::hardline(), true)
     }

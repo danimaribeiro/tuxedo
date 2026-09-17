@@ -308,9 +308,6 @@ struct CommentSpan {
 /// once the run ends (`end_run`); only the `Doc`s are kept. Without it a
 /// child that still writes strings would decide its own layout as though
 /// its parent had written nothing, and lay out an overlong value flat.
-///
-/// It goes away as the children move onto `Doc` themselves, at which
-/// point nothing needs a column to be built (issues #22, #23).
 struct InlineRun {
     start: usize,
     leaves: Vec<Doc>,
@@ -623,9 +620,9 @@ impl Formatter {
         {
             // The one shape still laid out imperatively: it consumes
             // comments from `comment_cursor` as it writes, and a comment
-            // has no `Doc` form yet (issue #40). Written where it will
-            // sit and lifted straight back out, so it is the same bytes
-            // as writing it in place -- see `spliced_doc`.
+            // has no `Doc` form. Written where it will sit and lifted
+            // straight back out, so it is the same bytes as writing it in
+            // place -- see `spliced_doc`.
             return self.spliced_doc(|f| {
                 f.write_commented_bracketed_items(open, items, close, (start, end))
             });
@@ -860,7 +857,7 @@ impl Formatter {
     /// The breaks are [`Doc::hardline`]s rather than raw newlines, which
     /// is what lets this shape sit inside an enclosing group and force it
     /// open on its own instead of the enclosing construct having to ask
-    /// `forces_list_break` up front (issues #22, #23).
+    /// `forces_list_break` up front.
     fn expanded_bracketed_items_doc(
         &mut self,
         open: &str,
@@ -1470,8 +1467,7 @@ impl Formatter {
         // callers leave `inline` true afterwards, and something downstream
         // reads it (`write_leaf` never clears it). Keeping the flag's
         // behaviour identical is what makes moving a node type onto the
-        // `Doc` path a no-op for output. It goes away with the flag itself
-        // (issue #23).
+        // `Doc` path a no-op for output.
         self.inline = true;
         if let Some(doc) = self.leaf_doc(node) {
             return doc;

@@ -15,7 +15,6 @@
 //!
 //! - `leaf` -- returns a [`Doc`]. `visit` renders it; `leaf_doc` hands it
 //!   back unrendered so an enclosing group can measure and lay it out.
-//!   This is where every node type is headed (issue #22).
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
@@ -151,6 +150,14 @@ dispatch! {
         HashPatternNode => as_hash_pattern_node => fmt_hash_pattern_node,
         ArrayPatternNode => as_array_pattern_node => fmt_array_pattern_node,
         ImplicitNode => as_implicit_node => fmt_implicit_node,
+        AlternationPatternNode => as_alternation_pattern_node => fmt_alternation_pattern_node,
+        CapturePatternNode => as_capture_pattern_node => fmt_capture_pattern_node,
+        PinnedVariableNode => as_pinned_variable_node => fmt_pinned_variable_node,
+        PinnedExpressionNode => as_pinned_expression_node => fmt_pinned_expression_node,
+        FindPatternNode => as_find_pattern_node => fmt_find_pattern_node,
+        FlipFlopNode => as_flip_flop_node => fmt_flip_flop_node,
+        DefinedNode => as_defined_node => fmt_defined_node,
+        UndefNode => as_undef_node => fmt_undef_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
@@ -240,14 +247,6 @@ dispatch! {
         OrNode => as_or_node => fmt_or_node,
         MatchRequiredNode => as_match_required_node => fmt_match_required_node,
         MatchPredicateNode => as_match_predicate_node => fmt_match_predicate_node,
-        AlternationPatternNode => as_alternation_pattern_node => fmt_alternation_pattern_node,
-        CapturePatternNode => as_capture_pattern_node => fmt_capture_pattern_node,
-        PinnedVariableNode => as_pinned_variable_node => fmt_pinned_variable_node,
-        PinnedExpressionNode => as_pinned_expression_node => fmt_pinned_expression_node,
-        FindPatternNode => as_find_pattern_node => fmt_find_pattern_node,
-        FlipFlopNode => as_flip_flop_node => fmt_flip_flop_node,
-        DefinedNode => as_defined_node => fmt_defined_node,
-        UndefNode => as_undef_node => fmt_undef_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
         ShareableConstantNode => as_shareable_constant_node => fmt_shareable_constant_node,
