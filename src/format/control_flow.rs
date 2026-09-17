@@ -1,5 +1,5 @@
 use super::Formatter;
-use pretty::RcDoc as Doc;
+use super::doc::Doc;
 
 impl Formatter {
     /// `value => pattern` -- the "rightward assignment" one-line pattern
@@ -909,20 +909,17 @@ impl Formatter {
             self.output.push_str(" : ");
             self.write_ternary_branch_flat(&false_branch);
         } else {
-            let predicate_doc = self.capture_as_doc(|f| {
-                f.inline = true;
-                f.visit(&predicate);
-            });
+            let predicate_doc = self.node_doc(&predicate);
             let true_doc = self.capture_ternary_branch_as_doc(&true_branch);
             let false_doc = self.capture_ternary_branch_as_doc(&false_branch);
-            let nest_width = self.indent_width() + self.indent_str.len();
+            let nest_width = self.indent_str.len();
             let doc = predicate_doc.append(Doc::text(" ?")).append(
                 Doc::line()
                     .append(true_doc)
                     .append(Doc::text(" :"))
                     .append(Doc::line())
                     .append(false_doc)
-                    .nest(nest_width as isize)
+                    .indent(nest_width)
                     .group(),
             );
             let rendered = self.render_doc_to_string(doc);
@@ -944,10 +941,7 @@ impl Formatter {
         }
     }
 
-    fn capture_ternary_branch_as_doc(
-        &mut self,
-        stmts: &[ruby_prism::Node<'_>],
-    ) -> Doc<'static, ()> {
+    fn capture_ternary_branch_as_doc(&mut self, stmts: &[ruby_prism::Node<'_>]) -> Doc {
         self.capture_as_doc(|f| {
             f.write_ternary_branch_flat(stmts);
         })
@@ -1001,21 +995,12 @@ impl Formatter {
             self.inline = true;
             self.visit(&right);
         } else {
-            let left_doc = self.capture_as_doc(|f| {
-                f.inline = true;
-                f.visit(&left);
-            });
-            let right_doc = self.capture_as_doc(|f| {
-                f.inline = true;
-                f.visit(&right);
-            });
-            let nest_width = self.indent_width() + self.indent_str.len();
-            let doc = left_doc.append(Doc::text(format!(" {op_str}"))).append(
-                Doc::line()
-                    .append(right_doc)
-                    .nest(nest_width as isize)
-                    .group(),
-            );
+            let left_doc = self.node_doc(&left);
+            let right_doc = self.node_doc(&right);
+            let nest_width = self.indent_str.len();
+            let doc = left_doc
+                .append(Doc::text(format!(" {op_str}")))
+                .append(Doc::line().append(right_doc).indent(nest_width).group());
             let rendered = self.render_doc_to_string(doc);
             self.output.push_str(&rendered);
         }

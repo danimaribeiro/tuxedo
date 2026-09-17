@@ -1,39 +1,37 @@
 use super::Formatter;
+use super::bytes_doc;
+use super::doc::Doc;
 
 impl Formatter {
     pub(super) fn fmt_local_variable_read_node(
         &mut self,
         node: &ruby_prism::LocalVariableReadNode<'_>,
-    ) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_global_variable_read_node(
         &mut self,
         node: &ruby_prism::GlobalVariableReadNode<'_>,
-    ) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_instance_variable_read_node(
         &mut self,
         node: &ruby_prism::InstanceVariableReadNode<'_>,
-    ) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_class_variable_read_node(
         &mut self,
         node: &ruby_prism::ClassVariableReadNode<'_>,
-    ) {
-        let bytes = node.name().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.name().as_slice())
     }
 
-    pub(super) fn fmt_self_node(&mut self, _node: &ruby_prism::SelfNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("self"));
+    pub(super) fn fmt_self_node(&mut self, _node: &ruby_prism::SelfNode<'_>) -> Doc {
+        Doc::text("self")
     }
 }

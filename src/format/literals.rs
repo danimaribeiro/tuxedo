@@ -1,40 +1,36 @@
 use super::Formatter;
-use pretty::RcDoc as Doc;
+use super::bytes_doc;
+use super::doc::Doc;
 
 impl Formatter {
-    pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {
-        self.write_leaf(|f| {
-            let inner = match node.body() {
-                Some(body) => f.capture_as_doc(|f| {
-                    let was_single_line = f.single_line;
-                    f.single_line = true;
-                    f.inline = true;
-                    f.visit(&body);
-                    f.single_line = was_single_line;
-                }),
-                None => Doc::nil(),
-            };
-            let doc = Doc::text("(").append(inner).append(Doc::text(")"));
-            let rendered = f.render_doc_to_string(doc);
-            f.output.push_str(&rendered);
-        });
+    pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
+        let inner = match node.body() {
+            Some(body) => self.capture_as_doc(|f| {
+                let was_single_line = f.single_line;
+                f.single_line = true;
+                f.inline = true;
+                f.visit(&body);
+                f.single_line = was_single_line;
+            }),
+            None => Doc::nil(),
+        };
+        Doc::text("(").append(inner).append(Doc::text(")"))
     }
 
-    pub(super) fn fmt_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("true"));
+    pub(super) fn fmt_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) -> Doc {
+        Doc::text("true")
     }
 
-    pub(super) fn fmt_false_node(&mut self, _node: &ruby_prism::FalseNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("false"));
+    pub(super) fn fmt_false_node(&mut self, _node: &ruby_prism::FalseNode<'_>) -> Doc {
+        Doc::text("false")
     }
 
-    pub(super) fn fmt_nil_node(&mut self, _node: &ruby_prism::NilNode<'_>) {
-        self.write_leaf(|f| f.output.push_str("nil"));
+    pub(super) fn fmt_nil_node(&mut self, _node: &ruby_prism::NilNode<'_>) -> Doc {
+        Doc::text("nil")
     }
 
-    pub(super) fn fmt_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_integer_node(&mut self, node: &ruby_prism::IntegerNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
     pub(super) fn fmt_string_node(&mut self, node: &ruby_prism::StringNode<'_>) {
@@ -76,14 +72,12 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
-    pub(super) fn fmt_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
     /// A rational literal (`2.5r`, `3r`). Unlike most numeric nodes,
@@ -94,65 +88,53 @@ impl Formatter {
     /// 2.123456789r, "+02:00")` came out with that argument dropped
     /// entirely (`Time.new(2002, 10, 31, 2, 2, , "+02:00")` -- a syntax
     /// error one comma later, but really a silent data-loss bug).
-    pub(super) fn fmt_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
     /// An imaginary/complex literal (`5i`, `2.5i`). Same missing-handler
     /// gap as `fmt_rational_node`, same fix.
-    pub(super) fn fmt_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
-    pub(super) fn fmt_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_source_file_node(&mut self, node: &ruby_prism::SourceFileNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
-    pub(super) fn fmt_source_line_node(&mut self, node: &ruby_prism::SourceLineNode<'_>) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    pub(super) fn fmt_source_line_node(&mut self, node: &ruby_prism::SourceLineNode<'_>) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
     pub(super) fn fmt_regular_expression_node(
         &mut self,
         node: &ruby_prism::RegularExpressionNode<'_>,
-    ) {
-        let bytes = node.location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.location().as_slice())
     }
 
     /// `$1`, `$2`, ... — a regexp capture-group reference. Copied verbatim.
     pub(super) fn fmt_numbered_reference_read_node(
         &mut self,
         node: &ruby_prism::NumberedReferenceReadNode<'_>,
-    ) {
-        let bytes = node.as_node().location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.as_node().location().as_slice())
     }
 
     /// `$&`, `$\``, `$'`, `$+` — a regexp back-reference. Copied verbatim.
     pub(super) fn fmt_back_reference_read_node(
         &mut self,
         node: &ruby_prism::BackReferenceReadNode<'_>,
-    ) {
-        let bytes = node.as_node().location().as_slice();
-        self.write_leaf(|f| f.write_bytes(bytes));
+    ) -> Doc {
+        bytes_doc(node.as_node().location().as_slice())
     }
 
     /// A command literal (`` `stty size` ``, `%x{ls}`) with no
     /// interpolation. The body is shell text, so it is copied verbatim.
-    pub(super) fn fmt_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) {
-        let opening = node.opening_loc().as_slice();
-        let content = node.content_loc().as_slice();
-        let closing = node.closing_loc().as_slice();
-        self.write_leaf(|f| {
-            f.write_bytes(opening);
-            f.write_bytes(content);
-            f.write_bytes(closing);
-        });
+    pub(super) fn fmt_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) -> Doc {
+        bytes_doc(node.opening_loc().as_slice())
+            .append(bytes_doc(node.content_loc().as_slice()))
+            .append(bytes_doc(node.closing_loc().as_slice()))
     }
 
     /// A command literal containing `#{}` interpolation.

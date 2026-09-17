@@ -1,4 +1,5 @@
 use crate::config::FormatConfig;
+use doc::Doc;
 mod assignment;
 mod calls;
 mod classes;
@@ -6,6 +7,7 @@ mod collections;
 mod control_flow;
 mod defs;
 mod dispatch;
+mod doc;
 mod literals;
 mod patterns;
 mod statements;
@@ -424,24 +426,26 @@ impl Formatter {
     }
 
     /// The absolute column the current indent level starts at, i.e. how many
-    /// spaces `write_indent` would emit right now. A `Doc` rendered via
-    /// `render_doc_to_string` is laid out as if starting fresh at column 0,
-    /// so any construct that nests its wrapped continuation lines needs to
-    /// add this in as the baseline — otherwise a wrapped Doc's continuation
-    /// lines would ignore how deeply the surrounding code is already
-    /// indented and dedent back toward the left margin.
+    /// spaces `write_indent` would emit right now.
     fn indent_width(&self) -> usize {
         self.indent * self.indent_str.len()
     }
 
     /// Renders a `Doc` value to a string, using the width still available on
     /// the current output line before `line_length` is hit.
-    fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
+    ///
+    /// The document is laid out inside the indent already in effect, so
+    /// every `Doc::indent` in it counts levels *relative* to the statement
+    /// rather than columns from the left margin. That is what lets one
+    /// construct's `Doc` be nested inside another's: an absolute indent
+    /// would be right only for whichever of the two was rendered at the
+    /// top, and would double-count in the other.
+    fn render_doc_to_string(&self, doc: Doc) -> String {
         let width = self
             .line_length
             .saturating_sub(self.current_column())
             .saturating_sub(self.trailing_reserve);
-        doc.pretty(width).to_string()
+        doc.indent(self.indent_width()).render(width)
     }
 
     /// The width of a `do...end` block's header line (` do` plus an
@@ -462,10 +466,7 @@ impl Formatter {
         if let Some(params) = explicit_parameters(block.parameters()) {
             // Bare pipe-delimited block params never wrap (see
             // fmt_block_parameters_node), so this is always a single line.
-            let captured = self.capture_as_doc(|f| {
-                f.inline = true;
-                f.visit(&params);
-            });
+            let captured = self.node_doc(&params);
             let rendered = self.render_doc_to_string(captured);
             width += 1 + unicode_width::UnicodeWidthStr::width(rendered.as_str());
         }
@@ -481,32 +482,26 @@ impl Formatter {
     /// own indent -- never aligned under the opening bracket, so renaming
     /// the assignment target can't reindent the body.
     ///
-    /// `open_sep`/`close_sep` are `Doc::line()` (renders as a space when the
-    /// group stays flat -- hash braces: `{ a: 1 }`) or `Doc::line_()`
-    /// (renders as nothing when flat -- arrays/call args: `[1, 2]`,
-    /// `(1, 2)`), passed in so callers control the flat-mode spacing while
-    /// sharing the same broken-mode layout.
+    /// `open_sep`/`close_sep` are `Doc::line` (a space when the group stays
+    /// flat -- hash braces: `{ a: 1 }`) or `Doc::softline` (nothing when
+    /// flat -- arrays/call args: `[1, 2]`, `(1, 2)`), passed in so callers
+    /// control the flat-mode spacing while sharing the same broken-mode
+    /// layout.
     fn wrap_bracketed_group(
         &mut self,
         open: &str,
-        open_sep: pretty::RcDoc<'static, ()>,
-        body: pretty::RcDoc<'static, ()>,
-        close_sep: pretty::RcDoc<'static, ()>,
+        open_sep: Doc,
+        body: Doc,
+        close_sep: Doc,
         close: &str,
     ) -> String {
-        let indent_width = self.indent_width();
-        let nest_width = indent_width + self.indent_str.len();
-        // The closing token must be nested *together with* close_sep, not
-        // appended after the nest ends -- `pretty`'s nest only applies the
-        // indent to a line break whose subsequent content is still inside
-        // the same nested subtree.
-        let doc = pretty::RcDoc::text(open.to_string())
-            .append(open_sep.append(body).nest(nest_width as isize))
-            .append(
-                close_sep
-                    .append(pretty::RcDoc::text(close.to_string()))
-                    .nest(indent_width as isize),
-            )
+        let nest_width = self.indent_str.len();
+        // The closing token must be indented *together with* close_sep, not
+        // appended after the indent ends -- an indent only applies to a line
+        // break whose subsequent content is still inside the same subtree.
+        let doc = Doc::text(open)
+            .append(open_sep.append(body).indent(nest_width))
+            .append(close_sep.append(Doc::text(close)))
             .group();
         self.render_doc_to_string(doc)
     }
@@ -517,8 +512,8 @@ impl Formatter {
     /// ported to build `Doc` values natively (i.e. everything, today) still
     /// renders correctly inside a `Doc`-based construct: it's rendered once,
     /// the normal way, and treated as an unsplittable block of text.
-    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
-        pretty::RcDoc::text(self.capture_to_string(render))
+    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
+        Doc::text(self.capture_to_string(render))
     }
 
     fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
@@ -556,12 +551,13 @@ impl Formatter {
     }
 
     /// Parenthesized/bracketed list: expand all-or-nothing if any item
-    /// already hard-breaks *or* captures as multi-line (a nested array/
-    /// hash/call that wrapped during capture). Captured newlines can't go
-    /// through `wrap_bracketed_group` -- `Doc::text` with a raw `\n` stays
-    /// "flat" in the outer group, so sibling items share a line with the
-    /// broken nested collection, and the nest can't reindent the baked-in
-    /// continuation lines.
+    /// already hard-breaks *or* comes back from `node_doc` multi-line (a
+    /// nested array/hash/call that wrapped). The second case has to be
+    /// asked about rather than left to the printer, because such an item is
+    /// still a captured `Doc::text` leaf with newlines baked in: the
+    /// printer measures it as one long line, so sibling items would share a
+    /// line with an already-broken collection, at an indent nothing can
+    /// correct. See `Doc::breaks`.
     ///
     /// `span` is the source range between the brackets (end of the opening
     /// token, start of the closing one). A comment anywhere in it forces
@@ -570,9 +566,9 @@ impl Formatter {
     fn write_bracketed_items(
         &mut self,
         open: &str,
-        open_sep: pretty::RcDoc<'static, ()>,
+        open_sep: Doc,
         items: &[ruby_prism::Node<'_>],
-        close_sep: pretty::RcDoc<'static, ()>,
+        close_sep: Doc,
         close: &str,
         span: Option<(usize, usize)>,
     ) {
@@ -589,17 +585,13 @@ impl Formatter {
             return;
         }
         let snap = self.capture_snapshot();
-        let captured: Vec<String> = items.iter().map(|item| self.capture_inline(item)).collect();
-        if captured.iter().any(|s| s.contains('\n')) {
+        let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
+        if leaves.iter().any(Doc::breaks) {
             self.restore_capture_snapshot(snap);
             self.write_expanded_bracketed_items(open, items, close);
             return;
         }
-        let leaves = captured.into_iter().map(pretty::RcDoc::text);
-        let body = pretty::RcDoc::intersperse(
-            leaves,
-            pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
-        );
+        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
         let rendered = self.wrap_bracketed_group(open, open_sep, body, close_sep, close);
         self.output.push_str(&rendered);
     }
@@ -1041,14 +1033,7 @@ impl Formatter {
 
         let has_args = !items.is_empty();
         if parenthesized && has_args {
-            self.write_bracketed_items(
-                "(",
-                pretty::RcDoc::line_(),
-                &items,
-                pretty::RcDoc::line_(),
-                ")",
-                span,
-            );
+            self.write_bracketed_items("(", Doc::softline(), &items, Doc::softline(), ")", span);
             return;
         }
 
@@ -1351,4 +1336,53 @@ impl Formatter {
             self.output.push('\n');
         }
     }
+
+    /// `write_leaf` for a node whose `fmt_*` returns a `Doc` instead of
+    /// writing to `output`: indent, render against the width left on the
+    /// line, terminate. Rendering happens *after* the indent is written so
+    /// the width `render_doc_to_string` computes accounts for it.
+    ///
+    /// `inline` is passed in rather than read from `self` because building
+    /// the `Doc` happens first and can clobber the flag on the way
+    /// (`fmt_parentheses_node` visits a body that clears it). `write_leaf`
+    /// reads the flag before running its closure, so this has to use the
+    /// value from before the `fmt_*` call to lay a node out the same way.
+    fn write_leaf_doc(&mut self, inline: bool, doc: Doc) {
+        if !inline {
+            self.write_indent();
+        }
+        let rendered = self.render_doc_to_string(doc);
+        self.output.push_str(&rendered);
+        if !inline {
+            self.output.push('\n');
+        }
+    }
+
+    /// The `Doc` for `node` rendered inline, wherever a construct needs one
+    /// of its children as a value rather than as output.
+    ///
+    /// For a node whose `fmt_*` already returns a `Doc` this is that `Doc`,
+    /// composable and measured by the enclosing group. For every other node
+    /// it is still the node's string output wrapped as one opaque leaf, so
+    /// this is the seam the rest of the migration moves nodes across.
+    fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        // Set before either branch, not just inside the capture: today's
+        // callers leave `inline` true afterwards, and something downstream
+        // reads it (`write_leaf` never clears it). Keeping the flag's
+        // behaviour identical is what makes moving a node type onto the
+        // `Doc` path a no-op for output. It goes away with the flag itself
+        // (issue #23).
+        self.inline = true;
+        if let Some(doc) = self.leaf_doc(node) {
+            return doc;
+        }
+        self.capture_as_doc(|f| f.visit(node))
+    }
+}
+
+/// `Doc::text` from source bytes, matching `write_bytes`: text that isn't
+/// valid UTF-8 renders as nothing rather than as replacement characters,
+/// which the AST check would then flag.
+fn bytes_doc(bytes: &[u8]) -> Doc {
+    Doc::text(std::str::from_utf8(bytes).unwrap_or("").to_string())
 }

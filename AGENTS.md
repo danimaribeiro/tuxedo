@@ -27,7 +27,7 @@ the spec:
    gets its own line. Never bin-pack (fill as many elements per line as the column limit
    allows) — packing makes adding or removing a single element reflow an arbitrary number
    of unrelated lines. This is what a Wadler-style `group` gives you for free, which is
-   why the formatter is migrating to `pretty::RcDoc`.
+   why the formatter is migrating to the `Doc` IR in `src/format/doc.rs`.
 
 2. **Block indentation.** When a collection expands, the bracket sits alone on its own
    line and elements sit at a fixed indent from the start of the statement — not aligned
@@ -202,10 +202,28 @@ updated `scripts/results/*.txt` alongside the fix.
   **Node dispatch is an exhaustive `match`, not `impl Visit`** (`src/format/dispatch.rs`).
   `Visit`'s default for an un-overridden node walks the children and emits nothing for the
   node itself, which silently deletes syntax. Every Prism node type must be listed in
-  `dispatch.rs`, either under `formatted` (with its `fmt_*` method) or under `verbatim`
-  (source text copied through unchanged). To add a formatter for a node, move it from
-  `verbatim` to `formatted`. A node type added by a Prism upgrade is a compile error until
-  it is listed.
+  `dispatch.rs`, under one of three groups: `leaf` (its `fmt_*` returns a `Doc`),
+  `formatted` (its `fmt_*` writes to `self.output`) or `verbatim` (source text copied
+  through unchanged). To add a formatter for a node, move it out of `verbatim`. A node type
+  added by a Prism upgrade is a compile error until it is listed.
+
+  `leaf` is where every node type is headed. Use `self.node_doc(&child)` to get a child as
+  a `Doc`: native for a `leaf` node, and for the rest still the node's string output
+  wrapped as one opaque `Doc::text`, which is what makes nested collections render more
+  than once and what `forces_list_break` exists to work around. Moving a node type from
+  `formatted` to `leaf` must not change output — verify by formatting `test-projects/rails`
+  and `test-projects/thor` before and after and diffing the trees.
+
+  **Layout goes through the `Doc` IR** (`src/format/doc.rs`), the only module that names
+  `pretty`. Build a `Doc` out of `text`/`line`/`softline`/`hardline`/`if_break`, mark a
+  unit with `group` and a nested level with `indent`, and `render` it against a width;
+  the group decides flat-or-broken, which is where all-or-nothing expansion comes from.
+  Never reach for `pretty` directly — the wrapper is what keeps a printer swap
+  (issue #24) confined to one file. The formatter is mid-migration: everything not yet
+  ported still writes strings into `self.output` and gets spliced in as an opaque
+  `Doc::text` leaf by `capture_as_doc`, which is why `forces_list_break` and the
+  `contains('\n')` checks exist. Both go away as constructs learn to emit `hardline`
+  (issues #22, #23).
 
   **Comments are placed by position, not attached to nodes.** `comment_cursor` walks the
   file's comments in order and whoever owns a source range consumes the ones inside it:
