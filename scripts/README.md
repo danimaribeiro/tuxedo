@@ -33,7 +33,7 @@ Run `format-compare.sh` first.
 ## format-verify.sh \<project\>
 
 The metric that matters more than `format-compare.sh`'s similarity score.
-Checks four properties that must hold regardless of RuboCop, as ratchets
+Checks five properties that must hold regardless of RuboCop, as ratchets
 (numbers should only go down over time, never treated as a pass/fail bar):
 
 0. **Meaning** — the output is the same program as the source. Tuxedo parses
@@ -47,7 +47,11 @@ Checks four properties that must hold regardless of RuboCop, as ratchets
 2. **Idempotence** — `format(format(x)) == format(x)`. For every unstable file, prints
    an 8-line unified diff of what changed on the second pass right under the filename —
    that's usually enough to see the exact pattern without opening either file by hand.
-3. **Layout conformance** — `rubocop --only Layout` reports no offenses on
+3. **Comment placement** — `scripts/comment-anchors.rb <source> <formatted>` counts
+   comments that ended up next to different code than in the source (a trailing
+   comment is anchored to the token before it, an own-line comment to the token
+   after it). Can be run on its own; `--list N` prints the first N.
+4. **Layout conformance** — `rubocop --only Layout` reports no offenses on
    tuxedo's own output, against `scripts/format-verify.rubocop.yml` (which
    encodes tuxedo's own target layout, not RuboCop's stock defaults).
 

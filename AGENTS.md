@@ -125,7 +125,15 @@ each of them is reachable at 100%:
 2. **Idempotence.** `format(format(x)) == format(x)`. A formatter that keeps changing its
    mind produces churn in every diff.
 
-3. **Layout conformance.** `rubocop --only Layout` reports no offenses on Tuxedo's
+3. **Comment placement.** `scripts/comment-anchors.rb` counts comments that ended up
+   next to different code than in the source. The meaning check already guarantees no
+   comment is lost; this measures whether each one still describes the same thing. A
+   trailing comment is anchored to the token before it (ignoring a comma), an own-line
+   comment to the first token after it. Reformatting the code around a comment never
+   changes its anchor, so only a comment that moved is counted. A few are intentional:
+   `def x; end # :nodoc:` expands to `def x # :nodoc:`.
+
+4. **Layout conformance.** `rubocop --only Layout` reports no offenses on Tuxedo's
    output — a *subset* relation ("everything Tuxedo emits, RuboCop accepts"), not
    equality. It runs against `scripts/format-verify.rubocop.yml`, which encodes the three
    properties above rather than RuboCop's stock defaults; the six `*LineBreak`/
@@ -133,7 +141,7 @@ each of them is reachable at 100%:
    to be turned on explicitly. Files that fail the parse check are excluded from this
    pass, since `Lint/Syntax` would otherwise drown out the Layout signal.
 
-All four are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
+All five are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
 and should only ever go down. Record them before a change and compare after.
 
 There's also `scripts/lint-baseline.sh <project>` — runs full RuboCop (not just Layout)
@@ -198,6 +206,18 @@ updated `scripts/results/*.txt` alongside the fix.
   (source text copied through unchanged). To add a formatter for a node, move it from
   `verbatim` to `formatted`. A node type added by a Prism upgrade is a compile error until
   it is listed.
+
+  **Comments are placed by position, not attached to nodes.** `comment_cursor` walks the
+  file's comments in order and whoever owns a source range consumes the ones inside it:
+  `fmt_statements_node` takes own-line comments above each statement,
+  `emit_trailing_comment_if_same_line` takes one at the end of a header line
+  (`class Foo # :nodoc:`), `flush_comments_before` takes those at the bottom of a body
+  before `end`/`else`/`when`/`rescue`, and `write_commented_bracketed_items` handles a
+  list with comments between its brackets (which forces it to expand). A new construct
+  with a body needs the header and bottom-of-body calls, or every comment nested inside it
+  is displaced: the cursor is strictly ordered, so one unconsumed comment blocks the rest.
+  A comment between operator operands or chain links has no place in the string-based
+  emitter, so `write_verbatim_if_commented` copies that one expression through unchanged.
 
   **`format` returns `Result<String, FormatError>`.** `Syntax` means the source has parse
   errors (never format a tree with holes in it); `AstMismatch` means the output failed

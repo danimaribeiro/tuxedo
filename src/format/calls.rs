@@ -118,6 +118,12 @@ impl Formatter {
     pub(super) fn fmt_call_node(&mut self, node: &ruby_prism::CallNode<'_>) {
         let name = node.name();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
+        // A comment between the links of a chain, or between the operands
+        // of an operator.
+        if node.receiver().is_some() && self.write_verbatim_if_commented(&node.as_node()) {
+            return;
+        }
+
         let inline = self.inline;
         self.inline = false;
 
@@ -337,7 +343,11 @@ impl Formatter {
             Some(b @ ruby_prism::Node::BlockArgumentNode { .. }) => Some(b),
             _ => None,
         };
-        self.write_arg_list(parenthesized, positional, block_pass);
+        let span = node
+            .lparen_loc()
+            .zip(node.rparen_loc())
+            .map(|(open, close)| (open.end_offset(), close.start_offset()));
+        self.write_arg_list(parenthesized, positional, block_pass, span);
 
         if let Some(block @ ruby_prism::Node::BlockNode { .. }) = node.block() {
             self.visit(&block);
@@ -376,7 +386,11 @@ impl Formatter {
             // the source used.
             let parenthesized = node.lparen_loc().is_some();
             let positional: Vec<_> = args.arguments().iter().collect();
-            self.write_arg_list(parenthesized, positional, None);
+            let span = node
+                .lparen_loc()
+                .zip(node.rparen_loc())
+                .map(|(open, close)| (open.end_offset(), close.start_offset()));
+            self.write_arg_list(parenthesized, positional, None, span);
         }
         if !inline {
             self.output.push('\n');

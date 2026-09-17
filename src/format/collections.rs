@@ -49,8 +49,12 @@ impl Formatter {
             return;
         }
 
+        let span = node
+            .opening_loc()
+            .zip(node.closing_loc())
+            .map(|(open, close)| (open.end_offset(), close.start_offset()));
         self.write_leaf(|f| {
-            f.write_bracketed_items("[", Doc::line_(), &elements, Doc::line_(), "]");
+            f.write_bracketed_items("[", Doc::line_(), &elements, Doc::line_(), "]", span);
         });
     }
 
@@ -126,7 +130,11 @@ impl Formatter {
 
     pub(super) fn fmt_hash_node(&mut self, node: &ruby_prism::HashNode<'_>) {
         let elements: Vec<_> = node.elements().iter().collect();
-        self.fmt_hash_elements(&elements, true);
+        let braces = (
+            node.opening_loc().end_offset(),
+            node.closing_loc().start_offset(),
+        );
+        self.fmt_hash_elements(&elements, Some(braces));
     }
 
     /// Bare keyword arguments at a call site (`foo(a, k: 1, j: 2)`). Prism
@@ -134,13 +142,21 @@ impl Formatter {
     /// the same comma-joined pairs but carry no braces of their own.
     pub(super) fn fmt_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) {
         let elements: Vec<_> = node.elements().iter().collect();
-        self.fmt_hash_elements(&elements, false);
+        self.fmt_hash_elements(&elements, None);
     }
 
     /// Renders a run of `key => value` / `key: value` pairs, optionally
     /// wrapped in `{ }`. Shared by braced hash literals and bare keyword
     /// argument lists so the two can never drift apart on separators.
-    fn fmt_hash_elements(&mut self, elements: &[ruby_prism::Node<'_>], braced: bool) {
+    ///
+    /// `braces` is the source range between the braces of a braced hash
+    /// (`None` for bare keyword arguments).
+    fn fmt_hash_elements(
+        &mut self,
+        elements: &[ruby_prism::Node<'_>],
+        braces: Option<(usize, usize)>,
+    ) {
+        let braced = braces.is_some();
         if elements.is_empty() {
             if braced {
                 self.write_leaf(|f| f.output.push_str("{}"));
@@ -150,7 +166,7 @@ impl Formatter {
 
         if braced {
             self.write_leaf(|f| {
-                f.write_bracketed_items("{", Doc::line(), elements, Doc::line(), "}");
+                f.write_bracketed_items("{", Doc::line(), elements, Doc::line(), "}", braces);
             });
             return;
         }

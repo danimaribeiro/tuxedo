@@ -42,6 +42,23 @@ pub(super) fn fingerprint(source: &str) -> Option<String> {
     out.push('|');
     out.push_str(&numerics.out);
 
+    // Comments are not in the tree, and losing or duplicating one is as
+    // silent as dropping a node. Their text must survive (modulo the
+    // `#foo` -> `# foo` normalization); *where* they end up is layout, and
+    // is measured by scripts/comment-anchors.rb instead.
+    let mut comments: Vec<String> = parsed
+        .comments()
+        .map(|c| {
+            let text = String::from_utf8_lossy(c.text()).into_owned();
+            super::Formatter::format_comment(text.trim_end()).into_owned()
+        })
+        .collect();
+    comments.sort_unstable();
+    for comment in comments {
+        out.push('|');
+        out.push_str(&comment);
+    }
+
     // Everything after `__END__` is program data (`DATA.read`), not part
     // of the tree at all.
     if let Some(data) = parsed.data_loc() {
@@ -172,7 +189,8 @@ mod tests {
         assert!(same("if a then b end\n", "if a\n  b\nend\n"));
         assert!(same("while x do y end\n", "while x\n  y\nend\n"));
         assert!(same("def a = 1\n", "def a\n  1\nend\n"));
-        assert!(same("foo 1 # note\n", "foo 1\n"));
+        assert!(same("foo(1, # note\n    2)\n", "foo(1, 2)\n# note\n"));
+        assert!(same("#note\nfoo\n", "# note\nfoo\n"));
         assert!(same("x = 'a'\n", "x = \"a\"\n"));
     }
 
@@ -191,6 +209,8 @@ mod tests {
         assert!(!same("v = + 1.second\n", "v = +1.second\n"));
         assert!(!same("foo do |a; b|\nend\n", "foo do |a|\nend\n"));
         assert!(!same("puts 1\n__END__\ndata\n", "puts 1\n"));
+        assert!(!same("foo # note\n", "foo\n"));
+        assert!(!same("foo # note\n", "foo # note\n# note\n"));
         assert!(!same(
             "x = <<~A\n  #{a}\n    b\nA\n",
             "x = <<~A\n#{a}\n    b\nA\n"
