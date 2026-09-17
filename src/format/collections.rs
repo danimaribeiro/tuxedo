@@ -1,5 +1,5 @@
+use super::doc::Doc;
 use super::{Formatter, assoc_forces_list_break};
-use pretty::RcDoc as Doc;
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {
@@ -54,7 +54,7 @@ impl Formatter {
             .zip(node.closing_loc())
             .map(|(open, close)| (open.end_offset(), close.start_offset()));
         self.write_leaf(|f| {
-            f.write_bracketed_items("[", Doc::line_(), &elements, Doc::line_(), "]", span);
+            f.write_bracketed_items("[", Doc::softline(), &elements, Doc::softline(), "]", span);
         });
     }
 
@@ -86,9 +86,9 @@ impl Formatter {
 
             let opening = String::from_utf8_lossy(&opening).into_owned();
             let closing = String::from_utf8_lossy(&closing).into_owned();
-            let body = Doc::intersperse(leaves, Doc::line());
+            let body = Doc::join(leaves, Doc::line());
             let rendered =
-                f.wrap_bracketed_group(&opening, Doc::line_(), body, Doc::line_(), &closing);
+                f.wrap_bracketed_group(&opening, Doc::softline(), body, Doc::softline(), &closing);
             f.output.push_str(&rendered);
         });
     }
@@ -97,7 +97,7 @@ impl Formatter {
     /// with no quotes/colon (those delimiters don't exist for an
     /// individual word in this syntax — only the list as a whole has
     /// opening/closing punctuation).
-    fn fmt_percent_array_word(&mut self, element: &ruby_prism::Node<'_>) -> Doc<'static, ()> {
+    fn fmt_percent_array_word(&mut self, element: &ruby_prism::Node<'_>) -> Doc {
         if let Some(interpolated) = element.as_interpolated_string_node() {
             let parts = interpolated.parts();
             self.capture_as_doc(|f| f.fmt_interpolated_parts(&parts))
@@ -187,9 +187,9 @@ impl Formatter {
                 return;
             }
             let leaves = captured.into_iter().map(Doc::text);
-            let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
+            let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
             let nest_width = f.indent_width() + f.indent_str.len();
-            let doc = body.nest(nest_width as isize).group();
+            let doc = body.indent(nest_width).group();
             let rendered = f.render_doc_to_string(doc);
             f.output.push_str(&rendered);
         });

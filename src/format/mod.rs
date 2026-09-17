@@ -1,4 +1,5 @@
 use crate::config::FormatConfig;
+use doc::Doc;
 mod assignment;
 mod calls;
 mod classes;
@@ -6,6 +7,7 @@ mod collections;
 mod control_flow;
 mod defs;
 mod dispatch;
+mod doc;
 mod literals;
 mod patterns;
 mod statements;
@@ -436,12 +438,12 @@ impl Formatter {
 
     /// Renders a `Doc` value to a string, using the width still available on
     /// the current output line before `line_length` is hit.
-    fn render_doc_to_string(&self, doc: pretty::RcDoc<'static, ()>) -> String {
+    fn render_doc_to_string(&self, doc: Doc) -> String {
         let width = self
             .line_length
             .saturating_sub(self.current_column())
             .saturating_sub(self.trailing_reserve);
-        doc.pretty(width).to_string()
+        doc.render(width)
     }
 
     /// The width of a `do...end` block's header line (` do` plus an
@@ -481,32 +483,27 @@ impl Formatter {
     /// own indent -- never aligned under the opening bracket, so renaming
     /// the assignment target can't reindent the body.
     ///
-    /// `open_sep`/`close_sep` are `Doc::line()` (renders as a space when the
-    /// group stays flat -- hash braces: `{ a: 1 }`) or `Doc::line_()`
-    /// (renders as nothing when flat -- arrays/call args: `[1, 2]`,
-    /// `(1, 2)`), passed in so callers control the flat-mode spacing while
-    /// sharing the same broken-mode layout.
+    /// `open_sep`/`close_sep` are `Doc::line` (a space when the group stays
+    /// flat -- hash braces: `{ a: 1 }`) or `Doc::softline` (nothing when
+    /// flat -- arrays/call args: `[1, 2]`, `(1, 2)`), passed in so callers
+    /// control the flat-mode spacing while sharing the same broken-mode
+    /// layout.
     fn wrap_bracketed_group(
         &mut self,
         open: &str,
-        open_sep: pretty::RcDoc<'static, ()>,
-        body: pretty::RcDoc<'static, ()>,
-        close_sep: pretty::RcDoc<'static, ()>,
+        open_sep: Doc,
+        body: Doc,
+        close_sep: Doc,
         close: &str,
     ) -> String {
         let indent_width = self.indent_width();
         let nest_width = indent_width + self.indent_str.len();
-        // The closing token must be nested *together with* close_sep, not
-        // appended after the nest ends -- `pretty`'s nest only applies the
-        // indent to a line break whose subsequent content is still inside
-        // the same nested subtree.
-        let doc = pretty::RcDoc::text(open.to_string())
-            .append(open_sep.append(body).nest(nest_width as isize))
-            .append(
-                close_sep
-                    .append(pretty::RcDoc::text(close.to_string()))
-                    .nest(indent_width as isize),
-            )
+        // The closing token must be indented *together with* close_sep, not
+        // appended after the indent ends -- an indent only applies to a line
+        // break whose subsequent content is still inside the same subtree.
+        let doc = Doc::text(open)
+            .append(open_sep.append(body).indent(nest_width))
+            .append(close_sep.append(Doc::text(close)).indent(indent_width))
             .group();
         self.render_doc_to_string(doc)
     }
@@ -517,8 +514,8 @@ impl Formatter {
     /// ported to build `Doc` values natively (i.e. everything, today) still
     /// renders correctly inside a `Doc`-based construct: it's rendered once,
     /// the normal way, and treated as an unsplittable block of text.
-    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> pretty::RcDoc<'static, ()> {
-        pretty::RcDoc::text(self.capture_to_string(render))
+    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
+        Doc::text(self.capture_to_string(render))
     }
 
     fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
@@ -570,9 +567,9 @@ impl Formatter {
     fn write_bracketed_items(
         &mut self,
         open: &str,
-        open_sep: pretty::RcDoc<'static, ()>,
+        open_sep: Doc,
         items: &[ruby_prism::Node<'_>],
-        close_sep: pretty::RcDoc<'static, ()>,
+        close_sep: Doc,
         close: &str,
         span: Option<(usize, usize)>,
     ) {
@@ -595,11 +592,8 @@ impl Formatter {
             self.write_expanded_bracketed_items(open, items, close);
             return;
         }
-        let leaves = captured.into_iter().map(pretty::RcDoc::text);
-        let body = pretty::RcDoc::intersperse(
-            leaves,
-            pretty::RcDoc::text(",").append(pretty::RcDoc::line()),
-        );
+        let leaves = captured.into_iter().map(Doc::text);
+        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
         let rendered = self.wrap_bracketed_group(open, open_sep, body, close_sep, close);
         self.output.push_str(&rendered);
     }
@@ -1041,14 +1035,7 @@ impl Formatter {
 
         let has_args = !items.is_empty();
         if parenthesized && has_args {
-            self.write_bracketed_items(
-                "(",
-                pretty::RcDoc::line_(),
-                &items,
-                pretty::RcDoc::line_(),
-                ")",
-                span,
-            );
+            self.write_bracketed_items("(", Doc::softline(), &items, Doc::softline(), ")", span);
             return;
         }
 

@@ -1,5 +1,5 @@
+use super::doc::Doc;
 use super::{Formatter, has_real_block, manages_own_indentation};
-use pretty::RcDoc as Doc;
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
@@ -74,7 +74,7 @@ impl Formatter {
         let total = links.len() + 1;
         // Every segment renders one indent level deeper than the
         // statement once the chain breaks (they all follow a
-        // `Doc::line_()` nested at `nest_width` below). A segment's own
+        // `Doc::softline()` nested at `nest_width` below). A segment's own
         // argument list, if it also needs to wrap, has to know that --
         // write_call_args nests relative to `self.indent`, which a plain
         // capture wouldn't otherwise reflect, misindenting its args and
@@ -110,8 +110,8 @@ impl Formatter {
         self.indent -= 1;
 
         let nest_width = self.indent_width() + self.indent_str.len();
-        let tail = Doc::concat(segments.into_iter().map(|seg| Doc::line_().append(seg)));
-        let doc = base_doc.append(tail.nest(nest_width as isize).group());
+        let tail = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
+        let doc = base_doc.append(tail.indent(nest_width).group());
         Some(self.render_doc_to_string(doc))
     }
 
@@ -275,12 +275,7 @@ impl Formatter {
                     let doc = receiver_doc
                         .append(Doc::text(" "))
                         .append(Doc::text(name_str.to_string()))
-                        .append(
-                            Doc::line()
-                                .append(arg_doc)
-                                .nest(nest_width as isize)
-                                .group(),
-                        );
+                        .append(Doc::line().append(arg_doc).indent(nest_width).group());
                     let rendered = self.render_doc_to_string(doc);
                     self.output.push_str(&rendered);
                     self.write_call_block(node);

@@ -1,5 +1,5 @@
 use super::Formatter;
-use pretty::RcDoc as Doc;
+use super::doc::Doc;
 
 impl Formatter {
     pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
@@ -172,7 +172,7 @@ impl Formatter {
     /// them as flat text, for contexts that never wrap) and
     /// `write_bracketed_parameters` (which wraps them all-or-nothing, block
     /// indented, like a call's argument list).
-    fn parameter_leaves(&mut self, node: &ruby_prism::ParametersNode<'_>) -> Vec<Doc<'static, ()>> {
+    fn parameter_leaves(&mut self, node: &ruby_prism::ParametersNode<'_>) -> Vec<Doc> {
         let mut leaves = Vec::new();
         let mut push = |formatter: &mut Self, visit: &dyn Fn(&mut Self)| {
             leaves.push(formatter.capture_as_doc(|f| {
@@ -226,8 +226,9 @@ impl Formatter {
         close: &str,
     ) {
         let leaves = self.parameter_leaves(node);
-        let body = Doc::intersperse(leaves, Doc::text(",").append(Doc::line()));
-        let rendered = self.wrap_bracketed_group(open, Doc::line_(), body, Doc::line_(), close);
+        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
+        let rendered =
+            self.wrap_bracketed_group(open, Doc::softline(), body, Doc::softline(), close);
         self.output.push_str(&rendered);
     }
 

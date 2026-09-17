@@ -1,5 +1,5 @@
 use super::Formatter;
-use pretty::RcDoc as Doc;
+use super::doc::Doc;
 
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) {

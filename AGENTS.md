@@ -27,7 +27,7 @@ the spec:
    gets its own line. Never bin-pack (fill as many elements per line as the column limit
    allows) — packing makes adding or removing a single element reflow an arbitrary number
    of unrelated lines. This is what a Wadler-style `group` gives you for free, which is
-   why the formatter is migrating to `pretty::RcDoc`.
+   why the formatter is migrating to the `Doc` IR in `src/format/doc.rs`.
 
 2. **Block indentation.** When a collection expands, the bracket sits alone on its own
    line and elements sit at a fixed indent from the start of the statement — not aligned
@@ -206,6 +206,17 @@ updated `scripts/results/*.txt` alongside the fix.
   (source text copied through unchanged). To add a formatter for a node, move it from
   `verbatim` to `formatted`. A node type added by a Prism upgrade is a compile error until
   it is listed.
+
+  **Layout goes through the `Doc` IR** (`src/format/doc.rs`), the only module that names
+  `pretty`. Build a `Doc` out of `text`/`line`/`softline`/`hardline`/`if_break`, mark a
+  unit with `group` and a nested level with `indent`, and `render` it against a width;
+  the group decides flat-or-broken, which is where all-or-nothing expansion comes from.
+  Never reach for `pretty` directly — the wrapper is what keeps a printer swap
+  (issue #24) confined to one file. The formatter is mid-migration: everything not yet
+  ported still writes strings into `self.output` and gets spliced in as an opaque
+  `Doc::text` leaf by `capture_as_doc`, which is why `forces_list_break` and the
+  `contains('\n')` checks exist. Both go away as constructs learn to emit `hardline`
+  (issues #22, #23).
 
   **Comments are placed by position, not attached to nodes.** `comment_cursor` walks the
   file's comments in order and whoever owns a source range consumes the ones inside it:
