@@ -1,6 +1,5 @@
 use super::{Formatter, assoc_forces_list_break};
 use pretty::RcDoc as Doc;
-use ruby_prism::Visit;
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) {

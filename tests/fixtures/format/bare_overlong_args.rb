@@ -22,14 +22,16 @@ super a,
   argument_number_5,
   argument_number_6
 
-yield a,
-  argument_number_0,
-  argument_number_1,
-  argument_number_2,
-  argument_number_3,
-  argument_number_4,
-  argument_number_5,
-  argument_number_6
+def each
+  yield a,
+    argument_number_0,
+    argument_number_1,
+    argument_number_2,
+    argument_number_3,
+    argument_number_4,
+    argument_number_5,
+    argument_number_6
+end
 
 # Short commands stay flat.
 foo a, b, c

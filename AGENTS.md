@@ -106,13 +106,21 @@ measures *similarity*, which is capped below 100% for the reason given under "Th
 above. `format-verify.sh` measures the properties Tuxedo must actually hold instead, and
 each of them is reachable at 100%:
 
+0. **Meaning.** The output is the same program as the source. `tuxedo::format` parses its
+   own output and compares it to the source's AST, ignoring layout (`src/format/verify.rs`);
+   on a mismatch it returns `FormatError::AstMismatch` and the CLI leaves the file
+   untouched. The script counts those refusals and prints where the two ASTs first
+   diverge. **This is the highest-priority number**, above parse: `defined?(Foo)` coming
+   out as `Foo` is valid Ruby and a different program, so `ruby -c` cannot see it. A
+   non-zero count is always a formatter bug, and the printed AST window usually names the
+   node type at fault.
+
 1. **Parse.** Output is still valid Ruby, counted as regressions against the source: a
    file that parsed before formatting and does not parse after is a bug, full stop.
    Files that never parsed (ERB templates and the like under a `.rb` name) are excluded
-   rather than counted as failures. **This is the highest-priority number** — a parse
-   regression means Tuxedo silently corrupted working code, and the script exits non-zero
-   on any. Byte-diffing against RuboCop cannot see this: corrupted output just shows up
-   as one more "file that differs."
+   rather than counted as failures. A parse regression means Tuxedo silently corrupted
+   working code, and the script exits non-zero on any. Byte-diffing against RuboCop cannot
+   see this: corrupted output just shows up as one more "file that differs."
 
 2. **Idempotence.** `format(format(x)) == format(x)`. A formatter that keeps changing its
    mind produces churn in every diff.
@@ -125,7 +133,7 @@ each of them is reachable at 100%:
    to be turned on explicitly. Files that fail the parse check are excluded from this
    pass, since `Lint/Syntax` would otherwise drown out the Layout signal.
 
-All three are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
+All four are **ratchets, not pass/fail bars.** Tuxedo is early; the numbers start high
 and should only ever go down. Record them before a change and compare after.
 
 There's also `scripts/lint-baseline.sh <project>` — runs full RuboCop (not just Layout)
@@ -140,10 +148,11 @@ with `format-verify.sh`/`lint-baseline.sh` before trusting stale numbers.
 and `thor` — that's the backlog. Don't keep a separate hand-written list of known issues
 here; it will drift the moment one gets fixed and this file doesn't get edited to match.
 
-`format-verify.sh`'s output is the primary guide: its idempotence section names an exact
-file plus an 8-line diff of what changed on a second `format` pass, and its parse section
-names an exact file plus the parse error — both point straight at a bug, no further
-digging needed. `lint-baseline.sh`'s per-cop delta table is the secondary guide, for
+`format-verify.sh`'s output is the primary guide: its meaning section names an exact
+file plus the point where the source and output ASTs diverge, its idempotence section
+names an exact file plus an 8-line diff of what changed on a second `format` pass, and
+its parse section names an exact file plus the parse error — each points straight at a
+bug, no further digging needed. `lint-baseline.sh`'s per-cop delta table is the secondary guide, for
 "which RuboCop-ecosystem thing changed and by how much." Pick whichever entry looks worth
 tackling and go straight to it.
 
@@ -181,6 +190,19 @@ updated `scripts/results/*.txt` alongside the fix.
   # 4. View the raw generated Rust node structures directly (useful for finding field accessors)
   find target -name bindings.rs | grep ruby-prism | xargs grep -A 10 "pub struct IfNode"
   ```
+
+  **Node dispatch is an exhaustive `match`, not `impl Visit`** (`src/format/dispatch.rs`).
+  `Visit`'s default for an un-overridden node walks the children and emits nothing for the
+  node itself, which silently deletes syntax. Every Prism node type must be listed in
+  `dispatch.rs`, either under `formatted` (with its `fmt_*` method) or under `verbatim`
+  (source text copied through unchanged). To add a formatter for a node, move it from
+  `verbatim` to `formatted`. A node type added by a Prism upgrade is a compile error until
+  it is listed.
+
+  **`format` returns `Result<String, FormatError>`.** `Syntax` means the source has parse
+  errors (never format a tree with holes in it); `AstMismatch` means the output failed
+  the AST-equivalence check above. In both cases the caller must leave the source as it
+  was; the CLI exits 2.
 
 - `src/lint.rs` — lint rule checking (`check`) and auto-fixing (`fix`), producing
   `Diagnostic`s (rule name, message, line/col).

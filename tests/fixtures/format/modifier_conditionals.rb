@@ -1,5 +1,9 @@
 puts "yes" if active
-yield unless pretend?
+
+def each
+  yield unless pretend?
+end
+
 return if done?
 
 raise "error" unless valid?

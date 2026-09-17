@@ -26,9 +26,11 @@ super a,
   'hello
 world'
 
-yield a,
-  'hello
+def each
+  yield a,
+    'hello
 world'
+end
 
 # Nested call that wrapped: the outer command's sibling breaks off.
 foo bar(

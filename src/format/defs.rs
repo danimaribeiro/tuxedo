@@ -1,6 +1,5 @@
 use super::Formatter;
 use pretty::RcDoc as Doc;
-use ruby_prism::Visit;
 
 impl Formatter {
     pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
@@ -16,7 +15,10 @@ impl Formatter {
         // fmt_statements_node/fmt_begin_node already do in this mode, is
         // correct regardless of indent depth.
         let single_line = self.single_line;
-        let name = node.name();
+        // The name as written, not `node.name()`: `def ~@` and `def !@`
+        // are interned as `~` and `!`, and there is no reason to respell
+        // what the author wrote.
+        let name = node.name_loc();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
 
         if !inline {
@@ -245,6 +247,24 @@ impl Formatter {
             .map(|loc| String::from_utf8_lossy(loc.as_slice()).into_owned())
             .unwrap_or_else(|| ")".to_string());
 
+        // Block-local variables (`|a; b, c|`): declared after a `;`, they
+        // are part of the parameter list's text but not of `parameters()`.
+        let locals: Vec<String> = node
+            .locals()
+            .iter()
+            .map(|local| String::from_utf8_lossy(local.location().as_slice()).into_owned())
+            .collect();
+        if !locals.is_empty() {
+            self.output.push_str(&opening);
+            if let Some(params) = node.parameters() {
+                self.fmt_parameters_node(&params);
+            }
+            self.output.push_str("; ");
+            self.output.push_str(&locals.join(", "));
+            self.output.push_str(&closing);
+            return;
+        }
+
         match node.parameters() {
             // Only a lambda's real parens are worth all-or-nothing wrapping
             // like a call's argument list. A block's `|params|` is never
@@ -283,7 +303,7 @@ impl Formatter {
         let operator = node.operator_loc().as_slice().to_vec();
         self.write_bytes(&operator);
         let brace = node.opening_loc().as_slice() == b"{";
-        if let Some(parameters) = node.parameters() {
+        if let Some(parameters) = super::explicit_parameters(node.parameters()) {
             self.inline = true;
             // " {"/" do" follows right after the parameter list on the
             // same line -- reserve its width so an overlong param list
@@ -325,7 +345,7 @@ impl Formatter {
         self.output.push(' ');
         self.output.push_str(if brace { "{" } else { "do" });
 
-        if let Some(params) = node.parameters() {
+        if let Some(params) = super::explicit_parameters(node.parameters()) {
             self.output.push(' ');
             self.inline = true;
             self.visit(&params);

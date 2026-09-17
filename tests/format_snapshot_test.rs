@@ -53,11 +53,12 @@ fn format_messy_fixtures() {
             .to_string_lossy()
             .replace(std::path::MAIN_SEPARATOR, "__");
 
-        let output = tuxedo::format(&input);
+        let output = tuxedo::format(&input).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
 
         insta::assert_snapshot!(snapshot_name, output);
 
-        let reformatted = tuxedo::format(&output);
+        let reformatted =
+            tuxedo::format(&output).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         assert_eq!(
             output,
             reformatted,
