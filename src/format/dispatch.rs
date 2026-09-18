@@ -15,6 +15,10 @@
 //!
 //! - `leaf` -- returns a [`Doc`]. `visit` renders it; `leaf_doc` hands it
 //!   back unrendered so an enclosing group can measure and lay it out.
+//! - `self_indented` -- also returns a [`Doc`], but writes its own
+//!   leading indent, so `visit` must not write one first. These are the
+//!   constructs with a body: some start with a keyword, but an implicit
+//!   `begin` starts with a body statement that indents itself.
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
@@ -31,6 +35,7 @@ use super::doc::Doc;
 macro_rules! dispatch {
     (
         leaf { $($leaf_variant:ident => $leaf_cast:ident => $leaf_fmt:ident,)* }
+        self_indented { $($si_variant:ident => $si_cast:ident => $si_fmt:ident,)* }
         formatted { $($variant:ident => $cast:ident => $fmt:ident,)* }
         verbatim { $($raw:ident,)* }
     ) => {
@@ -51,6 +56,15 @@ macro_rules! dispatch {
                                     self.write_indent();
                                 }
                                 let doc = self.$leaf_fmt(&concrete);
+                                self.write_leaf_doc(inline, doc);
+                            }
+                        }
+                    )*
+                    $(
+                        ruby_prism::Node::$si_variant { .. } => {
+                            if let Some(concrete) = node.$si_cast() {
+                                let inline = self.inline;
+                                let doc = self.$si_fmt(&concrete);
                                 self.write_leaf_doc(inline, doc);
                             }
                         }
@@ -97,6 +111,11 @@ macro_rules! dispatch {
                     $(
                         ruby_prism::Node::$leaf_variant { .. } => {
                             node.$leaf_cast().map(|concrete| self.$leaf_fmt(&concrete))
+                        }
+                    )*
+                    $(
+                        ruby_prism::Node::$si_variant { .. } => {
+                            node.$si_cast().map(|concrete| self.$si_fmt(&concrete))
                         }
                     )*
                     _ => None,
@@ -206,6 +225,23 @@ dispatch! {
         AndNode => as_and_node => fmt_and_node,
         OrNode => as_or_node => fmt_or_node,
     }
+    // Returns a `Doc` but writes its own leading indent (see above).
+    self_indented {
+        IfNode => as_if_node => fmt_if_node,
+        ElseNode => as_else_node => fmt_else_node,
+        BeginNode => as_begin_node => fmt_begin_node,
+        RescueModifierNode => as_rescue_modifier_node => fmt_rescue_modifier_node,
+        UnlessNode => as_unless_node => fmt_unless_node,
+        WhileNode => as_while_node => fmt_while_node,
+        UntilNode => as_until_node => fmt_until_node,
+        ForNode => as_for_node => fmt_for_node,
+        CaseNode => as_case_node => fmt_case_node,
+        WhenNode => as_when_node => fmt_when_node,
+        CaseMatchNode => as_case_match_node => fmt_case_match_node,
+        InNode => as_in_node => fmt_in_node,
+        RescueNode => as_rescue_node => fmt_rescue_node,
+        EnsureNode => as_ensure_node => fmt_ensure_node,
+    }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
         CallNode => as_call_node => fmt_call_node,
@@ -234,20 +270,6 @@ dispatch! {
         ModuleNode => as_module_node => fmt_module_node,
         SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
         ConstantPathNode => as_constant_path_node => fmt_constant_path_node,
-        IfNode => as_if_node => fmt_if_node,
-        ElseNode => as_else_node => fmt_else_node,
-        BeginNode => as_begin_node => fmt_begin_node,
-        RescueNode => as_rescue_node => fmt_rescue_node,
-        RescueModifierNode => as_rescue_modifier_node => fmt_rescue_modifier_node,
-        EnsureNode => as_ensure_node => fmt_ensure_node,
-        UnlessNode => as_unless_node => fmt_unless_node,
-        WhileNode => as_while_node => fmt_while_node,
-        UntilNode => as_until_node => fmt_until_node,
-        ForNode => as_for_node => fmt_for_node,
-        CaseNode => as_case_node => fmt_case_node,
-        WhenNode => as_when_node => fmt_when_node,
-        CaseMatchNode => as_case_match_node => fmt_case_match_node,
-        InNode => as_in_node => fmt_in_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }

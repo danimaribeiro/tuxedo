@@ -35,7 +35,7 @@ impl Formatter {
         self.end_run(run)
     }
 
-    pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
+    fn write_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
         let keyword = node.if_keyword_loc().map(|k| k.as_slice());
         let is_ternary = keyword.is_none();
         let is_elsif = keyword == Some(b"elsif");
@@ -133,7 +133,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
+    fn write_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
         // Whether the if/case chain this closes is itself being rendered
         // inline (as a sub-expression, e.g. a call argument) -- see
         // fmt_if_node, which restores this into self.inline before
@@ -178,7 +178,7 @@ impl Formatter {
     /// `rescue`/`else`/`ensure` clause (e.g. `def foo; rescue; end`), in
     /// which case the enclosing `def`/block already writes its own
     /// keyword/indent/`end` and this only needs to render the clauses.
-    pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
+    fn write_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
         let has_keyword = node.begin_keyword_loc().is_some();
         let inline = self.inline;
         // Set by fmt_block_node when rendering a brace block's body flat
@@ -286,7 +286,7 @@ impl Formatter {
                 if single_line {
                     self.output.push_str("; ");
                 }
-                self.fmt_ensure_node(&ensure);
+                self.write_ensure_node(&ensure);
             }
 
             if !single_line {
@@ -315,7 +315,7 @@ impl Formatter {
     /// literal " rescue " keyword between them, a statement like
     /// `transmit(...) rescue nil` followed by more code lost the boundary
     /// between "nil" and the next line entirely.
-    pub(super) fn fmt_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
+    fn write_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
         let inline = self.inline;
         if !inline {
             self.write_indent();
@@ -330,8 +330,12 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) {
-        self.write_rescue_clause(node, None);
+    pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) -> Doc {
+        self.spliced_doc(|f| f.write_rescue_clause(node, None))
+    }
+
+    pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) -> Doc {
+        self.spliced_doc(|f| f.write_ensure_node(node))
     }
 
     /// `closer` is where the last `rescue` of the chain stops (the start
@@ -397,7 +401,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
+    fn write_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
         let single_line = self.single_line;
         if !single_line {
             self.write_indent();
@@ -426,7 +430,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
+    fn write_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
         let is_modifier = node.end_keyword_loc().is_none();
 
         if is_modifier {
@@ -494,7 +498,7 @@ impl Formatter {
                 self.write_indent();
             }
             self.inline = inline;
-            self.fmt_else_node(&consequent);
+            self.write_else_node(&consequent);
         } else if single_line {
             self.output.push_str("; end");
             if !inline {
@@ -509,7 +513,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) {
+    fn write_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) {
         let is_modifier = node.closing_loc().is_none();
 
         if is_modifier {
@@ -575,7 +579,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
+    fn write_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
         let is_modifier = node.closing_loc().is_none();
 
         if is_modifier {
@@ -641,7 +645,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
+    fn write_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
         let inline = self.inline;
         if !inline {
             self.write_indent();
@@ -671,7 +675,7 @@ impl Formatter {
         self.output.push_str("end\n");
     }
 
-    pub(super) fn fmt_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
+    fn write_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
         let inline = self.inline;
         let single_line = self.single_line;
         if !inline {
@@ -701,7 +705,7 @@ impl Formatter {
                 self.write_indent();
             }
             self.inline = inline;
-            self.fmt_else_node(&consequent);
+            self.write_else_node(&consequent);
         } else {
             if !single_line {
                 self.write_indent();
@@ -733,6 +737,11 @@ impl Formatter {
                 .or(else_offset)
                 .unwrap_or(end_offset);
             self.clause_closer = Some(closer);
+            // A clause writes its own indent (keyed on `single_line`, not
+            // `inline`) and leaves the separator for whatever follows --
+            // `; ` in single-line mode, a newline otherwise. `inline` says
+            // the `leaf` path must add neither.
+            self.inline = true;
             self.visit(clause);
             self.clause_closer = None;
         }
@@ -742,7 +751,7 @@ impl Formatter {
     /// whatever comes next (another `when`, an `else`, or `end`) --
     /// `; ` in single-line mode (see fmt_block_node), a real newline
     /// otherwise -- so callers never need to add one of their own.
-    pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
+    fn write_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
         let single_line = self.single_line;
         let closer = self.clause_closer.take();
         if !single_line {
@@ -791,7 +800,7 @@ impl Formatter {
     /// to it (predicate, a list of clauses, an optional else), just a
     /// distinct node type with `in` clauses (`InNode`) instead of `when`
     /// (`WhenNode`).
-    pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
+    fn write_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
         let inline = self.inline;
         let single_line = self.single_line;
         if !inline {
@@ -821,7 +830,7 @@ impl Formatter {
                 self.write_indent();
             }
             self.inline = inline;
-            self.fmt_else_node(&consequent);
+            self.write_else_node(&consequent);
         } else {
             if !single_line {
                 self.write_indent();
@@ -838,7 +847,7 @@ impl Formatter {
     /// doesn't expose a separate guard accessor, so that would need its own
     /// investigation into how prism represents it. Like fmt_when_node,
     /// always leaves a separator in place for whatever comes next.
-    pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
+    fn write_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
         let single_line = self.single_line;
         let closer = self.clause_closer.take();
         if !single_line {
@@ -1009,6 +1018,92 @@ impl Formatter {
             }
         }
         doc.indent(nest_width).group()
+    }
+
+    // Each of these lays out its own multi-line body with `self.indent`
+    // and real newlines. As a `leaf` it is rendered where it will sit and
+    // lifted straight back out, so the bytes are what the string emitter
+    // produced and every width decision inside is made against the real
+    // column -- the same bargain `statements_doc` makes, and sound for the
+    // same reason: a body's indent comes from nesting depth, never from a
+    // break decision.
+    //
+    // Listed under `self_indented` in the dispatch, so `visit` leaves the
+    // leading indent to the writer -- an implicit `begin` has no keyword
+    // of its own and starts with a body statement that indents itself.
+    pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_if_node(node);
+        })
+    }
+
+    pub(super) fn fmt_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_else_node(node);
+        })
+    }
+
+    pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_begin_node(node);
+        })
+    }
+
+    pub(super) fn fmt_rescue_modifier_node(
+        &mut self,
+        node: &ruby_prism::RescueModifierNode<'_>,
+    ) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_rescue_modifier_node(node);
+        })
+    }
+
+    pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_unless_node(node);
+        })
+    }
+
+    pub(super) fn fmt_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_while_node(node);
+        })
+    }
+
+    pub(super) fn fmt_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_until_node(node);
+        })
+    }
+
+    pub(super) fn fmt_for_node(&mut self, node: &ruby_prism::ForNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_for_node(node);
+        })
+    }
+
+    pub(super) fn fmt_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_case_node(node);
+        })
+    }
+
+    pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_when_node(node);
+        })
+    }
+
+    pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_case_match_node(node);
+        })
+    }
+
+    pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_in_node(node);
+        })
     }
 
     /// Collects the operands of a run of the same boolean operator, so
