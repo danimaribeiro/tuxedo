@@ -1,5 +1,5 @@
 RuboCop offenses: rails
-generated: 2026-09-18T06:07:58Z
+generated: 2026-09-18T06:45:45Z
 baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)
 project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-formatted copy
 
@@ -8,11 +8,11 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
 1    Layout/ArgumentAlignment                             785       4002      +3217            0
 2    Style/StringLiterals                              102451     103688      +1237            0
 3    Layout/MultilineMethodCallIndentation                192        696       +504            0
-4    Metrics/MethodLength                                3923       4298       +375            0
+4    Metrics/MethodLength                                3923       4297       +374            0
 5    Style/EmptyMethod                                    179        391       +212            0
 6    Layout/ClosingHeredocIndentation                       0        147       +147          153
 7    Layout/CaseIndentation                                21        160       +139            0
-8    Layout/MultilineOperationIndentation                  55        184       +129            0
+8    Layout/MultilineOperationIndentation                  55        183       +128            0
 9    Layout/HeredocIndentation                             67        174       +107            0
 10   Layout/EndAlignment                                  190        281        +91            5
 11   Layout/ElseAlignment                                 176        233        +57            4
@@ -278,4 +278,4 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
 271  Layout/IndentationWidth                             5784        243      -5541         1712
 272  Layout/IndentationConsistency                       5667         13      -5654            0
 
-     TOTAL                                             162869     145982     -16887         3920
+     TOTAL                                             162869     145980     -16889         3920

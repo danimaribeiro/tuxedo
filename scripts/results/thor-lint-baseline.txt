@@ -1,5 +1,5 @@
 RuboCop offenses: thor
-generated: 2026-09-18T06:05:57Z
+generated: 2026-09-18T06:45:04Z
 baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)
 project-cfg column: rubocop with thor's own .rubocop.yml, run on the tuxedo-formatted copy
 
