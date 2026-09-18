@@ -88,6 +88,17 @@ mkdir -p "$RESULTS_DIR"
 # code the way `... | tee` would.
 exec > >(tee "$REPORT")
 
+# The files tuxedo formats, which is what has to be verified. Mirrors the
+# matcher in src/walk.rs: a check that looked only at *.rb would leave
+# every Rakefile, Gemfile, .rake task, .gemspec and config.ru tuxedo
+# rewrites unmeasured, and those are the least test-covered files in a
+# project.
+ruby_files() {
+  find "$1" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
+    -o -name '*.ru' -o -name 'Rakefile' -o -name 'Gemfile' \) \
+    -print0 | sort -z
+}
+
 echo "Building tuxedo (release)..."
 (cd "$ROOT" && cargo build --release --quiet)
 TUXEDO_BIN="$ROOT/target/release/tuxedo"
@@ -140,7 +151,7 @@ while IFS= read -r -d '' file; do
     # `|| true`: head closing the pipe early trips pipefail otherwise.
     ruby -c "$OUT/$rel" 2>&1 | head -2 | sed 's/^/          /' || true
   fi
-done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
+done < <(ruby_files "$SRC")
 
 # --- 2. Idempotence ---------------------------------------------------
 echo
@@ -167,7 +178,7 @@ while IFS= read -r -d '' file; do
     diff -u "$OUT/$rel" "$TWICE/$rel" 2>&1 | tail -n +3 | head -8 | sed 's/^/          /' || true
     unstable=$((unstable + 1))
   fi
-done < <(find "$OUT" -name '*.rb' -print0 | sort -z)
+done < <(ruby_files "$OUT")
 rm -rf "$TWICE"
 
 # --- 3. Comment placement ---------------------------------------------
@@ -193,7 +204,7 @@ if command -v rubocop >/dev/null 2>&1; then
     if ruby -c "$OUT/$rel" >/dev/null 2>&1; then
       printf '%s\n' "$OUT/$rel" >>"$parsing_files"
     fi
-  done < <(find "$OUT" -name '*.rb' -print0 | sort -z)
+  done < <(ruby_files "$OUT")
 
   rubocop_out="$(mktemp)"
   if [ -s "$parsing_files" ]; then

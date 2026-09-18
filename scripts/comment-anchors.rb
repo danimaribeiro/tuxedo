@@ -70,7 +70,11 @@ abort "usage: comment-anchors.rb <source-dir> <formatted-dir> [--list N]" unless
 
 total = 0
 displaced = []
-Dir.glob("**/*.rb", base: source_dir).sort.each do |rel|
+# Mirrors the matcher in src/walk.rs: every file tuxedo formats, not just
+# the ones named *.rb.
+RUBY_GLOBS = ["**/*.rb", "**/*.rake", "**/*.gemspec", "**/*.ru", "**/Rakefile", "**/Gemfile"].freeze
+
+RUBY_GLOBS.flat_map { |glob| Dir.glob(glob, base: source_dir) }.uniq.sort.each do |rel|
   formatted_path = File.join(formatted_dir, rel)
   next unless File.file?(formatted_path)
 

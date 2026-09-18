@@ -97,7 +97,8 @@ echo "Comparing output..."
       echo "MISMATCH: $rel"
       mismatches=$((mismatches + 1))
     fi
-  done < <(find "$SRC" -name '*.rb' -print0 | sort -z)
+  done < <(find "$SRC" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
+    -o -name '*.ru' -o -name 'Rakefile' -o -name 'Gemfile' \) -print0 | sort -z)
 
   echo
   echo "$mismatches / $total files differ between tuxedo and rubocop output."
