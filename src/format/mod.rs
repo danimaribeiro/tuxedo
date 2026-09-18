@@ -1283,6 +1283,14 @@ impl Formatter {
     /// AST-equivalence check in `format_with_config` catches that and
     /// refuses the file.
     fn write_verbatim(&mut self, node: &ruby_prism::Node<'_>) {
+        let text = self.verbatim_text(node);
+        self.write_leaf(|f| f.output.push_str(&text));
+    }
+
+    /// `node`'s source text, with any comments inside it marked consumed so
+    /// the cursor does not emit them a second time. Shared by
+    /// [`Formatter::write_verbatim`] and its `Doc` form.
+    fn verbatim_text(&mut self, node: &ruby_prism::Node<'_>) -> String {
         let location = node.location();
         let (start, end) = (location.start_offset(), location.end_offset());
         let text = self.source.get(start..end).unwrap_or_default().to_string();
@@ -1291,7 +1299,7 @@ impl Formatter {
         {
             self.comment_cursor += 1;
         }
-        self.write_leaf(|f| f.output.push_str(&text));
+        text
     }
 
     /// Safety valve for a comment in a place the emitter has nowhere to
@@ -1316,6 +1324,16 @@ impl Formatter {
     /// (see `write_verbatim`'s known gap) -- both fall back to the old
     /// behavior. Goes away once these constructs are built as Docs.
     fn write_verbatim_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> bool {
+        if !self.should_write_verbatim(node) {
+            return false;
+        }
+        self.write_verbatim(node);
+        true
+    }
+
+    /// Whether `node` has to be copied through verbatim because a comment
+    /// sits between its parts.
+    fn should_write_verbatim(&mut self, node: &ruby_prism::Node<'_>) -> bool {
         if self.single_line || self.capture_depth > 0 {
             return false;
         }
@@ -1325,16 +1343,24 @@ impl Formatter {
         if !self.has_pending_comment_in(start, end) || !self.has_comment_in_gaps(node) {
             return false;
         }
-        if self
+        // A heredoc's body lives outside the node's own range, so copying
+        // the range would lose it.
+        !self
             .source
             .get(start..end)
             .unwrap_or_default()
             .contains("<<")
-        {
-            return false;
+    }
+
+    /// [`Formatter::write_verbatim_if_commented`] for a caller that returns
+    /// a `Doc`: `Some` with the source text copied through when a comment
+    /// sits somewhere the emitter cannot put it, `None` to carry on
+    /// formatting normally.
+    fn verbatim_doc_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> Option<Doc> {
+        if !self.should_write_verbatim(node) {
+            return None;
         }
-        self.write_verbatim(node);
-        true
+        Some(Doc::text(self.verbatim_text(node)))
     }
 
     /// True if a pending comment sits *between* the parts of a chain or
