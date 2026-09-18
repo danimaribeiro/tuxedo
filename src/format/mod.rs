@@ -653,6 +653,26 @@ impl Formatter {
         }
     }
 
+    /// The pending comment that sits at the end of `line`, if there is
+    /// one, as ` # text` ready to append to that line's leaf. The `Doc`
+    /// counterpart of [`Formatter::emit_trailing_comment_if_same_line`],
+    /// for callers that build a line rather than write one.
+    ///
+    /// No deferral is involved and none is needed: the caller appends this
+    /// after everything else that belongs on the line, which is what
+    /// `line_suffix` would otherwise buy. The one thing it does not buy is
+    /// that the comment is measured along with the code.
+    fn trailing_comment_doc(&mut self, line: usize) -> Option<Doc> {
+        if self.comment_cursor < self.comments.len()
+            && self.line_of(self.comments[self.comment_cursor].start) == line
+        {
+            let text = Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+            self.comment_cursor += 1;
+            return Some(Doc::text(format!(" {text}")));
+        }
+        None
+    }
+
     fn emit_trailing_comment_if_same_line(&mut self, line: usize) {
         if self.comment_cursor < self.comments.len()
             && self.line_of(self.comments[self.comment_cursor].start) == line
