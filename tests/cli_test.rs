@@ -105,6 +105,24 @@ fn diff_prints_the_change_without_writing_and_exits_one() {
 }
 
 #[test]
+fn a_diff_of_the_current_directory_carries_paths_patch_can_use() {
+    let dir = TempDir::new("diff-paths");
+    dir.write("lib/a.rb", "x  =  1\n");
+
+    // As an editor or a CI job runs it: from inside the tree, on `.`.
+    let output = Command::new(TUXEDO)
+        .args(["format", "--diff", "."])
+        .current_dir(&dir.0)
+        .output()
+        .unwrap();
+
+    let diff = stdout_of(&output);
+    assert!(diff.contains("--- lib/a.rb"), "{diff}");
+    // `git apply -p0` rejects a patch whose paths start with `./`.
+    assert!(!diff.contains("./lib/a.rb"), "{diff}");
+}
+
+#[test]
 fn an_already_formatted_tree_exits_zero_under_every_reporting_flag() {
     let dir = TempDir::new("clean");
     dir.write("a.rb", "x = 1\n");

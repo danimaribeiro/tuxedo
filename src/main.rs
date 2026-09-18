@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
@@ -129,6 +129,16 @@ fn stdin_label(stdin_filename: Option<&PathBuf>) -> String {
     stdin_filename.map_or_else(|| "stdin".to_string(), |path| path.display().to_string())
 }
 
+/// What to call a walked file in a diff. `tuxedo format --diff .` walks
+/// from `.`, which makes every path `./lib/a.rb`, and `git apply -p0`
+/// rejects a patch whose paths start with `./`.
+fn diff_label(path: &Path) -> String {
+    path.strip_prefix("./")
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
 /// A unified diff of one file's formatting, built whole before it is
 /// printed: the walk formats on several threads, and one `print!` of one
 /// string is one lock on stdout, where a line-at-a-time loop would let
@@ -216,10 +226,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
             }
 
             if diff_mode {
-                print!(
-                    "{}",
-                    unified_diff(&path.display().to_string(), source, &formatted)
-                );
+                print!("{}", unified_diff(&diff_label(path), source, &formatted));
             } else if check_mode {
                 if !quiet {
                     println!("would reformat: {}", path.display());
