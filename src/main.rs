@@ -98,11 +98,35 @@ fn main() {
 /// 1, which `--check` uses for "would reformat".
 const EXIT_ERROR: i32 = 2;
 
+/// Reads the whole of stdin, or exits.
+///
+/// An editor pipes a buffer in and writes what comes back over it, so a
+/// read that failed -- a broken pipe, bytes that are not UTF-8 -- must
+/// not come back as an empty file: printing nothing and exiting 0 would
+/// tell the editor the buffer formats to nothing.
+fn read_stdin() -> String {
+    std::io::read_to_string(std::io::stdin()).unwrap_or_else(|e| {
+        eprintln!("error: could not read stdin: {e}");
+        std::process::exit(EXIT_ERROR);
+    })
+}
+
+/// Names the paths the walk could not read, and says whether there were
+/// any -- both commands end on the same "did anything go wrong" question.
+fn report_unreadable(errors: usize) -> bool {
+    if errors == 0 {
+        return false;
+    }
+    let paths = if errors == 1 { "path" } else { "paths" };
+    eprintln!("{errors} {paths} could not be read");
+    true
+}
+
 fn run_format(args: FormatArgs, config: tuxedo::Config) {
     let format_config = &config.format;
 
     if args.paths.is_empty() {
-        let source = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+        let source = read_stdin();
         if args.ast {
             let result = ruby_prism::parse(source.as_bytes());
             println!("{:#?}", result.node());
@@ -173,8 +197,9 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
             result.total, result.changed, unchanged, errors
         );
     }
+    let unreadable = report_unreadable(result.errors);
 
-    if errors > 0 {
+    if errors > 0 || unreadable {
         std::process::exit(EXIT_ERROR);
     }
     if check_mode && result.changed > 0 {
@@ -184,7 +209,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
 
 fn run_check(args: CheckArgs, _config: tuxedo::Config) {
     if args.paths.is_empty() {
-        let source = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+        let source = read_stdin();
         let diagnostics = tuxedo::check(&source);
         for d in &diagnostics {
             println!("stdin:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
@@ -239,6 +264,9 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
         );
     }
 
+    if report_unreadable(result.errors) {
+        std::process::exit(EXIT_ERROR);
+    }
     if result.changed > 0 {
         std::process::exit(1);
     }
