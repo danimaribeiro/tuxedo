@@ -1,0 +1,6 @@
+connection.stub(:begin_db_transaction, ->(*) { queue.push nil; sleep }) do
+  run
+end
+foo(:sym, ->(x) { x; x }, 2)
+baz(-> { one })
+bar(1, proc { |y| y.a; y.b })

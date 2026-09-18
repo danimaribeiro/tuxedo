@@ -28,7 +28,7 @@ fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
 /// lines regardless of width -- a `do...end` block, which always renders
 /// multi-line via `self.indent`/`write_indent`. A `{ }` block is not one of
 /// these: its body is always forced onto one physical output line (see
-/// `fmt_block_node`'s `self.single_line = true`), so it carries no raw `\n`
+/// `write_brace_block_body`'s `self.single_line = true`), so it carries no raw `\n`
 /// a `Doc` wrapper would need to account for.
 fn has_multiline_block(node: &ruby_prism::Node<'_>) -> bool {
     if let Some(call) = node.as_call_node() {
@@ -1147,6 +1147,10 @@ impl Formatter {
     /// as opposed to a block-pass argument, which write_call_args handles.
     fn write_call_block(&mut self, node: &ruby_prism::CallNode<'_>) {
         if let Some(block @ ruby_prism::Node::BlockNode { .. }) = node.block() {
+            // A block always continues the line its call ends on: it writes
+            // no indent of its own and must not be terminated with a
+            // newline, whatever `inline` the call was reached with.
+            self.inline = true;
             self.visit(&block);
         }
     }

@@ -2,9 +2,9 @@ use super::Formatter;
 use super::doc::Doc;
 
 impl Formatter {
-    pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
+    fn write_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
         let inline = self.inline;
-        // Set by fmt_block_node when rendering a brace block's body flat
+        // Set by write_brace_block_body when rendering a brace block's body flat
         // (`{ ... }`). A hardcoded '\n' after the signature (below) broke
         // that flatness regardless of indent bookkeeping, and whether "end"
         // ended up separated from the body at all then depended on
@@ -37,7 +37,9 @@ impl Formatter {
         self.output.push_str(name_str);
 
         if let Some(params) = node.parameters() {
-            self.write_bracketed_parameters("(", &params, ")");
+            let doc = self.bracketed_parameters_doc("(", &params, ")");
+            let rendered = self.render_doc_to_string(doc);
+            self.output.push_str(&rendered);
         }
 
         if single_line {
@@ -79,160 +81,159 @@ impl Formatter {
     pub(super) fn fmt_required_parameter_node(
         &mut self,
         node: &ruby_prism::RequiredParameterNode<'_>,
-    ) {
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    ) -> Doc {
+        super::bytes_doc(node.name().as_slice())
     }
 
     pub(super) fn fmt_optional_parameter_node(
         &mut self,
         node: &ruby_prism::OptionalParameterNode<'_>,
-    ) {
+    ) -> Doc {
         let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
-        self.output.push_str(" = ");
-        self.inline = true;
-        self.visit(&node.value());
-        self.inline = false;
+        self.parameter_default_doc(name.as_slice(), " = ", &node.value())
     }
 
-    pub(super) fn fmt_rest_parameter_node(&mut self, node: &ruby_prism::RestParameterNode<'_>) {
-        self.output.push('*');
-        if let Some(name) = node.name() {
-            self.output
-                .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
-        }
+    pub(super) fn fmt_rest_parameter_node(
+        &mut self,
+        node: &ruby_prism::RestParameterNode<'_>,
+    ) -> Doc {
+        Self::sigil_parameter_doc("*", node.name())
     }
 
-    pub(super) fn fmt_implicit_rest_node(&mut self, _node: &ruby_prism::ImplicitRestNode<'_>) {
-        self.output.push('*');
+    pub(super) fn fmt_implicit_rest_node(
+        &mut self,
+        _node: &ruby_prism::ImplicitRestNode<'_>,
+    ) -> Doc {
+        Doc::text("*")
     }
 
     pub(super) fn fmt_required_keyword_parameter_node(
         &mut self,
         node: &ruby_prism::RequiredKeywordParameterNode<'_>,
-    ) {
-        let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
-        self.output.push(':');
+    ) -> Doc {
+        super::bytes_doc(node.name().as_slice()).append(Doc::text(":"))
     }
 
     pub(super) fn fmt_optional_keyword_parameter_node(
         &mut self,
         node: &ruby_prism::OptionalKeywordParameterNode<'_>,
-    ) {
+    ) -> Doc {
         let name = node.name();
-        self.output
-            .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
-        self.output.push_str(": ");
-        self.inline = true;
-        self.visit(&node.value());
-        self.inline = false;
+        self.parameter_default_doc(name.as_slice(), ": ", &node.value())
     }
 
     pub(super) fn fmt_keyword_rest_parameter_node(
         &mut self,
         node: &ruby_prism::KeywordRestParameterNode<'_>,
-    ) {
-        self.output.push_str("**");
-        if let Some(name) = node.name() {
-            self.output
-                .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
-        }
+    ) -> Doc {
+        Self::sigil_parameter_doc("**", node.name())
     }
 
     pub(super) fn fmt_no_keywords_parameter_node(
         &mut self,
         _node: &ruby_prism::NoKeywordsParameterNode<'_>,
-    ) {
-        self.output.push_str("**nil");
+    ) -> Doc {
+        Doc::text("**nil")
     }
 
     pub(super) fn fmt_forwarding_parameter_node(
         &mut self,
         _node: &ruby_prism::ForwardingParameterNode<'_>,
-    ) {
-        self.output.push_str("...");
+    ) -> Doc {
+        Doc::text("...")
     }
 
-    pub(super) fn fmt_block_parameter_node(&mut self, node: &ruby_prism::BlockParameterNode<'_>) {
-        self.output.push('&');
-        if let Some(name) = node.name() {
-            self.output
-                .push_str(std::str::from_utf8(name.as_slice()).unwrap_or(""));
+    pub(super) fn fmt_block_parameter_node(
+        &mut self,
+        node: &ruby_prism::BlockParameterNode<'_>,
+    ) -> Doc {
+        Self::sigil_parameter_doc("&", node.name())
+    }
+
+    /// `*rest`, `**opts`, `&block` -- a sigil and an optional name, which
+    /// is absent for the anonymous forms (`def f(*)`, `def g(&)`).
+    fn sigil_parameter_doc(sigil: &str, name: Option<ruby_prism::ConstantId<'_>>) -> Doc {
+        let doc = Doc::text(sigil.to_string());
+        match name {
+            Some(name) => doc.append(super::bytes_doc(name.as_slice())),
+            None => doc,
         }
     }
 
-    /// Collects a parameter list's entries as a `Doc` leaf per parameter, in
+    /// `name = value` / `name: value` -- a parameter with a default. The
+    /// value goes through a run so it measures the column its own name
+    /// leaves it at, not the column the parameter list starts at.
+    fn parameter_default_doc(
+        &mut self,
+        name: &[u8],
+        operator: &str,
+        value: &ruby_prism::Node<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_bytes(&mut run, name);
+        self.run_text(&mut run, operator);
+        self.run_node(&mut run, value);
+        self.end_run(run)
+    }
+
+    /// Collects a parameter list's entries as a `Doc` per parameter, in
     /// declaration order (requireds, optionals, rest, posts, keywords,
     /// keyword-rest, block) -- shared by `fmt_parameters_node` (which joins
-    /// them as flat text, for contexts that never wrap) and
-    /// `write_bracketed_parameters` (which wraps them all-or-nothing, block
+    /// them with no line point at all, for contexts that never wrap) and
+    /// `bracketed_parameters_doc` (which wraps them all-or-nothing, block
     /// indented, like a call's argument list).
     fn parameter_leaves(&mut self, node: &ruby_prism::ParametersNode<'_>) -> Vec<Doc> {
         let mut leaves = Vec::new();
-        let mut push = |formatter: &mut Self, visit: &dyn Fn(&mut Self)| {
-            leaves.push(formatter.capture_as_doc(|f| {
-                f.inline = true;
-                visit(f);
-            }));
-        };
-
         for param in node.requireds().iter() {
-            push(self, &|f| f.visit(&param));
+            leaves.push(self.node_doc(&param));
         }
         for param in node.optionals().iter() {
-            push(self, &|f| f.visit(&param));
+            leaves.push(self.node_doc(&param));
         }
         if let Some(rest) = node.rest() {
-            push(self, &|f| f.visit(&rest));
+            leaves.push(self.node_doc(&rest));
         }
         for param in node.posts().iter() {
-            push(self, &|f| f.visit(&param));
+            leaves.push(self.node_doc(&param));
         }
         for param in node.keywords().iter() {
-            push(self, &|f| f.visit(&param));
+            leaves.push(self.node_doc(&param));
         }
         if let Some(keyword_rest) = node.keyword_rest() {
-            push(self, &|f| f.visit(&keyword_rest));
+            leaves.push(self.node_doc(&keyword_rest));
         }
         if let Some(block) = node.block() {
-            push(self, &|f| f.fmt_block_parameter_node(&block));
+            leaves.push(self.fmt_block_parameter_node(&block));
         }
         leaves
     }
 
-    pub(super) fn fmt_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) {
-        let leaves = self.parameter_leaves(node);
-        for (i, leaf) in leaves.into_iter().enumerate() {
-            if i > 0 {
-                self.output.push_str(", ");
-            }
-            self.output.push_str(&self.render_doc_to_string(leaf));
-        }
+    /// A parameter list with nothing around it, comma-joined and with no
+    /// line point of its own: the pipe-delimited form (`|a, b|`), which is
+    /// never worth wrapping, and the part before a block's locals.
+    pub(super) fn fmt_parameters_node(&mut self, node: &ruby_prism::ParametersNode<'_>) -> Doc {
+        Doc::join(self.parameter_leaves(node), Doc::text(", "))
     }
 
-    /// Renders a parameter list wrapped in `open`/`close` (a def's parens or
-    /// a lambda's), all-or-nothing and block-indented like a call's
-    /// argument list, so an overlong signature breaks one parameter per
-    /// line instead of running past the line length.
-    fn write_bracketed_parameters(
+    /// A parameter list wrapped in `open`/`close` (a def's parens or a
+    /// lambda's), all-or-nothing and block-indented like a call's argument
+    /// list, so an overlong signature breaks one parameter per line instead
+    /// of running past the line length.
+    fn bracketed_parameters_doc(
         &mut self,
         open: &str,
         node: &ruby_prism::ParametersNode<'_>,
         close: &str,
-    ) {
+    ) -> Doc {
         let leaves = self.parameter_leaves(node);
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-        let doc = self.bracketed_group_doc(open, Doc::softline(), body, Doc::softline(), close);
-        let rendered = self.render_doc_to_string(doc);
-        self.output.push_str(&rendered);
+        self.bracketed_group_doc(open, Doc::softline(), body, Doc::softline(), close)
     }
 
-    pub(super) fn fmt_block_parameters_node(&mut self, node: &ruby_prism::BlockParametersNode<'_>) {
+    pub(super) fn fmt_block_parameters_node(
+        &mut self,
+        node: &ruby_prism::BlockParametersNode<'_>,
+    ) -> Doc {
         // A lambda's parameters are parenthesized (`->(x) { }`) while a
         // block's are pipe-delimited (`{ |x| }`), and both are this node
         // type — so take the delimiters from source rather than assuming
@@ -259,14 +260,13 @@ impl Formatter {
             .map(|local| String::from_utf8_lossy(local.location().as_slice()).into_owned())
             .collect();
         if !locals.is_empty() {
-            self.output.push_str(&opening);
-            if let Some(params) = node.parameters() {
-                self.fmt_parameters_node(&params);
-            }
-            self.output.push_str("; ");
-            self.output.push_str(&locals.join(", "));
-            self.output.push_str(&closing);
-            return;
+            let params = match node.parameters() {
+                Some(params) => self.fmt_parameters_node(&params),
+                None => Doc::nil(),
+            };
+            return Doc::text(opening)
+                .append(params)
+                .append(Doc::text(format!("; {}{closing}", locals.join(", "))));
         }
 
         match node.parameters() {
@@ -276,29 +276,25 @@ impl Formatter {
             // the pipes across lines and leaves the block's body dangling
             // after the closing pipe on the same line as its last param.
             Some(params) if opening == "(" => {
-                self.write_bracketed_parameters(&opening, &params, &closing)
+                self.bracketed_parameters_doc(&opening, &params, &closing)
             }
             Some(params) => {
-                self.output.push_str(&opening);
-                self.fmt_parameters_node(&params);
-                self.output.push_str(&closing);
+                let params = self.fmt_parameters_node(&params);
+                Doc::text(opening).append(params).append(Doc::text(closing))
             }
-            None => {
-                self.output.push_str(&opening);
-                self.output.push_str(&closing);
-            }
+            None => Doc::text(format!("{opening}{closing}")),
         }
     }
 
     /// A lambda literal (`->(x) { x + 1 }`, `-> { 42 }`, `->(x) do ... end`).
     ///
     /// Structurally a block with an arrow in front, so the body is rendered
-    /// the same way `fmt_block_node` does it — but it is its own node type,
+    /// the same way `write_block_node` does it — but it is its own node type,
     /// and without this it fell through to Prism's default visitor, which
     /// emitted the parameters in block form and dropped the `->`, the
     /// parens and the braces entirely: `->(_) { block.call }` came out as
     /// `|_| block.call`.
-    pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) {
+    fn write_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) {
         let inline = self.inline;
         if !inline {
             self.write_indent();
@@ -349,7 +345,7 @@ impl Formatter {
         }
     }
 
-    pub(super) fn fmt_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
+    pub(super) fn write_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
         let brace = node.opening_loc().as_slice() == b"{";
 
         self.output.push(' ');
@@ -477,5 +473,33 @@ impl Formatter {
         self.indent -= 1;
         self.write_indent();
         self.output.push('}');
+    }
+
+    // A `def`, a lambda and a block lay out their own multi-line body with
+    // `self.indent` and real newlines. As `Doc`s they are rendered where
+    // they will sit and lifted straight back out, so the bytes are what the
+    // string emitter produced and every width decision inside is made
+    // against the real column -- the same bargain `statements_doc` makes.
+    //
+    // All three are listed under `self_indented` in the dispatch: a `def`
+    // writes its own leading indent (or none, when it is a sub-expression),
+    // and a block writes no indent at all because it continues the line its
+    // call ends on.
+    pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_def_node(node);
+        })
+    }
+
+    pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_lambda_node(node);
+        })
+    }
+
+    pub(super) fn fmt_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) -> Doc {
+        self.spliced_doc(|f| {
+            f.write_block_node(node);
+        })
     }
 }
