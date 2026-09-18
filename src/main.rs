@@ -171,8 +171,12 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
                     println!("would reformat: {}", path.display());
                 }
             } else {
-                if let Err(e) = std::fs::write(path, &formatted) {
+                if let Err(e) = tuxedo::write_atomic(path, &formatted) {
                     eprintln!("error: could not write {}: {e}", path.display());
+                    errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    // The file on disk is the one that was read, so it is
+                    // neither reformatted nor left alone by choice.
+                    return None;
                 }
                 if !quiet {
                     println!("reformatted: {}", path.display());
@@ -193,7 +197,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
         );
     } else if !quiet {
         eprintln!(
-            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted",
+            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted or written",
             result.total, result.changed, unchanged, errors
         );
     }
@@ -219,6 +223,8 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
 
     let fix_mode = args.fix;
     let quiet = args.quiet;
+    let errors = std::sync::atomic::AtomicUsize::new(0);
+    let errors_ref = &errors;
 
     let result = tuxedo::walk_and_process(
         &args.paths,
@@ -241,10 +247,13 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
             }
 
             if fix_mode && let Some(fixed) = tuxedo::fix(source) {
-                if let Err(e) = std::fs::write(path, &fixed) {
-                    eprintln!("error: could not write {}: {e}", path.display());
+                match tuxedo::write_atomic(path, &fixed) {
+                    Ok(()) => return Some(fixed),
+                    Err(e) => {
+                        eprintln!("error: could not write {}: {e}", path.display());
+                        errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
-                return Some(fixed);
             }
 
             if diagnostics.is_empty() {
@@ -264,7 +273,9 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
         );
     }
 
-    if report_unreadable(result.errors) {
+    let unreadable = report_unreadable(result.errors);
+
+    if errors.load(std::sync::atomic::Ordering::Relaxed) > 0 || unreadable {
         std::process::exit(EXIT_ERROR);
     }
     if result.changed > 0 {

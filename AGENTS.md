@@ -233,6 +233,12 @@ its removal plan to the issue that owns it.
   without `--fix`).
 - `src/walk.rs` — shared file-walking/parallel-processing logic (`walk_and_process`) used
   by both the `format` and `check` commands; respects `.gitignore` unless `--no-ignore`.
+  Matches Ruby by extension (`.rb`, `.rake`, `.gemspec`, `.ru`) and by name (`Rakefile`,
+  `Gemfile`). A path it cannot read — including one that isn't valid UTF-8 — is counted in
+  `WalkResult::errors` and never reaches the formatter.
+- `src/write.rs` — `write_atomic`: the only way either command writes a file. Writes a
+  sibling temporary and renames it over the target, so an interrupted run cannot leave
+  truncated source on disk, and carries the original's mode across.
 - `src/format/` — the formatter, built on `ruby-prism` (Ruby's own parser, via the
   `ruby-prism` crate) to parse source into an AST and re-emit formatted code. When adding
   or debugging a `visit_*_node` method, dump the actual Prism AST first instead of guessing
