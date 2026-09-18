@@ -8,7 +8,7 @@ Live artifact (interactive, includes a real embedded tree-sitter parse and
 step-through pseudocode for every algorithm below):
 https://claude.ai/code/artifact/f1a3aa50-d9e5-4501-90b9-62c5715fb774
 
-Code: `src/bin/cst_playground.rs` (`cargo run --release --bin cst_playground`
+Code: `examples/cst_playground.rs` (`cargo run --release --example cst_playground`
 regenerates `playground/output.json`, which the artifact embeds).
 Fixtures: `playground/conditionals.rb`, `formatter_before.rb`, `alignment.rb`.
 

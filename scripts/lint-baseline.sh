@@ -79,7 +79,8 @@ cp -r "$SRC" "$BASE/tuxedo"
 # status, so a file tuxedo refuses for any other reason still stops
 # the run: tuxedo's walk honours `.ignore`. They stay in the copy, so
 # both rubocop passes below still see the file set the baseline does.
-find "$BASE/tuxedo" -name '*.rb' -print0 |
+find "$BASE/tuxedo" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
+  -o -name '*.ru' -o -name 'Rakefile' -o -name 'Gemfile' \) -print0 |
   xargs -0 -r -P "$(nproc)" -I{} \
     sh -c 'ruby -c "$1" >/dev/null 2>&1 || printf "%s\n" "${1#"$2"/}"' _ {} "$BASE/tuxedo" \
     > "$BASE/tuxedo/.ignore"

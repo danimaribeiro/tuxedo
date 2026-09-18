@@ -1254,9 +1254,13 @@ impl Formatter {
     }
 }
 
-/// `Doc::text` from source bytes, matching `write_bytes`: text that isn't
-/// valid UTF-8 renders as nothing rather than as replacement characters,
-/// which the AST check would then flag.
+/// `Doc::text` from a span of the source.
+///
+/// The source is a `&str` and Prism's locations land on token
+/// boundaries, so the bytes are valid UTF-8 everywhere this is reached.
+/// Dropping the span is the safe way to be wrong about that anyway: the
+/// AST check sees a program with a piece missing and refuses the file,
+/// where a replacement character could parse as something.
 fn bytes_doc(bytes: &[u8]) -> Doc {
     Doc::text(std::str::from_utf8(bytes).unwrap_or("").to_string())
 }

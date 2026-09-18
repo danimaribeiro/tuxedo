@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
@@ -31,9 +31,17 @@ struct FormatArgs {
     #[arg(long)]
     check: bool,
 
+    /// Print a unified diff of what would change instead of writing
+    #[arg(long)]
+    diff: bool,
+
     /// Dump the Prism AST (stdin only)
     #[arg(long)]
     ast: bool,
+
+    /// Report this path instead of "stdin" when reading from stdin
+    #[arg(long, value_name = "PATH")]
+    stdin_filename: Option<PathBuf>,
 
     /// Path to config file
     #[arg(long)]
@@ -60,6 +68,10 @@ struct CheckArgs {
     /// Auto-fix lint violations
     #[arg(long)]
     fix: bool,
+
+    /// Report this path instead of "stdin" when reading from stdin
+    #[arg(long, value_name = "PATH")]
+    stdin_filename: Option<PathBuf>,
 
     /// Path to config file
     #[arg(long)]
@@ -98,27 +110,98 @@ fn main() {
 /// 1, which `--check` uses for "would reformat".
 const EXIT_ERROR: i32 = 2;
 
+/// Reads the whole of stdin, or exits.
+///
+/// An editor pipes a buffer in and writes what comes back over it, so a
+/// read that failed -- a broken pipe, bytes that are not UTF-8 -- must
+/// not come back as an empty file: printing nothing and exiting 0 would
+/// tell the editor the buffer formats to nothing.
+fn read_stdin() -> String {
+    std::io::read_to_string(std::io::stdin()).unwrap_or_else(|e| {
+        eprintln!("error: could not read stdin: {e}");
+        std::process::exit(EXIT_ERROR);
+    })
+}
+
+/// What to call the source on stdin in a message: the path the editor
+/// named, so its diagnostics point at a file the user can open.
+fn stdin_label(stdin_filename: Option<&PathBuf>) -> String {
+    stdin_filename.map_or_else(|| "stdin".to_string(), |path| path.display().to_string())
+}
+
+/// What to call a walked file in a diff. `tuxedo format --diff .` walks
+/// from `.`, which makes every path `./lib/a.rb`, and `git apply -p0`
+/// rejects a patch whose paths start with `./`.
+fn diff_label(path: &Path) -> String {
+    path.strip_prefix("./")
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+/// A unified diff of one file's formatting, built whole before it is
+/// printed: the walk formats on several threads, and one `print!` of one
+/// string is one lock on stdout, where a line-at-a-time loop would let
+/// two files' diffs interleave.
+fn unified_diff(label: &str, before: &str, after: &str) -> String {
+    similar::TextDiff::from_lines(before, after)
+        .unified_diff()
+        .header(label, label)
+        .to_string()
+}
+
+/// Names the paths the walk could not read, and says whether there were
+/// any -- both commands end on the same "did anything go wrong" question.
+fn report_unreadable(errors: usize) -> bool {
+    if errors == 0 {
+        return false;
+    }
+    let paths = if errors == 1 { "path" } else { "paths" };
+    eprintln!("{errors} {paths} could not be read");
+    true
+}
+
 fn run_format(args: FormatArgs, config: tuxedo::Config) {
     let format_config = &config.format;
 
     if args.paths.is_empty() {
-        let source = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+        let source = read_stdin();
         if args.ast {
             let result = ruby_prism::parse(source.as_bytes());
             println!("{:#?}", result.node());
             return;
         }
-        match tuxedo::format_with_config(&source, format_config) {
-            Ok(formatted) => print!("{formatted}"),
+        let label = stdin_label(args.stdin_filename.as_ref());
+        let formatted = match tuxedo::format_with_config(&source, format_config) {
+            Ok(formatted) => formatted,
             Err(e) => {
-                eprintln!("error: stdin:{e}");
+                eprintln!("error: {label}:{e}");
                 std::process::exit(EXIT_ERROR);
             }
+        };
+
+        if args.diff {
+            print!("{}", unified_diff(&label, &source, &formatted));
+        } else if args.check {
+            if formatted != source && !args.quiet {
+                println!("would reformat: {label}");
+            }
+        } else {
+            // The buffer goes back where it came from, whole: an editor
+            // filter replaces what it piped in with what it reads out.
+            print!("{formatted}");
+        }
+        if (args.diff || args.check) && formatted != source {
+            std::process::exit(1);
         }
         return;
     }
 
+    // Both report without touching the tree, and both make a run that
+    // found work to do exit 1.
     let check_mode = args.check;
+    let diff_mode = args.diff;
+    let reporting_only = check_mode || diff_mode;
     let quiet = args.quiet;
     let errors = std::sync::atomic::AtomicUsize::new(0);
     let errors_ref = &errors;
@@ -142,13 +225,19 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
                 return None;
             }
 
-            if check_mode {
+            if diff_mode {
+                print!("{}", unified_diff(&diff_label(path), source, &formatted));
+            } else if check_mode {
                 if !quiet {
                     println!("would reformat: {}", path.display());
                 }
             } else {
-                if let Err(e) = std::fs::write(path, &formatted) {
+                if let Err(e) = tuxedo::write_atomic(path, &formatted) {
                     eprintln!("error: could not write {}: {e}", path.display());
+                    errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    // The file on disk is the one that was read, so it is
+                    // neither reformatted nor left alone by choice.
+                    return None;
                 }
                 if !quiet {
                     println!("reformatted: {}", path.display());
@@ -162,38 +251,42 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
     let errors = errors.load(std::sync::atomic::Ordering::Relaxed);
     let unchanged = result.total - result.changed - errors;
 
-    if check_mode {
+    if reporting_only {
         eprintln!(
             "{} files checked: {} would be reformatted, {} already formatted, {} could not be formatted",
             result.total, result.changed, unchanged, errors
         );
     } else if !quiet {
         eprintln!(
-            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted",
+            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted or written",
             result.total, result.changed, unchanged, errors
         );
     }
+    let unreadable = report_unreadable(result.errors);
 
-    if errors > 0 {
+    if errors > 0 || unreadable {
         std::process::exit(EXIT_ERROR);
     }
-    if check_mode && result.changed > 0 {
+    if reporting_only && result.changed > 0 {
         std::process::exit(1);
     }
 }
 
 fn run_check(args: CheckArgs, _config: tuxedo::Config) {
     if args.paths.is_empty() {
-        let source = std::io::read_to_string(std::io::stdin()).unwrap_or_default();
+        let source = read_stdin();
+        let label = stdin_label(args.stdin_filename.as_ref());
         let diagnostics = tuxedo::check(&source);
         for d in &diagnostics {
-            println!("stdin:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
+            println!("{label}:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
         }
         return;
     }
 
     let fix_mode = args.fix;
     let quiet = args.quiet;
+    let errors = std::sync::atomic::AtomicUsize::new(0);
+    let errors_ref = &errors;
 
     let result = tuxedo::walk_and_process(
         &args.paths,
@@ -216,10 +309,13 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
             }
 
             if fix_mode && let Some(fixed) = tuxedo::fix(source) {
-                if let Err(e) = std::fs::write(path, &fixed) {
-                    eprintln!("error: could not write {}: {e}", path.display());
+                match tuxedo::write_atomic(path, &fixed) {
+                    Ok(()) => return Some(fixed),
+                    Err(e) => {
+                        eprintln!("error: could not write {}: {e}", path.display());
+                        errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
-                return Some(fixed);
             }
 
             if diagnostics.is_empty() {
@@ -239,6 +335,11 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
         );
     }
 
+    let unreadable = report_unreadable(result.errors);
+
+    if errors.load(std::sync::atomic::Ordering::Relaxed) > 0 || unreadable {
+        std::process::exit(EXIT_ERROR);
+    }
     if result.changed > 0 {
         std::process::exit(1);
     }
