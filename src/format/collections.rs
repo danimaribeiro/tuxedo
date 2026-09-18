@@ -168,7 +168,7 @@ impl Formatter {
         let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
-            return self.expanded_items_doc(elements, false);
+            return self.expanded_items_doc(elements);
         }
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
         body.indent(self.indent_str.len()).group()

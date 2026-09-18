@@ -145,7 +145,7 @@ impl Formatter {
         &mut self,
         node: &ruby_prism::PreExecutionNode<'_>,
     ) -> Doc {
-        self.spliced_doc(|f| f.write_execution_block("BEGIN", node.statements()))
+        self.execution_block_doc("BEGIN", node.statements())
     }
 
     /// `END { ... }`
@@ -153,43 +153,33 @@ impl Formatter {
         &mut self,
         node: &ruby_prism::PostExecutionNode<'_>,
     ) -> Doc {
-        self.spliced_doc(|f| f.write_execution_block("END", node.statements()))
+        self.execution_block_doc("END", node.statements())
     }
 
     /// `BEGIN`/`END` only take braces (never `do...end`), and unlike a
     /// method's `{ }` block they are statements in their own right, so the
     /// body is laid out like any other block of statements.
-    fn write_execution_block(
+    fn execution_block_doc(
         &mut self,
         keyword: &str,
         statements: Option<ruby_prism::StatementsNode<'_>>,
-    ) {
+    ) -> Doc {
         let Some(statements) = statements else {
-            self.write_leaf(|f| {
-                f.output.push_str(keyword);
-                f.output.push_str(" {}");
-            });
-            return;
+            return Doc::text(format!("{keyword} {{}}"));
         };
-
-        if self.inline || self.single_line {
-            self.output.push_str(keyword);
-            self.output.push_str(" { ");
-            let single_line = std::mem::replace(&mut self.single_line, true);
-            self.write_statements_node(&statements);
-            self.single_line = single_line;
-            self.output.push_str(" }");
-            return;
+        if self.single_line {
+            return Doc::text(format!("{keyword} {{ "))
+                .append(self.fmt_statements_node(&statements))
+                .append(Doc::text(" }"));
         }
-
-        self.write_indent();
-        self.output.push_str(keyword);
-        self.output.push_str(" {\n");
+        let nest = self.indent_str.len();
         self.indent += 1;
-        self.write_statements_node(&statements);
+        let body = self.fmt_statements_node(&statements);
         self.indent -= 1;
-        self.write_indent();
-        self.output.push_str("}\n");
+        Doc::text(format!("{keyword} {{"))
+            .append(Doc::hardline().append(body).indent(nest))
+            .append(Doc::hardline())
+            .append(Doc::text("}"))
     }
 
     /// A constant assignment under a `# shareable_constant_value:` magic

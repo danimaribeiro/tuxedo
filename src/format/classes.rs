@@ -2,88 +2,45 @@ use super::Formatter;
 use super::doc::Doc;
 
 impl Formatter {
-    fn write_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) {
-        let inline = self.inline;
-        let class_line = self.line_of(node.location().start_offset());
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("class ");
-        self.inline = true;
-        self.visit(&node.constant_path());
-
+    pub(super) fn fmt_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) -> Doc {
+        let mut header = Doc::text("class ").append(self.node_doc(&node.constant_path()));
         if let Some(superclass) = node.superclass() {
-            self.output.push_str(" < ");
-            self.visit(&superclass);
+            header = header
+                .append(Doc::text(" < "))
+                .append(self.node_doc(&superclass));
         }
-
-        self.output.push('\n');
-        self.emit_trailing_comment_if_same_line(class_line);
-
-        self.indent += 1;
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
-        self.indent -= 1;
-
-        self.write_indent();
-        self.output.push_str("end");
-        if !inline {
-            self.output.push('\n');
-        }
-    }
-
-    fn write_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("module ");
-        self.inline = true;
-        self.visit(&node.constant_path());
-        self.output.push('\n');
-        let header_line = self.line_of(node.constant_path().location().end_offset());
-        self.emit_trailing_comment_if_same_line(header_line);
-
-        self.indent += 1;
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
-        self.indent -= 1;
-
-        self.write_indent();
-        self.output.push_str("end");
-        if !inline {
-            self.output.push('\n');
-        }
-    }
-
-    fn write_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'_>) {
-        let inline = self.inline;
         let header_line = self.line_of(node.location().start_offset());
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("class << ");
-        self.inline = true;
-        self.visit(&node.expression());
-        self.output.push('\n');
-        self.emit_trailing_comment_if_same_line(header_line);
+        self.keyword_body_doc(
+            header,
+            header_line,
+            node.body(),
+            Some(node.end_keyword_loc().start_offset()),
+        )
+    }
 
-        self.indent += 1;
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-        self.flush_comments_before(node.end_keyword_loc().start_offset(), node.body().is_some());
-        self.indent -= 1;
+    pub(super) fn fmt_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) -> Doc {
+        let header = Doc::text("module ").append(self.node_doc(&node.constant_path()));
+        let header_line = self.line_of(node.constant_path().location().end_offset());
+        self.keyword_body_doc(
+            header,
+            header_line,
+            node.body(),
+            Some(node.end_keyword_loc().start_offset()),
+        )
+    }
 
-        self.write_indent();
-        self.output.push_str("end");
-        if !inline {
-            self.output.push('\n');
-        }
+    pub(super) fn fmt_singleton_class_node(
+        &mut self,
+        node: &ruby_prism::SingletonClassNode<'_>,
+    ) -> Doc {
+        let header = Doc::text("class << ").append(self.node_doc(&node.expression()));
+        let header_line = self.line_of(node.location().start_offset());
+        self.keyword_body_doc(
+            header,
+            header_line,
+            node.body(),
+            Some(node.end_keyword_loc().start_offset()),
+        )
     }
 
     pub(super) fn fmt_constant_path_node(
@@ -92,11 +49,11 @@ impl Formatter {
     ) -> Doc {
         let mut run = self.begin_run();
         if let Some(parent) = node.parent() {
-            // Without this the parent is written as a statement: as the
-            // body of `def f; Thor::DynamicCommand; end` it took
-            // fmt_constant_read_node's write_leaf path and came out as
-            // `Thor` on its own line followed by `::DynamicCommand`, which
-            // is still valid Ruby and a different constant lookup.
+            // The parent is part of this path, not a statement of its
+            // own: as the body of `def f; Thor::DynamicCommand; end` it
+            // once came out as `Thor` on its own line followed by
+            // `::DynamicCommand`, which is still valid Ruby and a
+            // different constant lookup.
             self.run_node(&mut run, &parent);
         }
         // `parent` is absent for a cbase path (`::Top`), where the leading
@@ -113,30 +70,5 @@ impl Formatter {
         node: &ruby_prism::ConstantReadNode<'_>,
     ) -> Doc {
         super::bytes_doc(node.name().as_slice())
-    }
-
-    // Each of these writes its own leading indent and lays its body out
-    // with `self.indent` and real newlines, so it is `self_indented` in the
-    // dispatch and rendered where it will sit -- see the note on
-    // `fmt_def_node`.
-    pub(super) fn fmt_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_class_node(node);
-        })
-    }
-
-    pub(super) fn fmt_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_module_node(node);
-        })
-    }
-
-    pub(super) fn fmt_singleton_class_node(
-        &mut self,
-        node: &ruby_prism::SingletonClassNode<'_>,
-    ) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_singleton_class_node(node);
-        })
     }
 }

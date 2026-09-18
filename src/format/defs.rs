@@ -2,80 +2,65 @@ use super::Formatter;
 use super::doc::Doc;
 
 impl Formatter {
-    fn write_def_node(&mut self, node: &ruby_prism::DefNode<'_>) {
-        let inline = self.inline;
-        // Set by write_brace_block_body when rendering a brace block's body flat
-        // (`{ ... }`). A hardcoded '\n' after the signature (below) broke
-        // that flatness regardless of indent bookkeeping, and whether "end"
-        // ended up separated from the body at all then depended on
-        // whatever self.indent's numeric value happened to be (0 at true
-        // top level renders no separating spaces at all) -- `Class.new {
-        // def self.a; self; end }` could come out as literal `selfend }`,
-        // a syntax error. Joining with "; " instead, like
-        // fmt_statements_node/fmt_begin_node already do in this mode, is
-        // correct regardless of indent depth.
-        let single_line = self.single_line;
+    /// `def name(params)`, the body one level in, `end` back at the
+    /// `def`'s level.
+    ///
+    /// Tuxedo always expands a method body, even a one-liner's: `def x; y;
+    /// end` becomes three lines. The exception is `single_line`, where an
+    /// enclosing construct owns the line and the whole definition has to
+    /// fit on it -- `Class.new { def self.a; self; end }`.
+    pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) -> Doc {
         // The name as written, not `node.name()`: `def ~@` and `def !@`
         // are interned as `~` and `!`, and there is no reason to respell
         // what the author wrote.
         let name = node.name_loc();
-        let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
+        let name_str = std::str::from_utf8(name.as_slice())
+            .unwrap_or("")
+            .to_string();
 
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("def ");
+        let mut header = Doc::text("def ");
         if let Some(receiver) = node.receiver() {
-            self.inline = true;
-            self.visit(&receiver);
             let op = node
                 .operator_loc()
                 .and_then(|l| std::str::from_utf8(l.as_slice()).ok())
-                .unwrap_or(".");
-            self.output.push_str(op);
+                .unwrap_or(".")
+                .to_string();
+            header = header
+                .append(self.node_doc(&receiver))
+                .append(Doc::text(op));
         }
-        self.output.push_str(name_str);
-
+        header = header.append(Doc::text(name_str));
         if let Some(params) = node.parameters() {
-            let doc = self.bracketed_parameters_doc("(", &params, ")");
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
+            let params = self.bracketed_parameters_doc("(", &params, ")");
+            header = header.append(params);
         }
 
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            // A trailing comment sits after wherever the signature actually
-            // ends -- the closing paren when params wrapped onto their own
-            // lines, not the `def` keyword's line, which may be several
-            // lines earlier by then.
-            let header_end = node
-                .rparen_loc()
-                .map(|l| l.start_offset())
-                .unwrap_or_else(|| node.location().start_offset());
-            let header_line = self.line_of(header_end);
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
+        if self.single_line {
+            let body = match node.body() {
+                Some(body) => self.node_doc(&body),
+                None => Doc::nil(),
+            };
+            return header
+                .append(Doc::text("; "))
+                .append(body)
+                .append(Doc::text("; end"));
         }
 
-        if let Some(body) = node.body() {
-            self.visit(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; end");
-        } else {
-            if let Some(end_keyword) = node.end_keyword_loc() {
-                self.flush_comments_before(end_keyword.start_offset(), node.body().is_some());
-            }
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
-        }
-        if !inline {
-            self.output.push('\n');
-        }
+        // A trailing comment sits after wherever the signature actually
+        // ends -- the closing paren when params wrapped onto their own
+        // lines, not the `def` keyword's line, which may be several
+        // lines earlier by then.
+        let header_end = node
+            .rparen_loc()
+            .map(|l| l.start_offset())
+            .unwrap_or_else(|| node.location().start_offset());
+        let header_line = self.line_of(header_end);
+        self.keyword_body_doc(
+            header,
+            header_line,
+            node.body(),
+            node.end_keyword_loc().map(|l| l.start_offset()),
+        )
     }
 
     pub(super) fn fmt_required_parameter_node(
@@ -288,63 +273,37 @@ impl Formatter {
 
     /// A lambda literal (`->(x) { x + 1 }`, `-> { 42 }`, `->(x) do ... end`).
     ///
-    /// Structurally a block with an arrow in front, so the body is rendered
-    /// the same way `write_block_node` does it — but it is its own node type,
+    /// Structurally a block with an arrow in front, so the body is built
+    /// the same way `fmt_block_node` does it — but it is its own node type,
     /// and without this it fell through to Prism's default visitor, which
     /// emitted the parameters in block form and dropped the `->`, the
     /// parens and the braces entirely: `->(_) { block.call }` came out as
     /// `|_| block.call`.
-    fn write_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-
-        let operator = node.operator_loc().as_slice().to_vec();
-        self.write_bytes(&operator);
+    pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) -> Doc {
         let brace = node.opening_loc().as_slice() == b"{";
         let opening = Doc::text(if brace { " {" } else { " do" });
-        match super::explicit_parameters(node.parameters()) {
-            // The opening follows right after the parameter list on the
-            // same line, so the two render as one document: an overlong
-            // parameter list then wraps instead of pushing the line past
-            // `line_length`, which it would if the opening were appended
-            // after the list had already chosen its shape.
-            Some(parameters) => {
-                self.inline = true;
-                let doc = self.node_doc(&parameters).append(opening);
-                let rendered = self.render_doc_to_string(doc);
-                self.output.push_str(&rendered);
-            }
-            None => {
-                let rendered = self.render_doc_to_string(opening);
-                self.output.push_str(&rendered);
-            }
-        }
+        // The opening follows right after the parameter list on the
+        // same line, so the two render as one document: an overlong
+        // parameter list then wraps instead of pushing the line past
+        // `line_length`, which it would if the opening were appended
+        // after the list had already chosen its shape.
+        let header = super::bytes_doc(node.operator_loc().as_slice()).append(
+            match super::explicit_parameters(node.parameters()) {
+                Some(parameters) => self.node_doc(&parameters).append(opening),
+                None => opening,
+            },
+        );
 
         let (opening_end, closing_start) = (
             node.opening_loc().end_offset(),
             node.closing_loc().start_offset(),
         );
         if brace {
-            self.write_brace_block_body(node.body(), opening_end, closing_start);
-        } else {
-            self.output.push('\n');
-            self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
-            self.indent += 1;
-            if let Some(body) = node.body() {
-                self.inline = false;
-                self.visit(&body);
-            }
-            self.flush_comments_before(closing_start, node.body().is_some());
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
+            let body = self.brace_block_body_doc(node.body(), opening_end, closing_start);
+            return header.append(body);
         }
-
-        if !inline {
-            self.output.push('\n');
-        }
+        let header_line = self.line_of(opening_end);
+        self.keyword_body_doc(header, header_line, node.body(), Some(closing_start))
     }
 
     /// The header a block continues its call's line with: ` do` or ` {`,
@@ -364,167 +323,134 @@ impl Formatter {
         }
     }
 
-    pub(super) fn write_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
+    pub(super) fn fmt_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) -> Doc {
         let header = self.block_header_doc(node);
-        let rendered = self.render_doc_to_string(header);
-        self.output.push_str(&rendered);
-        self.write_block_body(node);
+        let body = self.block_body_doc(node);
+        header.append(body)
     }
 
-    /// Everything after the header: a `{ }` body, or the newline, the
-    /// indented statements and the `end` of a `do...end`.
-    pub(super) fn write_block_body(&mut self, node: &ruby_prism::BlockNode<'_>) {
+    /// Everything after the header: a `{ }` body, or the indented
+    /// statements and the `end` of a `do...end`.
+    pub(super) fn block_body_doc(&mut self, node: &ruby_prism::BlockNode<'_>) -> Doc {
         let brace = node.opening_loc().as_slice() == b"{";
         let (opening_end, closing_start) = (
             node.opening_loc().end_offset(),
             node.closing_loc().start_offset(),
         );
         if brace {
-            self.write_brace_block_body(node.body(), opening_end, closing_start);
-        } else {
-            self.output.push('\n');
-            // `do |x| # why`: the header ends at the closing pipe when
-            // there are parameters, at `do` otherwise.
-            let header_end = node
-                .parameters()
-                .map_or(opening_end, |p| p.location().end_offset().max(opening_end));
-            self.emit_trailing_comment_if_same_line(self.line_of(header_end));
-            self.indent += 1;
-            if let Some(body) = node.body() {
-                self.visit(&body);
-            }
-            self.flush_comments_before(closing_start, node.body().is_some());
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
+            return self.brace_block_body_doc(node.body(), opening_end, closing_start);
         }
+        // `do |x| # why`: the header ends at the closing pipe when
+        // there are parameters, at `do` otherwise.
+        let header_end = node
+            .parameters()
+            .map_or(opening_end, |p| p.location().end_offset().max(opening_end));
+        let header_line = self.line_of(header_end);
+        self.keyword_body_doc(Doc::nil(), header_line, node.body(), Some(closing_start))
     }
 
-    /// Brace-block / brace-lambda body: stay ` { stmt }` when there's a
-    /// single statement and it fits on the current line, otherwise the
-    /// same all-or-nothing expanded shape as `do...end` (body at +1
-    /// indent, `}` on its own line). A body with more than one statement
-    /// always expands, regardless of width. A `{ }` nested inside another
-    /// still-flat brace body stays flat.
+    /// Everything a brace block puts *after* its `{`, which the header
+    /// the call line ends with has already contributed: ` stmt }` when it
+    /// fits on the line, otherwise the same expanded shape as `do...end`
+    /// (body at +1 indent, `}` on its own line).
     ///
-    /// A comment anywhere between the braces also forces the expanded
-    /// shape: `{ # why` has no flat form that keeps the comment in place.
-    fn write_brace_block_body(
+    /// A body with more than one statement never collapses onto one line,
+    /// even when the flat form would fit -- joining statements with "; "
+    /// inside `{ }` is what RuboCop's Style/Semicolon flags, and it
+    /// silently collapses structure the source author chose to keep
+    /// multi-line (e.g. a lambda body split across several lines).
+    /// Confirmed against rails's action_controller/metal.rb, where a
+    /// 4-line lambda body fit under line_length flat and so got squashed
+    /// to one line before this check.
+    ///
+    /// A comment anywhere between the braces forces the expanded shape
+    /// too: `{ # why` has no flat form that keeps the comment in place.
+    fn brace_block_body_doc(
         &mut self,
         body: Option<ruby_prism::Node<'_>>,
         opening_end: usize,
         closing_start: usize,
-    ) {
-        let has_comment = self.has_pending_comment_in(opening_end, closing_start)
-            && !self.single_line
-            && !self.hold_flat;
+    ) -> Doc {
+        let nest = self.indent_str.len();
+        let has_comment =
+            !self.single_line && self.has_pending_comment_in(opening_end, closing_start);
+
         let Some(body) = body else {
-            if has_comment {
-                self.output.push('\n');
-                self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
-                self.indent += 1;
-                self.flush_comments_before(closing_start, false);
-                self.indent -= 1;
-                self.write_indent();
+            if !has_comment {
+                return Doc::text("}");
             }
-            self.output.push('}');
-            return;
+            let opening_comment = self.trailing_comment_doc(self.line_of(opening_end));
+            self.indent += 1;
+            let dangling = self.comments_before_doc(closing_start, false);
+            self.indent -= 1;
+            return opening_comment
+                .unwrap_or_else(Doc::nil)
+                .append(dangling.unwrap_or_else(Doc::nil).indent(nest))
+                .append(Doc::hardline())
+                .append(Doc::text("}"));
         };
 
-        if self.single_line || self.hold_flat {
-            self.output.push(' ');
-            let was_single_line = self.single_line;
-            let was_forced_flat = self.forced_flat;
-            self.single_line = true;
-            self.forced_flat = true;
-            self.inline = true;
-            self.visit(&body);
-            self.single_line = was_single_line;
-            self.forced_flat = was_forced_flat;
-            self.output.push_str(" }");
-            return;
+        if self.single_line {
+            // Laid out now, whatever it costs. The caller is closing this
+            // line with ` }` and more besides; a group that broke for
+            // width in here would put the newline in the middle of it.
+            let was_limit = self.comment_limit.replace(closing_start);
+            let inner = self.node_doc(&body);
+            self.comment_limit = was_limit;
+            return Doc::text(" ").append(inner.flat()).append(Doc::text(" }"));
         }
 
-        // A body with more than one statement never collapses onto one
-        // line, even when the flat form would fit -- joining statements
-        // with "; " inside `{ }` is what RuboCop's Style/Semicolon flags,
-        // and it silently collapses structure the source author chose to
-        // keep multi-line (e.g. a lambda body split across several lines).
-        // Confirmed against rails's action_controller/metal.rb, where a
-        // 4-line lambda body fit under line_length flat and so got
-        // squashed to one line before this check.
         let multiline_body = body
             .as_statements_node()
             .is_some_and(|s| s.body().iter().count() > 1);
 
-        if !multiline_body && !has_comment {
-            // Written out where it would really go and kept only if it
-            // fits: `current_column` after the fact *is* the width
-            // measurement, so there is nothing to add up by hand. Held
-            // flat while it is written, because a body that broke for
-            // width here would report itself unfit by the newline it put
-            // in rather than by the column it reached -- the same answer,
-            // but only for a body the printer happened to give a line
-            // point to.
-            let snap = self.render_snapshot();
-            let start = self.output.len();
-            let was_single_line = std::mem::replace(&mut self.single_line, true);
-            let was_forced_flat = std::mem::replace(&mut self.forced_flat, true);
-            self.output.push(' ');
-            self.inline = true;
-            self.visit(&body);
-            self.output.push_str(" }");
-            self.single_line = was_single_line;
-            self.forced_flat = was_forced_flat;
+        // Nothing written after the `}` belongs to a statement inside it.
+        let was_limit = self.comment_limit.replace(closing_start);
 
-            // A hardline in the body (a `do...end` call, an expanded
-            // collection) survives `forced_flat`, and it is what says the
-            // flat shape does not exist at all.
-            if !self.output[start..].contains('\n') && self.current_column() <= self.line_length {
-                return;
+        if !multiline_body && !has_comment {
+            // The two shapes are different documents, not two layouts of
+            // one: flat, anything inside that would lay out its own lines
+            // (a nested `BEGIN { }`, a `begin`/`rescue`) takes its
+            // one-line shape instead. So both are built and handed to the
+            // printer as an `if_break`, which measures the flat one
+            // against the room left on the line and picks.
+            //
+            // `breaks` on the flat build is what says there is no flat
+            // shape at all -- a `do...end` call or an expanded collection
+            // in there -- in which case only the expanded shape is built.
+            let snap = self.render_snapshot();
+            let was_single_line = std::mem::replace(&mut self.single_line, true);
+            let flat = self.node_doc(&body);
+            self.single_line = was_single_line;
+            if !flat.breaks() {
+                self.restore_render_snapshot(snap);
+                let expanded = self.node_doc(&body);
+                self.comment_limit = was_limit;
+                return Doc::if_break(
+                    Doc::hardline()
+                        .append(expanded)
+                        .indent(nest)
+                        .append(Doc::hardline())
+                        .append(Doc::text("}")),
+                    Doc::text(" ").append(flat).append(Doc::text(" }")),
+                )
+                .group();
             }
-            self.output.truncate(start);
             self.restore_render_snapshot(snap);
         }
-        self.output.push('\n');
-        self.emit_trailing_comment_if_same_line(self.line_of(opening_end));
+        self.comment_limit = was_limit;
+
+        let opening_comment = self.trailing_comment_doc(self.line_of(opening_end));
         self.indent += 1;
-        self.inline = false;
-        self.visit(&body);
-        if !self.output.ends_with('\n') {
-            self.output.push('\n');
+        let mut inner = Doc::hardline().append(self.node_doc(&body));
+        if let Some(dangling) = self.comments_before_doc(closing_start, true) {
+            inner = inner.append(dangling);
         }
-        self.flush_comments_before(closing_start, true);
         self.indent -= 1;
-        self.write_indent();
-        self.output.push('}');
-    }
-
-    // A `def`, a lambda and a block lay out their own multi-line body with
-    // `self.indent` and real newlines. As `Doc`s they are rendered where
-    // they will sit and lifted straight back out, so the bytes are what the
-    // string emitter produced and every width decision inside is made
-    // against the real column -- the same bargain `statements_doc` makes.
-    //
-    // All three are listed under `self_indented` in the dispatch: a `def`
-    // writes its own leading indent (or none, when it is a sub-expression),
-    // and a block writes no indent at all because it continues the line its
-    // call ends on.
-    pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_def_node(node);
-        })
-    }
-
-    pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_lambda_node(node);
-        })
-    }
-
-    pub(super) fn fmt_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_block_node(node);
-        })
+        opening_comment
+            .unwrap_or_else(Doc::nil)
+            .append(inner.indent(nest))
+            .append(Doc::hardline())
+            .append(Doc::text("}"))
     }
 }
