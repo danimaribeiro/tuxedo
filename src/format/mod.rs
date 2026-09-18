@@ -273,16 +273,6 @@ struct Formatter {
     /// blank-line preservation in `fmt_statements_node` see a multi-line
     /// gap where the source had none.
     heredoc_end_line: Option<usize>,
-    /// Extra width to reserve when computing how much room a `Doc` group
-    /// has to render flat -- for content that a caller knows will be
-    /// appended to the same line right after the group finishes (e.g. a
-    /// call's `do |params|` block header, appended by `write_call_block`
-    /// right after `write_call_args` renders). `render_doc_to_string` only
-    /// sees `current_column()`, i.e. what's already in `output` *before*
-    /// the group -- it has no way to see what comes after, so without this
-    /// a group can render flat and still push the full line past
-    /// `line_length`. See `do_end_header_width`.
-    trailing_reserve: usize,
     /// How many `capture_to_string` frames are active, plus any raised by
     /// `nested_node_doc`. A `{ }` body or implicit string-concat wrap that
     /// injects raw newlines while the result is being built as one leaf
@@ -341,7 +331,6 @@ impl Formatter {
             source: source.to_string(),
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
-            trailing_reserve: 0,
             capture_depth: 0,
             forced_flat: false,
             clause_closer: None,
@@ -397,47 +386,19 @@ impl Formatter {
     /// right only for whichever of the two was rendered at the top, and
     /// would double-count in the other.
     ///
-    /// `trailing_reserve` comes off the line length instead of the column,
-    /// so it holds room at the *end* of the line for something not in the
-    /// document yet (a block's ` do |x|` header). `forced_flat` takes the
-    /// width out of the picture altogether.
+    /// `forced_flat` takes the width out of the picture altogether.
     fn render_doc_to_string(&self, doc: Doc) -> String {
         let column = self.current_column();
         let width = if self.forced_flat {
             UNBOUNDED_WIDTH
         } else {
-            self.line_length.saturating_sub(self.trailing_reserve)
+            self.line_length
         };
         let padded = Doc::text(" ".repeat(column)).append(doc.indent(self.indent_width()));
         let rendered = padded.render(width);
         // The pad is one space per column and nothing breaks inside it, so
         // it is exactly `column` bytes at the front of the result.
         rendered[column..].to_string()
-    }
-
-    /// The width of a `do...end` block's header line (` do` plus an
-    /// optional ` |params|`) that will follow immediately after the
-    /// current call's argument list once `write_call_block` renders it --
-    /// 0 for a brace block (its body is captured and measured
-    /// independently, not appended inline after another Doc) or no block
-    /// at all. Meant to be added to `trailing_reserve` before Doc-wrapping
-    /// whatever precedes the block on the same line.
-    fn do_end_header_width(&mut self, block: Option<ruby_prism::Node<'_>>) -> usize {
-        let Some(block) = block.and_then(|b| b.as_block_node()) else {
-            return 0;
-        };
-        if block.opening_loc().as_slice() == b"{" {
-            return 0;
-        }
-        let mut width = " do".len();
-        if let Some(params) = explicit_parameters(block.parameters()) {
-            // Bare pipe-delimited block params never wrap (see
-            // fmt_block_parameters_node), so this is always a single line.
-            let captured = self.node_doc(&params);
-            let rendered = self.render_doc_to_string(captured);
-            width += 1 + unicode_width::UnicodeWidthStr::width(rendered.as_str());
-        }
-        width
     }
 
     /// Builds a bracketed, comma-or-other-separated group (array literal,
