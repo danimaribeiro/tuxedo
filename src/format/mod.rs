@@ -63,8 +63,8 @@
 //! unclaimed comment blocks all the ones after it. [`Formatter::comment_limit`]
 //! stops a statement inside a one-line body from claiming a comment written
 //! after the body's closing token. A comment between operator operands or
-//! chain links has nowhere to go yet, so [`Formatter::verbatim_doc_if_commented`]
-//! copies that one expression through unchanged.
+//! chain links is claimed by [`Formatter::gap_comments_doc`] and forces the
+//! expression open.
 //!
 //! # Debugging a construct
 //!
@@ -1131,103 +1131,54 @@ impl Formatter {
         text
     }
 
-    /// Whether `node` has to be copied through verbatim because a comment
-    /// sits between its parts.
-    fn should_write_verbatim(&mut self, node: &ruby_prism::Node<'_>) -> bool {
-        if self.single_line {
-            return false;
-        }
-        let location = node.location();
-        let (start, end) = (location.start_offset(), location.end_offset());
-        // Cheap pre-check before walking the expression.
-        if !self.has_pending_comment_in(start, end) || !self.has_comment_in_gaps(node) {
-            return false;
-        }
-        // A heredoc's body lives outside the node's own range, so copying
-        // the range would lose it.
-        !self
-            .source
-            .get(start..end)
-            .unwrap_or_default()
-            .contains("<<")
-    }
-
-    /// Safety valve for a comment in a place the emitter has nowhere to
-    /// put it: between the operands of an operator, or between the links
-    /// of a method chain.
+    /// The comments in the gap between two parts of an operator expression
+    /// or a method chain (`prev_end..next_start`), as the document that
+    /// goes between the first part's line point and the second part: a
+    /// comment on the line the first part ends on stays there, and each
+    /// own-line comment above sits on a line of its own, at the indent the
+    /// second part is about to be written at.
     ///
     /// ```ruby
-    /// methods = public_instance_methods(true) -
-    ///   # Except for public instance methods of Base and its ancestors
+    /// methods = public_instance_methods(true) - # trailing
+    ///   # above the operand it describes
     ///   Base.public_instance_methods(true)
     /// ```
     ///
-    /// Those constructs are built out of one-line leaves, so the comment
-    /// would stay pending and surface after the statement, describing
-    /// nothing. If a pending comment sits in one of `node`'s gaps (see
-    /// `has_comment_in_gaps`), `Some` with `node`'s source text copied
-    /// through instead: an unformatted expression beats a misplaced
-    /// comment. `None` to carry on formatting normally.
-    fn verbatim_doc_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> Option<Doc> {
-        if !self.should_write_verbatim(node) {
+    /// `None` when there is nothing in the gap. Whoever gets a `Some` has
+    /// to end the first part's line with a hardline: a `#` comment runs to
+    /// the end of its line, so a construct holding one has no flat shape.
+    fn gap_comments_doc(&mut self, prev_end: usize, next_start: usize) -> Option<Doc> {
+        if self.single_line || !self.has_pending_comment_in(prev_end, next_start) {
             return None;
         }
-        Some(Doc::text(self.verbatim_text(node)))
+        let trailing = self.trailing_comment_doc(self.line_of(prev_end.saturating_sub(1)));
+        let above = self.leading_comments_doc(next_start, false);
+        Some(
+            trailing
+                .unwrap_or_else(Doc::nil)
+                .append(above.unwrap_or_else(Doc::nil)),
+        )
     }
 
-    /// True if a pending comment sits *between* the parts of a chain or
-    /// operator expression: after a receiver and before the `.method` or
-    /// operator that follows it, or between an operator and its right-hand
-    /// side. Walks down the receiver / left-hand spine, since
-    /// `a.b # why` + `.c` nests the commented link inside the outer call.
+    /// The document of each operand, in source order, and the comments in
+    /// the gap after each one but the last (`gap_comments_doc`).
     ///
-    /// Deliberately not "anywhere inside `node`": a comment inside a
-    /// receiver's own brackets (`{ # why ... }.freeze`) is that list's to
-    /// place, and going verbatim there would give up formatting the list.
-    fn has_comment_in_gaps(&self, node: &ruby_prism::Node<'_>) -> bool {
-        if let Some(call) = node.as_call_node() {
-            let Some(receiver) = call.receiver() else {
-                return false;
-            };
-            let gap_start = receiver.location().end_offset();
-            let is_operator = call.call_operator_loc().is_none()
-                && !call
-                    .name()
-                    .as_slice()
-                    .first()
-                    .is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'[');
-            let gap_end = if is_operator {
-                call.arguments()
-                    .and_then(|a| a.arguments().iter().next())
-                    .map(|arg| arg.location().start_offset())
-            } else {
-                call.message_loc().map(|m| m.start_offset())
-            };
-            return gap_end.is_some_and(|end| self.has_pending_comment_in(gap_start, end))
-                || self.has_comment_in_gaps(&receiver);
+    /// Built one operand at a time because the comment cursor only moves
+    /// forward: a gap's comments are claimed after the operand before it
+    /// has claimed its own, and before the operand after it does.
+    fn operand_docs(&mut self, operands: &[ruby_prism::Node<'_>]) -> (Vec<Doc>, Vec<Option<Doc>>) {
+        let mut leaves = Vec::with_capacity(operands.len());
+        let mut gaps = Vec::with_capacity(operands.len());
+        for (i, operand) in operands.iter().enumerate() {
+            leaves.push(self.node_doc(operand));
+            if let Some(next) = operands.get(i + 1) {
+                gaps.push(self.gap_comments_doc(
+                    operand.location().end_offset(),
+                    next.location().start_offset(),
+                ));
+            }
         }
-        let (left, right) = if let Some(and) = node.as_and_node() {
-            (and.left(), and.right())
-        } else if let Some(or) = node.as_or_node() {
-            (or.left(), or.right())
-        } else if let Some(parens) = node.as_parentheses_node() {
-            // `(a -\n # why\n b).uniq`
-            return parens.body().is_some_and(|body| {
-                body.as_statements_node().is_some_and(|statements| {
-                    statements
-                        .body()
-                        .iter()
-                        .any(|s| self.has_comment_in_gaps(&s))
-                })
-            });
-        } else {
-            return false;
-        };
-        self.has_pending_comment_in(
-            left.location().end_offset(),
-            right.location().start_offset(),
-        ) || self.has_comment_in_gaps(&left)
-            || self.has_comment_in_gaps(&right)
+        (leaves, gaps)
     }
 
     /// Starts an [`InlineRun`].
@@ -1269,7 +1220,30 @@ impl Formatter {
     /// The first operand is left outside the `indent`: it starts the line
     /// at the statement's own indent, so line points of its own belong at
     /// that indent too, not one level in from it.
-    fn infix_doc(&self, leaves: Vec<Doc>, op: &str, condition: bool) -> Doc {
+    ///
+    /// A comment between two operands (`gaps`) has no flat shape, so the
+    /// spine expands the way it would if it were too long: every operand on
+    /// its own line, the comment after the operator that ends the line it
+    /// sits on, or above the operand it precedes.
+    fn infix_doc(
+        &self,
+        leaves: Vec<Doc>,
+        gaps: Vec<Option<Doc>>,
+        op: &str,
+        condition: bool,
+    ) -> Doc {
+        if gaps.iter().any(Option::is_some) {
+            let levels = if condition { 2 } else { 1 };
+            let mut leaves = leaves.into_iter();
+            let first = leaves.next().unwrap_or_else(Doc::nil);
+            let rest = Doc::concat(leaves.zip(gaps).map(|(leaf, gap)| {
+                Doc::text(format!(" {op}"))
+                    .append(gap.unwrap_or_else(Doc::nil))
+                    .append(Doc::hardline())
+                    .append(leaf)
+            }));
+            return first.append(rest.indent(levels * self.indent_str.len()));
+        }
         if !leaves.iter().any(Doc::breaks) {
             return self.chain_doc(leaves, op, condition);
         }

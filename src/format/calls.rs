@@ -127,25 +127,49 @@ impl Formatter {
         // put back one level (see `comments_doc`) reads `self.indent`, so
         // the counter is kept in step with the nesting.
         self.indent += 1;
-        let mut segments: Vec<Doc> = links
-            .iter()
-            .chain(std::iter::once(node))
-            .map(|link| {
-                let args = self.call_args_doc(link, link.opening_loc().is_some());
-                Doc::text(call_operator(link))
-                    .append(super::bytes_doc(link.name().as_slice()))
-                    .append(args)
-            })
-            .collect();
+        // Built link by link: the comments between one link and the next
+        // are claimed after the first link's arguments and before the
+        // second's.
+        let mut segments: Vec<(Option<Doc>, Doc)> = Vec::new();
+        for link in links.iter().chain(std::iter::once(node)) {
+            let gap = self.link_gap_comments_doc(link);
+            let args = self.call_args_doc(link, link.opening_loc().is_some());
+            let segment = Doc::text(call_operator(link))
+                .append(super::bytes_doc(link.name().as_slice()))
+                .append(args);
+            segments.push((gap, segment));
+        }
         self.indent -= 1;
-        if let Some(last) = segments.pop() {
-            segments.push(last.append(tail));
+        if let Some((_, last)) = segments.last_mut() {
+            *last = last.clone().append(tail);
         }
         let base_doc = self.end_run(run);
 
+        // A comment between two links has no flat shape: every link goes on
+        // its own line, as if the chain were too long.
+        let commented = segments.iter().any(|(gap, _)| gap.is_some());
         let nest_width = self.indent_str.len();
-        let links_doc = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
+        let links_doc = Doc::concat(segments.into_iter().map(|(gap, segment)| {
+            let line = if commented {
+                Doc::hardline()
+            } else {
+                Doc::softline()
+            };
+            gap.unwrap_or_else(Doc::nil).append(line).append(segment)
+        }));
         Some(base_doc.append(links_doc.indent(nest_width).group()))
+    }
+
+    /// The comments between `link`'s receiver and the `.` that reaches
+    /// `link`: the document that ends the previous line, ahead of the
+    /// line break the link starts after. `None` when there are none.
+    fn link_gap_comments_doc(&mut self, link: &ruby_prism::CallNode<'_>) -> Option<Doc> {
+        let receiver = link.receiver()?;
+        let next_start = link
+            .call_operator_loc()
+            .or_else(|| link.message_loc())?
+            .start_offset();
+        self.gap_comments_doc(receiver.location().end_offset(), next_start)
     }
 
     /// A block's ` do |params|` / ` { |params|` header, as a `Doc` to
@@ -164,14 +188,6 @@ impl Formatter {
     }
 
     pub(super) fn fmt_call_node(&mut self, node: &ruby_prism::CallNode<'_>) -> Doc {
-        // A comment between the links of a chain, or between the operands
-        // of an operator.
-        if node.receiver().is_some()
-            && let Some(doc) = self.verbatim_doc_if_commented(&node.as_node())
-        {
-            return doc;
-        }
-
         // ` do |x|` shares the line the argument list ends on, so it is
         // part of what has to fit. Threaded into the head, so whichever
         // group ends up holding the arguments -- a plain list, or the last
@@ -236,10 +252,23 @@ impl Formatter {
             }
             let mut run = self.begin_run();
             self.run_node(&mut run, &receiver);
-            self.run_text(&mut run, call_operator(node));
-            self.run_text(&mut run, name_str);
+            // A comment before the link puts it on a line of its own, under
+            // the comment and one level in.
+            let gap = self.link_gap_comments_doc(node);
+            let commented = gap.is_some();
+            let mut link = gap.map_or_else(Doc::nil, |gap| gap.append(Doc::hardline()));
+            if commented {
+                self.indent += 1;
+            }
+            link = link
+                .append(Doc::text(call_operator(node)))
+                .append(Doc::text(name_str));
             let args = self.call_args_doc(node, node.opening_loc().is_some());
-            let prefix = self.end_run(run);
+            if commented {
+                self.indent -= 1;
+                link = link.indent(self.indent_str.len());
+            }
+            let prefix = self.end_run(run).append(link);
             return CallHead {
                 prefix,
                 args: args.append(tail),
@@ -384,7 +413,12 @@ impl Formatter {
         // Exponentiation is the one operator written tight (`2**8`), and it
         // has no line point: an overlong operand breaks inside itself.
         // `**` is right-associative, so there is no left spine to flatten.
-        if name_str == "**" {
+        if name_str == "**"
+            && !self.has_pending_comment_in(
+                receiver.location().end_offset(),
+                arg.location().start_offset(),
+            )
+        {
             let mut run = self.begin_run();
             self.run_node(&mut run, &receiver);
             self.run_text(&mut run, "**");
@@ -397,8 +431,8 @@ impl Formatter {
         operands.push(arg);
 
         let condition = std::mem::take(&mut self.condition_spine);
-        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_doc(leaves, name_str, condition)
+        let (leaves, gaps) = self.operand_docs(&operands);
+        self.infix_doc(leaves, gaps, name_str, condition)
     }
 
     /// The operands of `node`'s receiver spine, in source order, as long as

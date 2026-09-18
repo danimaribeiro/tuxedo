@@ -678,18 +678,12 @@ impl Formatter {
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) -> Doc {
         let op = node.operator_loc().as_slice();
         let op_str = std::str::from_utf8(op).unwrap_or("&&").to_string();
-        if let Some(doc) = self.verbatim_doc_if_commented(&node.as_node()) {
-            return doc;
-        }
         self.binary_bool_doc(node.left(), &op_str, node.right())
     }
 
     pub(super) fn fmt_or_node(&mut self, node: &ruby_prism::OrNode<'_>) -> Doc {
         let op = node.operator_loc().as_slice();
         let op_str = std::str::from_utf8(op).unwrap_or("||").to_string();
-        if let Some(doc) = self.verbatim_doc_if_commented(&node.as_node()) {
-            return doc;
-        }
         self.binary_bool_doc(node.left(), &op_str, node.right())
     }
 
@@ -712,44 +706,34 @@ impl Formatter {
         // restores the all-or-nothing rule.
         let condition = std::mem::take(&mut self.condition_spine);
         let mut operands = Vec::new();
-        self.bool_operands(left, op_str, &mut operands);
+        Self::bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
-        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_doc(leaves, op_str, condition)
+        let (leaves, gaps) = self.operand_docs(&operands);
+        self.infix_doc(leaves, gaps, op_str, condition)
     }
 
     /// Collects the operands of a run of the same boolean operator, so
     /// `a && b && c` is three operands rather than a nested pair.
-    ///
-    /// Stops at a node that has to go through the verbatim path: that one
-    /// has to stay whole.
     fn bool_operands<'a>(
-        &mut self,
         node: ruby_prism::Node<'a>,
         op_str: &str,
         out: &mut Vec<ruby_prism::Node<'a>>,
     ) {
-        let split = {
-            let matching = |loc: ruby_prism::Location<'_>| {
-                std::str::from_utf8(loc.as_slice()).unwrap_or("") == op_str
-            };
-            let pair = if let Some(and) = node.as_and_node() {
-                matching(and.operator_loc()).then(|| (and.left(), and.right()))
-            } else if let Some(or) = node.as_or_node() {
-                matching(or.operator_loc()).then(|| (or.left(), or.right()))
-            } else {
-                None
-            };
-            match pair {
-                Some((left, right)) if !self.should_write_verbatim(&node) => Some((left, right)),
-                _ => None,
-            }
+        let matching = |loc: ruby_prism::Location<'_>| {
+            std::str::from_utf8(loc.as_slice()).unwrap_or("") == op_str
+        };
+        let split = if let Some(and) = node.as_and_node() {
+            matching(and.operator_loc()).then(|| (and.left(), and.right()))
+        } else if let Some(or) = node.as_or_node() {
+            matching(or.operator_loc()).then(|| (or.left(), or.right()))
+        } else {
+            None
         };
 
         match split {
             Some((left, right)) => {
-                self.bool_operands(left, op_str, out);
+                Self::bool_operands(left, op_str, out);
                 out.push(right);
             }
             None => out.push(node),

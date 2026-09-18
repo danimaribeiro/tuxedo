@@ -4,16 +4,39 @@ use super::doc::Doc;
 
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
+        // Held to one line, unless a comment sits inside: a `#` comment runs
+        // to the end of its line, so there is no one-line shape for it.
+        let (start, end) = (node.location().start_offset(), node.location().end_offset());
+        let commented = !self.single_line && self.has_pending_comment_in(start, end);
+        // Anything written after the last statement -- a trailing comment,
+        // or comments on lines of their own -- ends a line `)` cannot share.
+        let body_end = node.body().map_or(node.opening_loc().end_offset(), |b| {
+            b.location().end_offset()
+        });
+        let closing_start = node.closing_loc().start_offset();
+        let comment_before_close =
+            commented && self.has_pending_comment_in(body_end, closing_start);
         let inner = match node.body() {
             Some(body) => {
-                let was_single_line = std::mem::replace(&mut self.single_line, true);
+                let was_single_line = std::mem::replace(&mut self.single_line, !commented);
                 let doc = self.node_doc(&body);
                 self.single_line = was_single_line;
                 doc
             }
             None => Doc::nil(),
         };
-        Doc::text("(").append(inner).append(Doc::text(")"))
+        let bottom = comment_before_close
+            .then(|| self.leading_comments_doc(closing_start, false))
+            .flatten();
+        let closing = if comment_before_close {
+            bottom
+                .unwrap_or_else(Doc::nil)
+                .append(Doc::hardline())
+                .append(Doc::text(")"))
+        } else {
+            Doc::text(")")
+        };
+        Doc::text("(").append(inner).append(closing)
     }
 
     pub(super) fn fmt_true_node(&mut self, _node: &ruby_prism::TrueNode<'_>) -> Doc {
