@@ -33,11 +33,39 @@ pub(super) struct Doc {
     /// Whether this document is already multi-line no matter how much room
     /// it is given -- see [`Doc::breaks`].
     breaks: bool,
+    /// Whether the lines it is already broken onto are at columns the
+    /// printer cannot change -- see [`Doc::fixed_lines`].
+    fixed_lines: bool,
 }
 
 impl Doc {
-    fn new(doc: RcDoc<'static, ()>, breaks: bool) -> Self {
-        Doc { doc, breaks }
+    fn new(doc: RcDoc<'static, ()>, breaks: bool, fixed_lines: bool) -> Self {
+        Doc {
+            doc,
+            breaks,
+            fixed_lines,
+        }
+    }
+
+    /// Whether a `text` leaf with a newline baked into it sits anywhere
+    /// inside: output from a construct that laid its own body out at
+    /// absolute columns and arrived here as one opaque leaf.
+    ///
+    /// Such a leaf cannot be moved, and the printer does not know it:
+    /// [`Doc::indent`] applies to the line points the printer decides, not
+    /// to newlines already inside a leaf, so nesting one shifts its first
+    /// line and leaves the rest where they were. The printer also measures
+    /// it as a single long line rather than as the column its last line
+    /// really ends at, so a group *after* one is laid out against a width
+    /// that bears no relation to where it will sit.
+    ///
+    /// Either way the answer is the same: lay that construct out where it
+    /// really goes, rather than composing it into a document that still
+    /// has decisions left to make. A [`hardline`](Doc::hardline) is not
+    /// one of these -- the printer put it there and indents it like any
+    /// other break.
+    pub(super) fn fixed_lines(&self) -> bool {
+        self.fixed_lines
     }
 
     /// Whether this document occupies more than one line whatever width it
@@ -57,7 +85,7 @@ impl Doc {
 
     /// The empty document.
     pub(super) fn nil() -> Self {
-        Doc::new(RcDoc::nil(), false)
+        Doc::new(RcDoc::nil(), false, false)
     }
 
     /// Literal text, measured by display width (not bytes) — so a wide
@@ -73,19 +101,19 @@ impl Doc {
     pub(super) fn text(text: impl Into<String>) -> Self {
         let text = text.into();
         let breaks = text.contains('\n');
-        Doc::new(RcDoc::text(text), breaks)
+        Doc::new(RcDoc::text(text), breaks, breaks)
     }
 
     /// A line point that is a single space when its group fits flat.
     pub(super) fn line() -> Self {
-        Doc::new(RcDoc::line(), false)
+        Doc::new(RcDoc::line(), false, false)
     }
 
     /// A line point that is nothing at all when its group fits flat —
     /// where a break is allowed but no separator is wanted, such as just
     /// inside a bracket.
     pub(super) fn softline() -> Self {
-        Doc::new(RcDoc::line_(), false)
+        Doc::new(RcDoc::line_(), false, false)
     }
 
     /// An unconditional line break, which also forces every group
@@ -94,7 +122,7 @@ impl Doc {
     /// whatever it sits inside, instead of the caller testing for it up
     /// front.
     pub(super) fn hardline() -> Self {
-        Doc::new(RcDoc::hardline(), true)
+        Doc::new(RcDoc::hardline(), true, false)
     }
 
     /// `broken` when the enclosing group breaks, `flat` when it fits —
@@ -104,7 +132,11 @@ impl Doc {
     /// it (see `implicit_string_concat_doc`); a trailing comma would be
     /// the other usual one, but Tuxedo does not emit those.
     pub(super) fn if_break(broken: Doc, flat: Doc) -> Self {
-        Doc::new(broken.doc.flat_alt(flat.doc), broken.breaks && flat.breaks)
+        Doc::new(
+            broken.doc.flat_alt(flat.doc),
+            broken.breaks && flat.breaks,
+            broken.fixed_lines || flat.fixed_lines,
+        )
     }
 
     /// The documents one after another.
@@ -126,7 +158,11 @@ impl Doc {
 
     /// `other` directly after `self`.
     pub(super) fn append(self, other: Doc) -> Self {
-        Doc::new(self.doc.append(other.doc), self.breaks || other.breaks)
+        Doc::new(
+            self.doc.append(other.doc),
+            self.breaks || other.breaks,
+            self.fixed_lines || other.fixed_lines,
+        )
     }
 
     /// Marks `self` as a unit that is laid out flat if it fits on the rest
@@ -134,14 +170,18 @@ impl Doc {
     /// inside it. Line points inside a nested group are decided
     /// separately, by that group.
     pub(super) fn group(self) -> Self {
-        Doc::new(self.doc.group(), self.breaks)
+        Doc::new(self.doc.group(), self.breaks, self.fixed_lines)
     }
 
     /// Indents the lines that `self`'s own line points introduce by
     /// `spaces` columns. Only breaks *inside* `self` are affected, and the
     /// indent is relative to the one already in effect.
     pub(super) fn indent(self, spaces: usize) -> Self {
-        Doc::new(self.doc.nest(spaces as isize), self.breaks)
+        Doc::new(
+            self.doc.nest(spaces as isize),
+            self.breaks,
+            self.fixed_lines,
+        )
     }
 
     /// Lays the document out for a line `width` columns wide.
@@ -245,6 +285,23 @@ mod tests {
                 .group()
                 .render(80),
             "[if x\n  y\nend]"
+        );
+    }
+
+    /// `breaks` is true for both a hardline and a captured multi-line
+    /// leaf; `fixed_lines` separates them, because only the second is at
+    /// columns the printer cannot move.
+    #[test]
+    fn fixed_lines_reports_a_captured_leaf_but_not_a_hardline() {
+        assert!(Doc::text("if x\n  y\nend").fixed_lines());
+        assert!(!Doc::hardline().fixed_lines());
+        assert!(!list(&["1", "2"]).fixed_lines());
+        assert!(
+            list(&["1", "2"])
+                .append(Doc::text("if x\n  y\nend"))
+                .indent(2)
+                .group()
+                .fixed_lines()
         );
     }
 

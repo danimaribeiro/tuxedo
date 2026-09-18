@@ -25,3 +25,33 @@ expect(Thor::LineEditor).to receive(:readline)
     { limited_to: flavors, case_insensitive: true }
   )
   .and_return("CHOCOLATE")
+
+# A chain hanging off a receiver that laid out its own body continues the
+# line that body ends on, and is measured from the column it really starts
+# at rather than from the whole body's width.
+def to_gid_param
+  attributes.map do |k, o|
+    case o
+    when String
+      o
+    else
+      o.to_s
+    end
+  end.sort.join(":")
+end
+
+# An argument list inside a chain link that has to expand indents from the
+# link, not from the statement.
+module ActionDispatch
+  class Cookies
+    def prepare_upgrade_legacy_hmac_aes_cbc_cookies
+      future_cipher = encrypted_cookie_cipher
+      secret = request
+        .key_generator
+        .generate_key(
+          request.authenticated_encrypted_cookie_salt,
+          ActiveSupport::MessageEncryptor.key_len(future_cipher)
+        )
+    end
+  end
+end

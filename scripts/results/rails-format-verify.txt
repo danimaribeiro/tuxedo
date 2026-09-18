@@ -12,56 +12,47 @@ Running tuxedo format...
   DISPLACED: actioncable/test/channel/test_case_test.rb:194 trailing of `end`: # no-op
   DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:617 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:623 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/lib/active_record/connection_adapters/abstract_mysql_adapter.rb:601 leading of `s`: # Convert Arel node to string
-  DISPLACED: activerecord/lib/active_record/connection_adapters/abstract_mysql_adapter.rb:603 leading of `s`: # Remove any ASC/DESC modifiers
-  DISPLACED: activerecord/lib/active_record/connection_adapters/postgresql/schema_statements.rb:818 leading of `s`: # Convert Arel node to string
-  DISPLACED: activerecord/lib/active_record/connection_adapters/postgresql/schema_statements.rb:820 leading of `s`: # Remove any ASC/DESC modifiers
   DISPLACED: activerecord/lib/active_record/statement_cache.rb:31 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/lib/active_record/tasks/database_tasks.rb:7 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/test/cases/adapters/postgresql/enum_test.rb:16 trailing of `"`: # different spelling
   DISPLACED: activerecord/test/cases/associations/eager_test.rb:318 trailing of `}`: # find the author, then find the posts, then find the commen
   DISPLACED: activerecord/test/cases/associations/join_model_test.rb:25 leading of `:`: # Reload edges table from fixtures as otherwise repeated tes
-  DISPLACED: activerecord/test/cases/connection_pool_test.rb:28 trailing of `0.2`: # Reduce checkout_timeout to speedup tests
   DISPLACED: activerecord/test/cases/reflection_test.rb:180 trailing of `account_invalid`: # has_one, without :class_name
-  DISPLACED: activerecord/test/cases/relation/with_test.rb:87 trailing of `)`: # arel node on purpose
   DISPLACED: activesupport/lib/active_support/deprecation/reporting.rb:153 leading of `path`: # Code generated with `eval` doesn't have an `absolute_path`
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:164 leading of `if`: # Serialize non-String/Symbol keys via #to_s based on the ke
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:165 leading of `if`: # mirroring the legacy `jsonify` encoder. (#as_json is inten
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:166 leading of `if`: # consulted here: Time#as_json returns an ISO8601 String, ye
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:167 leading of `if`: # still be emitted via #to_s for backward compatibility.)
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:169 leading of `if`: # Keep compatibility by calling to_s on non-String keys
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:171 trailing of `value`: # Symbol#to_s needlessly allocate a string.
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:179 leading of `if`: # Handle objects returning self from as_json
-  DISPLACED: activesupport/lib/active_support/json/encoding.rb:183 leading of `count`: # Handle objects not returning JSON-native types from as_jso
   DISPLACED: activesupport/lib/active_support/message_pack/extensions.rb:18 trailing of `end`: # :nodoc:
+  DISPLACED: activesupport/lib/active_support/syntax_error_proxy.rb:48 leading of `}`: # We have to wrap these backtrace locations because we need 
+  DISPLACED: activesupport/lib/active_support/syntax_error_proxy.rb:49 leading of `}`: # spot information to come from the originating exception, n
+  DISPLACED: activesupport/lib/active_support/syntax_error_proxy.rb:50 leading of `}`: # proxy object that's generating these
+  DISPLACED: activesupport/test/current_attributes_test.rb:285 trailing of `end`: # Sets the cache because of a `method_added` hook
+  DISPLACED: railties/lib/rails/code_statistics.rb:33 trailing of `"`: # rubocop:disable Style/MutableConstant
+  DISPLACED: railties/lib/rails/generators/app_base.rb:639 leading of `"`: # GitHub Actions doesn't have build-essential,
+  DISPLACED: railties/lib/rails/generators/app_base.rb:640 leading of `"`: # but it's a meta-packages and all its dependencies are alre
+  DISPLACED: railties/lib/rails/generators/rails/app/app_generator.rb:322 trailing of `=`: # :nodoc:
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2263  Layout/LineLength [Safe Correctable]
-  686   Layout/MultilineMethodCallIndentation [Safe Correctable]
+  2172  Layout/LineLength [Safe Correctable]
+  701   Layout/MultilineMethodCallIndentation [Safe Correctable]
   173   Layout/HeredocIndentation [Safe Correctable]
   147   Layout/ClosingHeredocIndentation [Safe Correctable]
-  75    Layout/MultilineOperationIndentation [Safe Correctable]
+  62    Layout/MultilineOperationIndentation [Safe Correctable]
   52    Layout/SpaceAroundOperators [Safe Correctable]
-  23    Layout/ArgumentAlignment [Safe Correctable]
-  22    Layout/BlockEndNewline [Safe Correctable]
   20    Layout/SpaceBeforeSemicolon [Safe Correctable]
-  19    Layout/MultilineBlockLayout [Safe Correctable]
-  15    Layout/EndAlignment [Safe Correctable]
   15    Layout/HashAlignment [Safe Correctable]
   15    Layout/SpaceInsideBlockBraces [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
-  13    Layout/FirstArgumentIndentation [Safe Correctable]
-  6     Layout/ArrayAlignment [Safe Correctable]
   6     Layout/ExtraSpacing [Safe Correctable]
   6     Layout/FirstArrayElementLineBreak [Safe Correctable]
   6     Layout/IndentationWidth [Safe Correctable]
   6     Layout/MultilineArrayLineBreaks [Safe Correctable]
   6     Layout/SpaceInsideStringInterpolation [Safe Correctable]
-  5     Layout/CaseIndentation [Safe Correctable]
-  4     Layout/BlockAlignment [Safe Correctable]
+  5     Layout/EndAlignment [Safe Correctable]
+  4     Layout/BlockEndNewline [Safe Correctable]
   4     Layout/ElseAlignment [Safe Correctable]
-  4     Layout/EmptyLineBetweenDefs [Safe Correctable]
+  3     Layout/BlockAlignment [Safe Correctable]
+  3     Layout/FirstArgumentIndentation [Safe Correctable]
+  2     Layout/ArgumentAlignment [Safe Correctable]
+  1     Layout/MultilineBlockLayout [Safe Correctable]
+  1     Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
 
 ======================================================================
   rails
@@ -69,8 +60,8 @@ Running tuxedo format...
   meaning     0 files refused: formatting would have changed the AST
   parse       3464 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    74910 total, 33 displaced
-  layout      3619 offenses across 32 distinct cops
+  comments    74910 total, 18 displaced
+  layout      3424 offenses across 23 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.
