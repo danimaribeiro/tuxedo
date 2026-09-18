@@ -49,7 +49,12 @@ callback = ->(request, extra_long_parameter_name) {
 
 def app
   @app ||
-    @app_build_lock.synchronize { @app ||= begin; stack = default_middleware_stack; config.middleware.build(endpoint); end }
+    @app_build_lock.synchronize {
+      @app ||= begin
+        stack = default_middleware_stack
+        config.middleware.build(endpoint)
+      end
+    }
 end
 
 # A `{ }` body with more than one statement keeps them on their own lines

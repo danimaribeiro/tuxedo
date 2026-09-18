@@ -5,13 +5,12 @@ use super::doc::Doc;
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
         let inner = match node.body() {
-            Some(body) => self.capture_as_doc(|f| {
-                let was_single_line = f.single_line;
-                f.single_line = true;
-                f.inline = true;
-                f.visit(&body);
-                f.single_line = was_single_line;
-            }),
+            Some(body) => {
+                let was_single_line = std::mem::replace(&mut self.single_line, true);
+                let doc = self.node_doc(&body);
+                self.single_line = was_single_line;
+                doc
+            }
             None => Doc::nil(),
         };
         Doc::text("(").append(inner).append(Doc::text(")"))
@@ -215,19 +214,16 @@ impl Formatter {
     /// `\` and the continuation at one indent — a `group` whose separator
     /// is a `line` preceded by an `if_break` that contributes the `\` only
     /// in the broken shape. Parts that fit stay on one line with a single
-    /// space. A `{ }` body that's still being forced flat (`single_line`)
-    /// never introduces those breaks, and neither does a single part,
-    /// which has no separator to break at, nor a run being captured as
-    /// `Doc::text` for an enclosing group (`capture_depth`), where a raw
-    /// newline would be baked into the leaf and the group's nest could
-    /// only ever shift its first line.
+    /// space. A run being held to one line (`single_line`) never
+    /// introduces those breaks, and neither does a single part, which has
+    /// no separator to break at.
     fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
         let leaves: Vec<Doc> = parts
             .iter()
             .map(|part| bytes_doc(part.location().as_slice()))
             .collect();
 
-        if self.single_line || self.capture_depth > 0 || leaves.len() <= 1 {
+        if self.single_line || leaves.len() <= 1 {
             return Doc::join(leaves, Doc::text(" "));
         }
 
@@ -258,44 +254,35 @@ impl Formatter {
         parts: &ruby_prism::NodeList<'_>,
         closing: Option<&[u8]>,
     ) -> Doc {
-        let start = self.output.len();
-        let mut bounds: Vec<usize> = Vec::new();
-
-        if let Some(opening) = opening {
-            self.write_bytes(opening);
-            bounds.push(self.output.len());
-        }
+        let mut doc = match opening {
+            Some(opening) => super::bytes_doc(opening),
+            None => Doc::nil(),
+        };
         for part in parts.iter() {
             if let Some(string) = part.as_string_node() {
-                self.write_bytes(string.content_loc().as_slice());
+                doc = doc.append(super::bytes_doc(string.content_loc().as_slice()));
             } else if let Some(embedded) = part.as_embedded_statements_node() {
-                self.output.push_str("#{");
+                doc = doc.append(Doc::text("#{"));
                 if let Some(statements) = embedded.statements() {
-                    let was_single_line = self.single_line;
-                    self.single_line = true;
-                    self.inline = true;
-                    self.fmt_statements_node(&statements);
+                    // Flat whatever it costs. A break inside a `#{}` hole
+                    // is valid Ruby -- the hole is code, not string
+                    // content -- but it lands in the middle of a literal
+                    // whose own line structure is fixed, so the
+                    // continuation sits at a column belonging to the
+                    // string rather than to the expression.
+                    let was_single_line = std::mem::replace(&mut self.single_line, true);
+                    let inner = self.fmt_statements_node(&statements);
                     self.single_line = was_single_line;
+                    doc = doc.append(inner.flat());
                 }
-                self.output.push('}');
+                doc = doc.append(Doc::text("}"));
             } else {
-                self.write_bytes(part.location().as_slice());
+                doc = doc.append(super::bytes_doc(part.location().as_slice()));
             }
-            bounds.push(self.output.len());
         }
-        if let Some(closing) = closing {
-            self.write_bytes(closing);
-            bounds.push(self.output.len());
+        match closing {
+            Some(closing) => doc.append(super::bytes_doc(closing)),
+            None => doc,
         }
-
-        let text = self.output.split_off(start);
-        let mut leaves = Vec::with_capacity(bounds.len());
-        let mut from = 0;
-        for bound in bounds {
-            let to = bound - start;
-            leaves.push(Doc::text(text[from..to].to_string()));
-            from = to;
-        }
-        Doc::concat(leaves)
     }
 }

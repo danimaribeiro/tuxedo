@@ -1,4 +1,4 @@
-//! Node dispatch: which `fmt_*` method renders which Prism node.
+//! Node dispatch: which `fmt_*` method builds which Prism node's [`Doc`].
 //!
 //! This is a plain exhaustive `match`, deliberately not an
 //! `impl ruby_prism::Visit`. `Visit`'s default for a node type with no
@@ -10,76 +10,46 @@
 //! unchanged, and a node type added by a future Prism release is a compile
 //! error instead of a silent deletion.
 //!
-//! There are four groups, and they differ in what the `fmt_*` method
-//! does, not in what it is allowed to render:
+//! Two groups:
 //!
-//! - `leaf` -- returns a [`Doc`]. `visit` renders it; `leaf_doc` hands it
-//!   back unrendered so an enclosing group can measure and lay it out.
-//! - `self_indented` -- also returns a [`Doc`], but owns the indent it
-//!   starts at, so `visit` must not write one first. These are the
-//!   constructs with a body: most write their own (an implicit `begin`
-//!   starts with a body statement that indents itself), and a block
-//!   writes none at all because it continues the line its call ends on.
-//! - `formatted` -- writes to `self.output`. To compose one of these into
-//!   a `Doc`, `node_doc` has to render it first and wrap the string as one
-//!   opaque leaf, which is why nested collections get rendered more than
-//!   once.
-//! - `verbatim` -- source text copied through unchanged.
+//! - `formatted` -- its `fmt_*` builds a [`Doc`]. The document carries no
+//!   leading indent and no terminating newline: where it sits is the
+//!   caller's to decide, and a body's indent is the [`Doc::indent`] its
+//!   owner wraps it in.
+//! - `verbatim` -- source text copied through unchanged, as one `Doc::text`
+//!   leaf. For most of these that *is* the formatting: they are single
+//!   tokens (`redo`, `it`, `__ENCODING__`), or text whose whitespace is
+//!   data (a `#{}` hole, a regex literal used as a condition).
 //!
-//! Moving a node type from `formatted` to `leaf` is the unit of work in
-//! the migration; the lists are generated from one macro invocation so
-//! they cannot disagree about which group a node is in.
+//! A handful of node types are dispatched by hand below the macro's lists:
+//! a program, which is its statements; a `MatchWriteNode`, which is its
+//! call; and the markers Prism inserts for a block that uses `it`/`_1`,
+//! which have no text of their own.
 
 use super::Formatter;
 use super::doc::Doc;
 
 macro_rules! dispatch {
     (
-        leaf { $($leaf_variant:ident => $leaf_cast:ident => $leaf_fmt:ident,)* }
-        self_indented { $($si_variant:ident => $si_cast:ident => $si_fmt:ident,)* }
         formatted { $($variant:ident => $cast:ident => $fmt:ident,)* }
         verbatim { $($raw:ident,)* }
     ) => {
         impl Formatter {
-            pub(super) fn visit(&mut self, node: &ruby_prism::Node<'_>) {
+            /// The `Doc` for `node`.
+            pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
                 match node {
                     $(
-                        ruby_prism::Node::$leaf_variant { .. } => {
-                            if let Some(concrete) = node.$leaf_cast() {
-                                let inline = self.inline;
-                                // Before the `fmt_*`, not just before the
-                                // render: a `fmt_*` that measures the
-                                // current column while it builds (an
-                                // interpolated literal, an implicit string
-                                // concat) has to see the indent it will be
-                                // laid out after.
-                                if !inline {
-                                    self.write_indent();
-                                }
-                                let doc = self.$leaf_fmt(&concrete);
-                                self.write_leaf_doc(inline, doc);
-                            }
-                        }
-                    )*
-                    $(
-                        ruby_prism::Node::$si_variant { .. } => {
-                            if let Some(concrete) = node.$si_cast() {
-                                let inline = self.inline;
-                                let doc = self.$si_fmt(&concrete);
-                                self.write_leaf_doc(inline, doc);
-                            }
-                        }
-                    )*
-                    $(
                         ruby_prism::Node::$variant { .. } => {
-                            if let Some(concrete) = node.$cast() {
-                                self.$fmt(&concrete);
+                            match node.$cast() {
+                                Some(concrete) => self.$fmt(&concrete),
+                                None => Doc::nil(),
                             }
                         }
                     )*
                     ruby_prism::Node::ProgramNode { .. } => {
-                        if let Some(program) = node.as_program_node() {
-                            self.fmt_statements_node(&program.statements());
+                        match node.as_program_node() {
+                            Some(program) => self.fmt_statements_node(&program.statements()),
+                            None => Doc::nil(),
                         }
                     }
                     // `regex =~ str` where `regex` has named captures: Ruby defines
@@ -87,35 +57,18 @@ macro_rules! dispatch {
                     // `targets` names those locals but they aren't source text to
                     // emit -- only the `=~` call itself is.
                     ruby_prism::Node::MatchWriteNode { .. } => {
-                        if let Some(match_write) = node.as_match_write_node() {
-                            self.visit(&match_write.call().as_node());
+                        match node.as_match_write_node() {
+                            Some(match_write) => self.node_doc(&match_write.call().as_node()),
+                            None => Doc::nil(),
                         }
                     }
                     // Markers for a block that uses `it`/`_1`: no source text of
                     // their own (see `explicit_parameters`).
                     ruby_prism::Node::NumberedParametersNode { .. }
-                    | ruby_prism::Node::ItParametersNode { .. } => {}
-                    $(ruby_prism::Node::$raw { .. })|* => self.write_verbatim(node),
-                }
-            }
-
-            /// The `Doc` for `node` if its `fmt_*` returns one, `None` if it
-            /// still writes strings. Callers want [`Formatter::node_doc`],
-            /// which falls back to capturing; this is the half of the
-            /// decision that the dispatch list owns.
-            pub(super) fn leaf_doc(&mut self, node: &ruby_prism::Node<'_>) -> Option<Doc> {
-                match node {
-                    $(
-                        ruby_prism::Node::$leaf_variant { .. } => {
-                            node.$leaf_cast().map(|concrete| self.$leaf_fmt(&concrete))
-                        }
-                    )*
-                    $(
-                        ruby_prism::Node::$si_variant { .. } => {
-                            node.$si_cast().map(|concrete| self.$si_fmt(&concrete))
-                        }
-                    )*
-                    _ => None,
+                    | ruby_prism::Node::ItParametersNode { .. } => Doc::nil(),
+                    $(ruby_prism::Node::$raw { .. })|* => {
+                        Doc::text(self.verbatim_text(node))
+                    }
                 }
             }
         }
@@ -123,15 +76,7 @@ macro_rules! dispatch {
 }
 
 dispatch! {
-    // Nodes whose `fmt_*` builds a `Doc`. Composing one into an enclosing
-    // group is free -- it can be measured without being rendered first --
-    // and any line points it carries of its own (an adjacent-literal
-    // concatenation's `\` wraps) are decided by the printer along with
-    // everything around them. A few of these still hand back a leaf that
-    // is already broken at absolute columns (a call with a `do...end`
-    // block); `Doc::fixed_lines` reports that, and whoever composes it
-    // lays it out in place instead.
-    leaf {
+    formatted {
         LocalVariableReadNode => as_local_variable_read_node => fmt_local_variable_read_node,
         GlobalVariableReadNode => as_global_variable_read_node => fmt_global_variable_read_node,
         InstanceVariableReadNode => as_instance_variable_read_node => fmt_instance_variable_read_node,
@@ -245,9 +190,6 @@ dispatch! {
         ReturnNode => as_return_node => fmt_return_node,
         BreakNode => as_break_node => fmt_break_node,
         NextNode => as_next_node => fmt_next_node,
-    }
-    // Returns a `Doc` but writes its own leading indent (see above).
-    self_indented {
         IfNode => as_if_node => fmt_if_node,
         ElseNode => as_else_node => fmt_else_node,
         BeginNode => as_begin_node => fmt_begin_node,
@@ -268,16 +210,10 @@ dispatch! {
         ClassNode => as_class_node => fmt_class_node,
         ModuleNode => as_module_node => fmt_module_node,
         SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
-    }
-    formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }
-    // Copied through exactly as written. For most of these that *is*
-    // the formatting: they are single tokens (`redo`, `it`,
-    // `__ENCODING__`), or text whose whitespace is data (a `#{}` hole,
-    // a regex literal used as a condition).
     verbatim {
         ArgumentsNode,
         BlockLocalVariableNode,

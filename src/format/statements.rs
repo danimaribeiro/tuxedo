@@ -146,50 +146,37 @@ impl Formatter {
         false
     }
 
-    pub(super) fn fmt_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
+    /// A body, in whichever of its two shapes is in force: `; `-joined on
+    /// one line while `single_line` is set (a `( )` body, a `#{}` hole),
+    /// one statement per line otherwise.
+    ///
+    /// Neither shape carries a leading indent. A body is indented by the
+    /// [`Doc::indent`] the construct that owns it wraps it in, which is
+    /// what lets the same document be a method body at one depth and a
+    /// module body at another.
+    pub(super) fn fmt_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) -> Doc {
+        let stmts: Vec<_> = node.body().iter().collect();
         if self.single_line {
-            for (i, stmt) in node.body().iter().enumerate() {
-                if i > 0 {
-                    self.output.push_str("; ");
-                }
-                self.inline = true;
-                self.visit(&stmt);
-            }
-            return;
+            return self.flat_statements_doc(&stmts);
         }
-
-        let doc = self.statements_doc(node);
-        // The leaves already carry their own indent (see `statement_doc`),
-        // so this renders with no nesting of its own -- every `hardline` in
-        // it is a bare newline. Width plays no part either: each leaf is
-        // finished text by the time it gets here.
-        let rendered = doc.render(self.line_length);
-        // A body with nothing in it writes nothing at all -- not even the
-        // terminating newline. A file that is only comments parses to an
-        // empty `StatementsNode`, and its comments are flushed by the
-        // caller afterwards; a newline here would open the file with a
-        // blank line.
-        if rendered.is_empty() {
-            return;
-        }
-        self.output.push_str(&rendered);
-        self.output.push('\n');
+        self.block_statements_doc(node)
     }
 
-    /// The body as a `Doc`: one leaf per own-line comment and per
-    /// statement, separated by a [`Doc::hardline`], with a second hardline
-    /// wherever a blank line belongs.
+    /// Statements on one line, `; ` between them.
+    pub(super) fn flat_statements_doc(&mut self, stmts: &[ruby_prism::Node<'_>]) -> Doc {
+        let leaves: Vec<Doc> = stmts.iter().map(|stmt| self.node_doc(stmt)).collect();
+        Doc::join(leaves, Doc::text("; "))
+    }
+
+    /// The block form: one leaf per own-line comment and per statement,
+    /// separated by a [`Doc::hardline`], with a second hardline wherever a
+    /// blank line belongs.
     ///
-    /// Each leaf is rendered where it will actually sit and lifted back out
-    /// (`statement_doc`), so it keeps the absolute indent the string
-    /// emitter gives it and every width decision inside it is made against
-    /// the real column. That is safe for a *body* specifically: a body's
-    /// indent is fixed by nesting depth, not by any group's decision to
-    /// break, so the indent a leaf is built at is always the one it is
-    /// rendered at. What the `Doc` adds is that the separators are real
-    /// hardlines, so a construct that wraps this body can report itself as
-    /// multi-line instead of the caller testing for it.
-    fn statements_doc(&mut self, node: &ruby_prism::StatementsNode<'_>) -> Doc {
+    /// Which blank lines belong is half source and half rule. A gap the
+    /// author left between two statements is kept; a gap RuboCop's
+    /// Layout/EmptyLine* cops would insert is added whether or not the
+    /// author left one (`wants_forced_blank_line`).
+    fn block_statements_doc(&mut self, node: &ruby_prism::StatementsNode<'_>) -> Doc {
         // `(blank line before it, the leaf)`.
         let mut items: Vec<(bool, Doc)> = Vec::new();
 
@@ -228,8 +215,7 @@ impl Formatter {
 
                 let text =
                     Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
-                let indent = self.indent_str.repeat(self.indent);
-                items.push((blank, Doc::text(format!("{indent}{text}"))));
+                items.push((blank, Doc::text(text)));
                 prev_end_line = Some(comment_line);
                 self.comment_cursor += 1;
             }
@@ -240,7 +226,7 @@ impl Formatter {
             pending_blank_after_magic = false;
 
             self.heredoc_end_line = None;
-            let mut leaf = self.statement_doc(&stmt);
+            let mut leaf = self.node_doc(&stmt);
 
             // A heredoc's node ends at its opening tag, so a statement
             // carrying one really ends at its terminator line.
@@ -260,29 +246,15 @@ impl Formatter {
         let mut doc = Doc::nil();
         for (i, (blank, leaf)) in items.into_iter().enumerate() {
             if i > 0 {
-                doc = doc.append(Doc::hardline());
-                if blank {
-                    doc = doc.append(Doc::hardline());
-                }
+                doc = doc.append(if blank {
+                    Doc::blank_line()
+                } else {
+                    Doc::hardline()
+                });
             }
             doc = doc.append(leaf);
         }
         doc
-    }
-
-    /// One statement, rendered exactly the way the string emitter renders
-    /// it -- in place, so `current_column` is real -- and lifted back out
-    /// as a leaf with its terminating newline removed, since
-    /// `statements_doc` supplies the separators.
-    fn statement_doc(&mut self, stmt: &ruby_prism::Node<'_>) -> Doc {
-        let start = self.output.len();
-        self.inline = false;
-        self.visit(stmt);
-        let mut text = self.output.split_off(start);
-        if text.ends_with('\n') {
-            text.pop();
-        }
-        Doc::text(text)
     }
 
     /// `alias new_name old_name` (bare or symbol-style method names --

@@ -122,11 +122,10 @@ impl Formatter {
         let mut run = self.begin_run();
         self.run_node(&mut run, &base);
         // Every link sits one indent level deeper than the statement once
-        // the chain breaks. A `Doc` of a link's own counts its indent from
-        // the chain's, so it needs no help -- but an argument list with a
-        // comment in it is still written out at `self.indent` (see
-        // `write_commented_bracketed_items`), and so is any argument that
-        // lays out its own body, and those have to be told.
+        // the chain breaks. The `Doc`s count their indent from the chain's,
+        // so the printer handles the layout -- but a comment that has to be
+        // put back one level (see `comments_doc`) reads `self.indent`, so
+        // the counter is kept in step with the nesting.
         self.indent += 1;
         let mut segments: Vec<Doc> = links
             .iter()
@@ -146,7 +145,7 @@ impl Formatter {
 
         let nest_width = self.indent_str.len();
         let links_doc = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
-        Some(self.join_after_head(base_doc, links_doc.indent(nest_width).group()))
+        Some(base_doc.append(links_doc.indent(nest_width).group()))
     }
 
     /// A block's ` do |params|` / ` { |params|` header, as a `Doc` to
@@ -183,7 +182,7 @@ impl Formatter {
 
         match block {
             Some(block) => self.with_block_doc(head, &block),
-            None => self.join_after_head(head.prefix, head.args),
+            None => head.prefix.append(head.args),
         }
     }
 
@@ -393,7 +392,7 @@ impl Formatter {
         Self::operator_operands(node, name_str, &mut operands);
         operands.push(arg);
 
-        let leaves: Vec<Doc> = operands.iter().map(|o| self.nested_node_doc(o)).collect();
+        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
         self.infix_chain_doc(leaves, name_str)
     }
 
@@ -432,32 +431,16 @@ impl Formatter {
 
     /// `head` with a real `{ }` / `do...end` block appended.
     ///
-    /// A block *body* lays itself out imperatively, with raw newlines and
-    /// absolute indents, so it cannot share a document with a group the
-    /// printer has not laid out yet: the printer measures a text leaf as
-    /// one long line, and the argument list in front of it would break for
-    /// want of room the body does not really take on that line. `head` is
-    /// rendered here, where it will sit, and the whole thing comes back as
-    /// one leaf.
-    ///
-    /// The block's *header* is the exception: `head.args` already carries
-    /// it (see `fmt_call_node`), so the argument list and the ` do |x|`
-    /// that shares its last line render as one document.
+    /// The block's *header* is not appended here: `head.args` already
+    /// carries it (see `fmt_call_node`), so the argument list and the
+    /// ` do |x|` that shares its last line render as one document and the
+    /// printer measures the line it will really produce.
     fn with_block_doc(&mut self, head: CallHead, block: &ruby_prism::Node<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            let rendered = f.render_doc_to_string(head.prefix);
-            f.output.push_str(&rendered);
-            let rendered = f.render_doc_to_string(head.args);
-            f.output.push_str(&rendered);
-            // A block always continues the line its call ends on: it writes
-            // no indent of its own and must not be terminated with a
-            // newline.
-            f.inline = true;
-            match block.as_block_node() {
-                Some(b) => f.write_block_body(&b),
-                None => f.visit(block),
-            }
-        })
+        let body = match block.as_block_node() {
+            Some(b) => self.block_body_doc(&b),
+            None => self.node_doc(block),
+        };
+        head.prefix.append(head.args).append(body)
     }
 
     pub(super) fn fmt_super_node(&mut self, node: &ruby_prism::SuperNode<'_>) -> Doc {
@@ -489,7 +472,7 @@ impl Formatter {
 
         match block {
             Some(block) => self.with_block_doc(head, &block),
-            None => self.join_after_head(head.prefix, head.args),
+            None => head.prefix.append(head.args),
         }
     }
 
@@ -508,10 +491,8 @@ impl Formatter {
         let Some(block) = node.block() else {
             return Doc::text("super");
         };
-        self.spliced_doc(|f| {
-            f.output.push_str("super");
-            f.write_block_node(&block);
-        })
+        let block = self.fmt_block_node(&block);
+        Doc::text("super").append(block)
     }
 
     pub(super) fn fmt_yield_node(&mut self, node: &ruby_prism::YieldNode<'_>) -> Doc {
@@ -534,7 +515,7 @@ impl Formatter {
             span,
         );
         let prefix = self.end_run(run);
-        self.join_after_head(prefix, doc)
+        prefix.append(doc)
     }
 
     pub(super) fn fmt_return_node(&mut self, node: &ruby_prism::ReturnNode<'_>) -> Doc {

@@ -35,190 +35,140 @@ impl Formatter {
         self.end_run(run)
     }
 
-    fn write_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
-        let keyword = node.if_keyword_loc().map(|k| k.as_slice());
+    /// `if`/`elsif` in all three of its shapes: the block form, the
+    /// modifier (`body if cond`) and the ternary, which Prism gives the
+    /// same node type and tells apart by which keyword locations it has.
+    pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) -> Doc {
+        let keyword = node.if_keyword_loc().map(|k| k.as_slice().to_vec());
         let is_ternary = keyword.is_none();
-        let is_elsif = keyword == Some(b"elsif");
+        let is_elsif = keyword.as_deref() == Some(b"elsif");
         let is_modifier = !is_ternary && !is_elsif && node.end_keyword_loc().is_none();
 
         if is_ternary {
-            self.fmt_ternary(node);
-            return;
+            return self.ternary_doc(node);
         }
-
         if is_modifier {
-            // Modifier: body if condition
-            let inline = self.inline;
-            if !inline {
-                self.write_indent();
-            }
-            if let Some(body) = node.statements() {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            self.output.push_str(" if ");
-            self.inline = true;
-            self.visit(&node.predicate());
-            if !inline {
-                self.output.push('\n');
-            }
-            return;
+            return self.modifier_doc(node.statements(), " if ", &node.predicate());
         }
 
-        // Block if / elsif
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !is_elsif && !inline {
-            self.write_indent();
+        let header = Doc::text(if is_elsif { "elsif " } else { "if " })
+            .append(self.node_doc(&node.predicate()));
+        self.branching_doc(
+            header,
+            &node.predicate(),
+            node.statements(),
+            node.subsequent(),
+            node.end_keyword_loc().map(|e| e.start_offset()),
+        )
+    }
+
+    pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) -> Doc {
+        if node.end_keyword_loc().is_none() {
+            return self.modifier_doc(node.statements(), " unless ", &node.predicate());
         }
-        self.output
-            .push_str(if is_elsif { "elsif " } else { "if " });
-        self.inline = true;
-        self.visit(&node.predicate());
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_line =
-                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
+        let header = Doc::text("unless ").append(self.node_doc(&node.predicate()));
+        self.branching_doc(
+            header,
+            &node.predicate(),
+            node.statements(),
+            node.else_clause().map(|e| e.as_node()),
+            node.end_keyword_loc().map(|e| e.start_offset()),
+        )
+    }
+
+    /// The shared body of a block `if`/`elsif`/`unless`: header, body, and
+    /// then either the branch that continues the chain -- which closes it
+    /// with its own `end` -- or the `end` itself.
+    fn branching_doc(
+        &mut self,
+        header: Doc,
+        predicate: &ruby_prism::Node<'_>,
+        statements: Option<ruby_prism::StatementsNode<'_>>,
+        subsequent: Option<ruby_prism::Node<'_>>,
+        end_offset: Option<usize>,
+    ) -> Doc {
+        let body = statements.map(|s| s.as_node());
+        if self.single_line {
+            return header
+                .append(Doc::text("; "))
+                .append(self.optional_body_doc(body))
+                .append(match subsequent {
+                    Some(subsequent) => Doc::text("; ").append(self.node_doc(&subsequent)),
+                    None => Doc::text("; end"),
+                });
         }
 
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-        if !single_line {
-            // A comment above `elsif`/`else`/`end` belongs to the branch
-            // it sits at the bottom of.
-            let closer = node
-                .subsequent()
-                .map(|s| s.location().start_offset())
-                .or_else(|| node.end_keyword_loc().map(|e| e.start_offset()));
-            if let Some(closer) = closer {
-                self.flush_comments_before(closer, node.statements().is_some());
-            }
-            self.indent -= 1;
-        }
+        let header_line = self.line_of(predicate.location().end_offset().saturating_sub(1));
+        // A comment above `elsif`/`else`/`end` belongs to the branch it
+        // sits at the bottom of.
+        let closer = subsequent
+            .as_ref()
+            .map(|s| s.location().start_offset())
+            .or(end_offset);
+        let doc = self.clause_body_doc(header, header_line, body, closer);
+        doc.append(Doc::hardline()).append(match subsequent {
+            Some(subsequent) => self.node_doc(&subsequent),
+            None => Doc::text("end"),
+        })
+    }
 
-        if let Some(consequent) = node.subsequent() {
-            if single_line {
-                self.output.push_str("; ");
-            } else {
-                self.write_indent();
-            }
-            // An elsif/else terminates the same chain this `if` opened, so
-            // it needs the chain's *original* inline-ness to decide whether
-            // its own trailing "end" gets a newline -- not `self.inline`,
-            // which was just forced to false above for the predicate/body.
-            self.inline = inline;
-            self.visit(&consequent);
-        } else if single_line {
-            self.output.push_str("; end");
-            if !inline {
-                self.output.push('\n');
-            }
-        } else {
-            self.write_indent();
-            self.output.push_str("end");
-            if !inline {
-                self.output.push('\n');
-            }
+    /// `body if cond`, `body unless cond`, `body while cond`,
+    /// `body until cond`: the whole statement on one line.
+    fn modifier_doc(
+        &mut self,
+        statements: Option<ruby_prism::StatementsNode<'_>>,
+        keyword: &str,
+        predicate: &ruby_prism::Node<'_>,
+    ) -> Doc {
+        let body: Vec<_> = statements
+            .map(|b| b.body().iter().collect())
+            .unwrap_or_default();
+        self.flat_statements_doc(&body)
+            .append(Doc::text(keyword.to_string()))
+            .append(self.node_doc(predicate))
+    }
+
+    fn optional_body_doc(&mut self, body: Option<ruby_prism::Node<'_>>) -> Doc {
+        match body {
+            Some(body) => self.node_doc(&body),
+            None => Doc::nil(),
         }
     }
 
-    fn write_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) {
-        // Whether the if/case chain this closes is itself being rendered
-        // inline (as a sub-expression, e.g. a call argument) -- see
-        // fmt_if_node, which restores this into self.inline before
-        // recursing here for exactly this reason. A captured inline value
-        // must not carry a hardcoded trailing newline: joining it with more
-        // content on the same Doc/text line (a following `, arg)`) would
-        // otherwise leave that content dangling on its own line, which
-        // isn't just ugly -- for a call argument it's invalid Ruby.
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if single_line {
-            self.output.push_str("else; ");
-        } else {
-            self.output.push_str("else\n");
-            let header_line = self.line_of(node.else_keyword_loc().start_offset());
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
+    /// `else`, and the `end` that closes the chain it is the last branch
+    /// of. A `begin`'s `else` is not this node's job -- `fmt_begin_node`
+    /// has its own `end` to write after the `ensure` that may follow.
+    pub(super) fn fmt_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) -> Doc {
+        let body = node.statements().map(|s| s.as_node());
+        if self.single_line {
+            return Doc::text("else; ")
+                .append(self.optional_body_doc(body))
+                .append(Doc::text("; end"));
         }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; end");
-        } else {
-            if let Some(end_keyword) = node.end_keyword_loc() {
-                self.flush_comments_before(end_keyword.start_offset(), node.statements().is_some());
-            }
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
-        }
-        if !inline {
-            self.output.push('\n');
-        }
+        let header_line = self.line_of(node.else_keyword_loc().start_offset());
+        self.keyword_body_doc(
+            Doc::text("else"),
+            header_line,
+            body,
+            node.end_keyword_loc().map(|e| e.start_offset()),
+        )
     }
 
-    /// Renders `begin ... end`, including any attached `rescue`/`else`/
-    /// `ensure` clauses. Also reached with no `begin`/`end` keywords at all:
-    /// prism wraps a method/block body in a `BeginNode` whenever it has a
+    /// `begin ... end`, including any attached `rescue`/`else`/`ensure`
+    /// clauses. Also reached with no `begin`/`end` keywords at all: prism
+    /// wraps a method/block body in a `BeginNode` whenever it has a
     /// `rescue`/`else`/`ensure` clause (e.g. `def foo; rescue; end`), in
-    /// which case the enclosing `def`/block already writes its own
-    /// keyword/indent/`end` and this only needs to render the clauses.
-    fn write_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
+    /// which case the enclosing `def`/block already owns the keyword and
+    /// the `end`, and this only contributes the body and the clauses.
+    pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) -> Doc {
         let has_keyword = node.begin_keyword_loc().is_some();
-        let inline = self.inline;
-        // Set by write_brace_block_body when rendering a brace block's body flat
-        // (`{ ... }` rather than `do...end`). A `begin`/`rescue`/`ensure`
-        // here still has to produce *something* on that one line -- join
-        // clauses with "; " instead of real indentation/newlines, the same
-        // compact style fmt_statements_node already uses for its own
-        // statements in this mode. Without this, a block like
-        // `foo { begin; risky; rescue => e; handle; end }` rendered its
-        // "rescue"/"end" with real newlines while everything around it
-        // stayed on one line, corrupting the output.
         let single_line = self.single_line;
-
-        if has_keyword {
-            if !inline {
-                self.write_indent();
-            }
-            self.output.push_str("begin");
-            if single_line {
-                self.output.push_str("; ");
-            } else {
-                self.output.push('\n');
-                if let Some(begin_keyword) = node.begin_keyword_loc() {
-                    self.emit_trailing_comment_if_same_line(
-                        self.line_of(begin_keyword.start_offset()),
-                    );
-                }
-                self.indent += 1;
-            }
-        }
-
-        if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
-        }
+        let nest = self.indent_str.len();
 
         // Where each section of the body stops: a comment above `rescue`/
         // `else`/`ensure`/`end` stays at the bottom of the section before
-        // it. An implicit `begin` (a `def`/block body with a `rescue`) has
-        // no `end` of its own; whoever owns that `end` flushes the last
-        // section.
+        // it. An implicit `begin` has no `end` of its own; whoever owns
+        // that `end` takes the last section's comments.
         let end_offset = node.end_keyword_loc().map(|l| l.start_offset());
         let ensure_offset = node
             .ensure_clause()
@@ -232,138 +182,153 @@ impl Formatter {
             .rescue_clause()
             .map(|r| r.location().start_offset())
             .or(else_offset);
-        if let Some(closer) = rescue_offset {
-            self.flush_comments_before(closer, node.statements().is_some());
-        }
 
+        let statements = node.statements().map(|s| s.as_node());
+        let has_statements = statements.is_some();
+
+        // Taken before the body is built: the comment cursor is strictly
+        // ordered, so `begin # why` has to be claimed by the header or the
+        // first statement of the body will take it as its own.
+        let header_comment = match node.begin_keyword_loc() {
+            Some(keyword) if !single_line => {
+                let line = self.line_of(keyword.start_offset());
+                self.trailing_comment_doc(line)
+            }
+            _ => None,
+        };
+
+        // The body sits one level in from `begin`, and at the enclosing
+        // level when there is no `begin` -- the `def`/block that owns the
+        // implicit one has already indented it.
+        let mut body = Doc::nil();
+        if has_keyword && !single_line {
+            self.indent += 1;
+        }
+        if let Some(statements) = statements {
+            body = body.append(self.node_doc(&statements));
+        }
+        if let Some(closer) = rescue_offset
+            && let Some(comments) = self.comments_before_doc(closer, has_statements)
+        {
+            body = body.append(comments);
+        }
         if has_keyword && !single_line {
             self.indent -= 1;
         }
 
-        let has_clauses = node.rescue_clause().is_some()
-            || node.else_clause().is_some()
-            || node.ensure_clause().is_some();
-        if has_clauses {
-            // rescue/else/ensure always align with the keyword that opens
-            // the body they guard. For an explicit `begin` we've already
-            // dedented back to its level above; for an implicit one (no
-            // `begin`/`end` here at all) `self.indent` is still one level
-            // deeper — whatever the enclosing def/block set it to for the
-            // body — so dedent by one to reach that keyword's own level.
-            let dedent = usize::from(!has_keyword);
-            if !single_line {
-                self.indent -= dedent;
-            }
-
-            if let Some(rescue) = node.rescue_clause() {
-                if single_line {
-                    self.output.push_str("; ");
-                }
-                self.write_rescue_clause(&rescue, else_offset);
-            }
-            if let Some(else_clause) = node.else_clause() {
-                if single_line {
-                    self.output.push_str("; else; ");
-                } else {
-                    self.write_indent();
-                    self.output.push_str("else\n");
-                    self.emit_trailing_comment_if_same_line(
-                        self.line_of(else_clause.else_keyword_loc().start_offset()),
-                    );
-                    self.indent += 1;
-                }
-                if let Some(statements) = else_clause.statements() {
-                    self.fmt_statements_node(&statements);
-                }
-                if !single_line {
-                    if let Some(closer) = ensure_offset {
-                        self.flush_comments_before(closer, else_clause.statements().is_some());
-                    }
-                    self.indent -= 1;
-                }
-            }
-            if let Some(ensure) = node.ensure_clause() {
-                if single_line {
-                    self.output.push_str("; ");
-                }
-                self.write_ensure_node(&ensure);
-            }
-
-            if !single_line {
-                self.indent += dedent;
-            }
+        // rescue/else/ensure align with the keyword that opens the body
+        // they guard. For an explicit `begin` that is this node's own
+        // level; for an implicit one -- a `def`/block body with a
+        // `rescue` -- it is one level out from the body this node *is*,
+        // and the owner has already indented that body, so the clauses
+        // step back out of it (`dedent`, below).
+        let dedent = usize::from(!has_keyword);
+        if !single_line {
+            self.indent -= dedent;
+        }
+        let mut clauses = Doc::nil();
+        if let Some(rescue) = node.rescue_clause() {
+            clauses = clauses
+                .append(self.clause_separator(single_line))
+                .append(self.rescue_clause_doc(&rescue, else_offset));
+        }
+        if let Some(else_clause) = node.else_clause() {
+            let body = else_clause.statements().map(|s| s.as_node());
+            clauses = clauses.append(if single_line {
+                let inner = self.optional_body_doc(body);
+                Doc::text("; else; ").append(inner)
+            } else {
+                let header_line = self.line_of(else_clause.else_keyword_loc().start_offset());
+                let inner =
+                    self.clause_body_doc(Doc::text("else"), header_line, body, ensure_offset);
+                Doc::hardline().append(inner)
+            });
+        }
+        if let Some(ensure) = node.ensure_clause() {
+            clauses = clauses
+                .append(self.clause_separator(single_line))
+                .append(self.fmt_ensure_node(&ensure));
+        }
+        if !single_line {
+            self.indent += dedent;
         }
 
-        if has_keyword {
-            if single_line {
-                self.output.push_str("; end");
+        if !has_keyword {
+            return body.append(if single_line {
+                clauses
             } else {
-                self.write_indent();
-                self.output.push_str("end");
-            }
-            if !inline {
-                self.output.push('\n');
-            }
+                clauses.dedent(nest)
+            });
+        }
+        if single_line {
+            return Doc::text("begin; ")
+                .append(body)
+                .append(clauses)
+                .append(Doc::text("; end"));
+        }
+        let doc = Doc::text("begin").append(header_comment.unwrap_or_else(Doc::nil));
+        doc.append(Doc::hardline().append(body).indent(nest))
+            .append(clauses)
+            .append(Doc::hardline())
+            .append(Doc::text("end"))
+    }
+
+    /// What goes between a `begin` body and the clause that guards it:
+    /// `; ` on one line, a line break otherwise.
+    fn clause_separator(&self, single_line: bool) -> Doc {
+        if single_line {
+            Doc::text("; ")
+        } else {
+            Doc::hardline()
         }
     }
 
     /// `expr rescue fallback` -- the modifier form, as opposed to an
-    /// explicit `begin`/`rescue` block (`fmt_rescue_node`). Prism's default
-    /// visitor for this node just visits `expression()` then
-    /// `rescue_expression()` back to back with no separator, which is why
-    /// this needs its own handler rather than falling through: without the
-    /// literal " rescue " keyword between them, a statement like
-    /// `transmit(...) rescue nil` followed by more code lost the boundary
-    /// between "nil" and the next line entirely.
-    fn write_rescue_modifier_node(&mut self, node: &ruby_prism::RescueModifierNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.inline = true;
-        self.visit(&node.expression());
-        self.output.push_str(" rescue ");
-        self.inline = true;
-        self.visit(&node.rescue_expression());
-        if !inline {
-            self.output.push('\n');
-        }
+    /// explicit `begin`/`rescue` block. Prism's default visitor for this
+    /// node just visits `expression()` then `rescue_expression()` back to
+    /// back with no separator, which is why this needs its own handler:
+    /// without the literal " rescue " keyword between them, a statement
+    /// like `transmit(...) rescue nil` followed by more code lost the
+    /// boundary between "nil" and the next line entirely.
+    pub(super) fn fmt_rescue_modifier_node(
+        &mut self,
+        node: &ruby_prism::RescueModifierNode<'_>,
+    ) -> Doc {
+        let expression = self.node_doc(&node.expression());
+        let fallback = self.node_doc(&node.rescue_expression());
+        expression.append(Doc::text(" rescue ")).append(fallback)
     }
 
     pub(super) fn fmt_rescue_node(&mut self, node: &ruby_prism::RescueNode<'_>) -> Doc {
-        self.spliced_doc(|f| f.write_rescue_clause(node, None))
-    }
-
-    pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) -> Doc {
-        self.spliced_doc(|f| f.write_ensure_node(node))
+        self.rescue_clause_doc(node, None)
     }
 
     /// `closer` is where the last `rescue` of the chain stops (the start
     /// of the `else`/`ensure`/`end` that follows), if the caller knows it.
-    fn write_rescue_clause(&mut self, node: &ruby_prism::RescueNode<'_>, closer: Option<usize>) {
+    fn rescue_clause_doc(
+        &mut self,
+        node: &ruby_prism::RescueNode<'_>,
+        closer: Option<usize>,
+    ) -> Doc {
         let single_line = self.single_line;
-        if !single_line {
-            self.write_indent();
+        let mut header = Doc::text("rescue");
+        for (i, exception) in node.exceptions().iter().enumerate() {
+            header = header
+                .append(Doc::text(if i == 0 { " " } else { ", " }))
+                .append(self.node_doc(&exception));
         }
-        self.output.push_str("rescue");
-
-        let exceptions: Vec<_> = node.exceptions().iter().collect();
-        for (i, exception) in exceptions.iter().enumerate() {
-            self.output.push_str(if i == 0 { " " } else { ", " });
-            self.inline = true;
-            self.visit(exception);
-        }
-
         if let Some(reference) = node.reference() {
-            self.output.push_str(" => ");
-            self.inline = true;
-            self.visit(&reference);
+            header = header
+                .append(Doc::text(" => "))
+                .append(self.node_doc(&reference));
         }
 
-        if single_line {
-            self.output.push_str("; ");
+        let body = node.statements().map(|s| s.as_node());
+        let mut doc = if single_line {
+            header
+                .append(Doc::text("; "))
+                .append(self.optional_body_doc(body))
         } else {
-            self.output.push('\n');
             let header_end = node
                 .reference()
                 .map(|r| r.location().end_offset())
@@ -374,425 +339,103 @@ impl Formatter {
                         .map(|e| e.location().end_offset())
                 })
                 .unwrap_or_else(|| node.keyword_loc().end_offset());
-            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
-            self.indent += 1;
-        }
-
-        if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
-        }
-
-        if !single_line {
+            let header_line = self.line_of(header_end.saturating_sub(1));
             let section_end = node
                 .subsequent()
                 .map(|s| s.location().start_offset())
                 .or(closer);
-            if let Some(section_end) = section_end {
-                self.flush_comments_before(section_end, node.statements().is_some());
-            }
-            self.indent -= 1;
-        }
+            self.clause_body_doc(header, header_line, body, section_end)
+        };
 
         if let Some(subsequent) = node.subsequent() {
-            if single_line {
-                self.output.push_str("; ");
-            }
-            self.write_rescue_clause(&subsequent, closer);
+            doc = doc
+                .append(self.clause_separator(single_line))
+                .append(self.rescue_clause_doc(&subsequent, closer));
         }
+        doc
     }
 
-    fn write_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) {
-        let single_line = self.single_line;
-        if !single_line {
-            self.write_indent();
+    pub(super) fn fmt_ensure_node(&mut self, node: &ruby_prism::EnsureNode<'_>) -> Doc {
+        let body = node.statements().map(|s| s.as_node());
+        if self.single_line {
+            return Doc::text("ensure; ").append(self.optional_body_doc(body));
         }
-        self.output.push_str("ensure");
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            self.emit_trailing_comment_if_same_line(
-                self.line_of(node.ensure_keyword_loc().start_offset()),
-            );
-            self.indent += 1;
-        }
-
-        if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
-        }
-
-        if !single_line {
-            self.flush_comments_before(
-                node.end_keyword_loc().start_offset(),
-                node.statements().is_some(),
-            );
-            self.indent -= 1;
-        }
+        let header_line = self.line_of(node.ensure_keyword_loc().start_offset());
+        self.clause_body_doc(
+            Doc::text("ensure"),
+            header_line,
+            body,
+            Some(node.end_keyword_loc().start_offset()),
+        )
     }
 
-    fn write_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) {
-        let is_modifier = node.end_keyword_loc().is_none();
-
-        if is_modifier {
-            // Modifier: body unless condition
-            let inline = self.inline;
-            if !inline {
-                self.write_indent();
-            }
-            if let Some(body) = node.statements() {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            self.output.push_str(" unless ");
-            self.inline = true;
-            self.visit(&node.predicate());
-            if !inline {
-                self.output.push('\n');
-            }
-            return;
+    pub(super) fn fmt_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) -> Doc {
+        if node.closing_loc().is_none() {
+            return self.modifier_doc(node.statements(), " while ", &node.predicate());
         }
-
-        // Block unless
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("unless ");
-        self.inline = true;
-        self.visit(&node.predicate());
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_line =
-                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
-        }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-        if !single_line {
-            let closer = node
-                .else_clause()
-                .map(|e| e.location().start_offset())
-                .or_else(|| node.end_keyword_loc().map(|e| e.start_offset()));
-            if let Some(closer) = closer {
-                self.flush_comments_before(closer, node.statements().is_some());
-            }
-            self.indent -= 1;
-        }
-
-        if let Some(consequent) = node.else_clause() {
-            if single_line {
-                self.output.push_str("; ");
-            } else {
-                self.write_indent();
-            }
-            self.inline = inline;
-            self.write_else_node(&consequent);
-        } else if single_line {
-            self.output.push_str("; end");
-            if !inline {
-                self.output.push('\n');
-            }
-        } else {
-            self.write_indent();
-            self.output.push_str("end");
-            if !inline {
-                self.output.push('\n');
-            }
-        }
+        self.loop_doc(
+            "while ",
+            node.statements(),
+            &node.predicate(),
+            node.closing_loc(),
+        )
     }
 
-    fn write_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) {
-        let is_modifier = node.closing_loc().is_none();
-
-        if is_modifier {
-            // Modifier: body while condition
-            let inline = self.inline;
-            if !inline {
-                self.write_indent();
-            }
-            if let Some(body) = node.statements() {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            self.output.push_str(" while ");
-            self.inline = true;
-            self.visit(&node.predicate());
-            if !inline {
-                self.output.push('\n');
-            }
-            return;
+    pub(super) fn fmt_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) -> Doc {
+        if node.closing_loc().is_none() {
+            return self.modifier_doc(node.statements(), " until ", &node.predicate());
         }
-
-        // Block while
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("while ");
-        self.inline = true;
-        self.visit(&node.predicate());
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_line =
-                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
-        }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; end");
-        } else {
-            if let Some(closing) = node.closing_loc() {
-                self.flush_comments_before(closing.start_offset(), node.statements().is_some());
-            }
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
-        }
-        if !inline {
-            self.output.push('\n');
-        }
+        self.loop_doc(
+            "until ",
+            node.statements(),
+            &node.predicate(),
+            node.closing_loc(),
+        )
     }
 
-    fn write_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) {
-        let is_modifier = node.closing_loc().is_none();
-
-        if is_modifier {
-            // Modifier: body until condition
-            let inline = self.inline;
-            if !inline {
-                self.write_indent();
-            }
-            if let Some(body) = node.statements() {
-                for (i, stmt) in body.body().iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str("; ");
-                    }
-                    self.inline = true;
-                    self.visit(&stmt);
-                }
-            }
-            self.output.push_str(" until ");
-            self.inline = true;
-            self.visit(&node.predicate());
-            if !inline {
-                self.output.push('\n');
-            }
-            return;
+    /// The block form of `while`/`until`: a predicate, a body and `end`.
+    fn loop_doc(
+        &mut self,
+        keyword: &str,
+        statements: Option<ruby_prism::StatementsNode<'_>>,
+        predicate: &ruby_prism::Node<'_>,
+        closing: Option<ruby_prism::Location<'_>>,
+    ) -> Doc {
+        let header = Doc::text(keyword.to_string()).append(self.node_doc(predicate));
+        let body = statements.map(|s| s.as_node());
+        if self.single_line {
+            return header
+                .append(Doc::text("; "))
+                .append(self.optional_body_doc(body))
+                .append(Doc::text("; end"));
         }
-
-        // Block until
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("until ");
-        self.inline = true;
-        self.visit(&node.predicate());
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_line =
-                self.line_of(node.predicate().location().end_offset().saturating_sub(1));
-            self.emit_trailing_comment_if_same_line(header_line);
-            self.indent += 1;
-        }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; end");
-        } else {
-            if let Some(closing) = node.closing_loc() {
-                self.flush_comments_before(closing.start_offset(), node.statements().is_some());
-            }
-            self.indent -= 1;
-            self.write_indent();
-            self.output.push_str("end");
-        }
-        if !inline {
-            self.output.push('\n');
-        }
+        let header_line = self.line_of(predicate.location().end_offset().saturating_sub(1));
+        self.keyword_body_doc(header, header_line, body, closing.map(|c| c.start_offset()))
     }
 
-    fn write_for_node(&mut self, node: &ruby_prism::ForNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("for ");
-        self.inline = true;
-        self.visit(&node.index());
-        self.output.push_str(" in ");
-        self.inline = true;
-        self.visit(&node.collection());
-        self.inline = false;
-        self.output.push('\n');
+    pub(super) fn fmt_for_node(&mut self, node: &ruby_prism::ForNode<'_>) -> Doc {
+        let header = Doc::text("for ")
+            .append(self.node_doc(&node.index()))
+            .append(Doc::text(" in "))
+            .append(self.node_doc(&node.collection()));
         let header_line = self.line_of(node.collection().location().end_offset().saturating_sub(1));
-        self.emit_trailing_comment_if_same_line(header_line);
-
-        self.indent += 1;
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-        self.flush_comments_before(
-            node.end_keyword_loc().start_offset(),
-            node.statements().is_some(),
-        );
-        self.indent -= 1;
-
-        self.write_indent();
-        self.output.push_str("end\n");
+        self.keyword_body_doc(
+            header,
+            header_line,
+            node.statements().map(|s| s.as_node()),
+            Some(node.end_keyword_loc().start_offset()),
+        )
     }
 
-    fn write_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) {
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("case");
-        if let Some(predicate) = node.predicate() {
-            self.output.push(' ');
-            self.inline = true;
-            self.visit(&predicate);
-            self.inline = false;
-        }
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-        }
-
-        self.write_case_clauses(
+    pub(super) fn fmt_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) -> Doc {
+        let predicate = node.predicate();
+        self.case_doc(
+            predicate,
             node.conditions().iter().collect(),
+            node.else_clause().map(|e| e.as_node()),
             node.else_clause().map(|e| e.location().start_offset()),
             node.end_keyword_loc().start_offset(),
-        );
-
-        if let Some(consequent) = node.else_clause() {
-            if !single_line {
-                self.write_indent();
-            }
-            self.inline = inline;
-            self.write_else_node(&consequent);
-        } else {
-            if !single_line {
-                self.write_indent();
-            }
-            self.output.push_str("end");
-            if !inline {
-                self.output.push('\n');
-            }
-        }
-    }
-
-    /// Renders the `when`/`in` clauses of a `case`, telling each one where
-    /// it stops so it can keep a comment at the bottom of its body. A
-    /// comment between `case x` and the first clause goes above that
-    /// clause.
-    fn write_case_clauses(
-        &mut self,
-        clauses: Vec<ruby_prism::Node<'_>>,
-        else_offset: Option<usize>,
-        end_offset: usize,
-    ) {
-        for (i, clause) in clauses.iter().enumerate() {
-            if i == 0 {
-                self.flush_leading_comments(clause.location().start_offset(), false);
-            }
-            let closer = clauses
-                .get(i + 1)
-                .map(|next| next.location().start_offset())
-                .or(else_offset)
-                .unwrap_or(end_offset);
-            self.clause_closer = Some(closer);
-            // A clause writes its own indent (keyed on `single_line`, not
-            // `inline`) and leaves the separator for whatever follows --
-            // `; ` in single-line mode, a newline otherwise. `inline` says
-            // the `leaf` path must add neither.
-            self.inline = true;
-            self.visit(clause);
-            self.clause_closer = None;
-        }
-    }
-
-    /// A `when` clause always ends by leaving a separator in place for
-    /// whatever comes next (another `when`, an `else`, or `end`) --
-    /// `; ` in single-line mode (see write_brace_block_body), a real newline
-    /// otherwise -- so callers never need to add one of their own.
-    fn write_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
-        let single_line = self.single_line;
-        let closer = self.clause_closer.take();
-        if !single_line {
-            self.write_indent();
-        }
-        self.output.push_str("when ");
-        for (i, condition) in node.conditions().iter().enumerate() {
-            if i > 0 {
-                self.output.push_str(", ");
-            }
-            self.inline = true;
-            self.visit(&condition);
-        }
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_end = node
-                .conditions()
-                .iter()
-                .last()
-                .map_or(node.keyword_loc().end_offset(), |c| {
-                    c.location().end_offset()
-                });
-            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
-            self.indent += 1;
-        }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            if let Some(closer) = closer {
-                self.flush_comments_before(closer, node.statements().is_some());
-            }
-            self.indent -= 1;
-        }
+        )
     }
 
     /// `case pred; in pattern; ...; end` -- pattern-matching's `case/in`,
@@ -800,99 +443,129 @@ impl Formatter {
     /// to it (predicate, a list of clauses, an optional else), just a
     /// distinct node type with `in` clauses (`InNode`) instead of `when`
     /// (`WhenNode`).
-    fn write_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) {
-        let inline = self.inline;
-        let single_line = self.single_line;
-        if !inline {
-            self.write_indent();
-        }
-        self.output.push_str("case");
-        if let Some(predicate) = node.predicate() {
-            self.output.push(' ');
-            self.inline = true;
-            self.visit(&predicate);
-            self.inline = false;
-        }
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-        }
-
-        self.write_case_clauses(
+    pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) -> Doc {
+        let predicate = node.predicate();
+        self.case_doc(
+            predicate,
             node.conditions().iter().collect(),
+            node.else_clause().map(|e| e.as_node()),
             node.else_clause().map(|e| e.location().start_offset()),
             node.end_keyword_loc().start_offset(),
-        );
+        )
+    }
 
-        if let Some(consequent) = node.else_clause() {
-            if !single_line {
-                self.write_indent();
-            }
-            self.inline = inline;
-            self.write_else_node(&consequent);
-        } else {
-            if !single_line {
-                self.write_indent();
-            }
-            self.output.push_str("end");
-            if !inline {
-                self.output.push('\n');
-            }
+    /// Shared by `case/when` and `case/in`: the header, every clause at
+    /// the `case`'s own level, and then the `else` (which closes the chain
+    /// itself) or `end`.
+    ///
+    /// Clauses are *not* indented from `case`. That is
+    /// Layout/CaseIndentation's `end` style, and it is the fixed-indent
+    /// rule this project applies everywhere: `type = case value` puts
+    /// `case` wherever the target's length leaves it, and indenting `when`
+    /// under that column would let renaming the target reindent every
+    /// clause.
+    fn case_doc(
+        &mut self,
+        predicate: Option<ruby_prism::Node<'_>>,
+        clauses: Vec<ruby_prism::Node<'_>>,
+        else_clause: Option<ruby_prism::Node<'_>>,
+        else_offset: Option<usize>,
+        end_offset: usize,
+    ) -> Doc {
+        let single_line = self.single_line;
+        let mut doc = Doc::text("case");
+        if let Some(predicate) = predicate {
+            doc = doc.append(Doc::text(" ")).append(self.node_doc(&predicate));
         }
+
+        // A comment between `case x` and the first clause goes above that
+        // clause.
+        if let Some(first) = clauses.first()
+            && let Some(comments) =
+                self.leading_comments_doc(first.location().start_offset(), false)
+        {
+            doc = doc.append(comments);
+        }
+
+        for (i, clause) in clauses.iter().enumerate() {
+            // Each clause has to be told where it stops so it can keep a
+            // comment at the bottom of its body; it has no other way to
+            // learn it.
+            self.clause_closer = Some(
+                clauses
+                    .get(i + 1)
+                    .map(|next| next.location().start_offset())
+                    .or(else_offset)
+                    .unwrap_or(end_offset),
+            );
+            let clause_doc = self.node_doc(clause);
+            self.clause_closer = None;
+            doc = doc
+                .append(self.clause_separator(single_line))
+                .append(clause_doc);
+        }
+
+        doc.append(self.clause_separator(single_line))
+            .append(match else_clause {
+                Some(else_clause) => self.node_doc(&else_clause),
+                None => Doc::text("end"),
+            })
+    }
+
+    pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) -> Doc {
+        let closer = self.clause_closer.take();
+        let mut header = Doc::text("when ");
+        for (i, condition) in node.conditions().iter().enumerate() {
+            if i > 0 {
+                header = header.append(Doc::text(", "));
+            }
+            header = header.append(self.node_doc(&condition));
+        }
+        let header_end = node
+            .conditions()
+            .iter()
+            .last()
+            .map_or(node.keyword_loc().end_offset(), |c| {
+                c.location().end_offset()
+            });
+        self.clause_doc(header, header_end, node.statements(), closer)
     }
 
     /// One `in pattern` clause of a `case/in`. No guard (`in pattern if
     /// cond`) support yet -- not observed in the wild so far; `InNode`
     /// doesn't expose a separate guard accessor, so that would need its own
-    /// investigation into how prism represents it. Like fmt_when_node,
-    /// always leaves a separator in place for whatever comes next.
-    fn write_in_node(&mut self, node: &ruby_prism::InNode<'_>) {
-        let single_line = self.single_line;
+    /// investigation into how prism represents it.
+    pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) -> Doc {
         let closer = self.clause_closer.take();
-        if !single_line {
-            self.write_indent();
-        }
-        self.output.push_str("in ");
-        self.inline = true;
-        self.visit(&node.pattern());
-        self.inline = false;
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            self.output.push('\n');
-            let header_end = node.pattern().location().end_offset();
-            self.emit_trailing_comment_if_same_line(self.line_of(header_end.saturating_sub(1)));
-            self.indent += 1;
-        }
-
-        if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
-        }
-
-        if single_line {
-            self.output.push_str("; ");
-        } else {
-            if let Some(closer) = closer {
-                self.flush_comments_before(closer, node.statements().is_some());
-            }
-            self.indent -= 1;
-        }
+        let header = Doc::text("in ").append(self.node_doc(&node.pattern()));
+        let header_end = node.pattern().location().end_offset();
+        self.clause_doc(header, header_end, node.statements(), closer)
     }
 
-    /// `predicate ? true_branch : false_branch`. Wraps as a Doc group so an
-    /// overlong ternary breaks after `?` with both branches at a fixed
-    /// indent from the statement -- the same fixed-indent choice
-    /// `fmt_binary_bool_node` makes, not aligned under `?`/`:`, so renaming
-    /// the predicate can't reindent the branches. Falls back to the old flat
-    /// rendering when the predicate or either branch manages its own
-    /// multi-line body, for the same reason `fmt_binary_bool_node` does.
-    fn fmt_ternary(&mut self, node: &ruby_prism::IfNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
+    /// A `when`/`in` clause: header and body, and nothing to close it --
+    /// the `case` above supplies the separator before whatever follows.
+    fn clause_doc(
+        &mut self,
+        header: Doc,
+        header_end: usize,
+        statements: Option<ruby_prism::StatementsNode<'_>>,
+        closer: Option<usize>,
+    ) -> Doc {
+        let body = statements.map(|s| s.as_node());
+        if self.single_line {
+            return header
+                .append(Doc::text("; "))
+                .append(self.optional_body_doc(body));
         }
+        let header_line = self.line_of(header_end.saturating_sub(1));
+        self.clause_body_doc(header, header_line, body, closer)
+    }
 
+    /// `predicate ? true_branch : false_branch`, as one group: an overlong
+    /// ternary breaks after `?` with both branches at a fixed indent from
+    /// the statement -- not aligned under `?`/`:`, so renaming the
+    /// predicate cannot reindent the branches.
+    fn ternary_doc(&mut self, node: &ruby_prism::IfNode<'_>) -> Doc {
         let predicate = node.predicate();
         let true_branch: Vec<_> = node
             .statements()
@@ -905,54 +578,19 @@ impl Formatter {
             .map(|b| b.body().iter().collect())
             .unwrap_or_default();
 
-        let manages_own = super::manages_own_indentation(&predicate)
-            || true_branch.iter().any(super::manages_own_indentation)
-            || false_branch.iter().any(super::manages_own_indentation);
-
-        if manages_own {
-            self.inline = true;
-            self.visit(&predicate);
-            self.output.push_str(" ? ");
-            self.write_ternary_branch_flat(&true_branch);
-            self.output.push_str(" : ");
-            self.write_ternary_branch_flat(&false_branch);
-        } else {
-            let predicate_doc = self.node_doc(&predicate);
-            let true_doc = self.capture_ternary_branch_as_doc(&true_branch);
-            let false_doc = self.capture_ternary_branch_as_doc(&false_branch);
-            let nest_width = self.indent_str.len();
-            let doc = predicate_doc.append(Doc::text(" ?")).append(
-                Doc::line()
-                    .append(true_doc)
-                    .append(Doc::text(" :"))
-                    .append(Doc::line())
-                    .append(false_doc)
-                    .indent(nest_width)
-                    .group(),
-            );
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
-        }
-
-        if !inline {
-            self.output.push('\n');
-        }
-    }
-
-    fn write_ternary_branch_flat(&mut self, stmts: &[ruby_prism::Node<'_>]) {
-        for (i, stmt) in stmts.iter().enumerate() {
-            if i > 0 {
-                self.output.push_str("; ");
-            }
-            self.inline = true;
-            self.visit(stmt);
-        }
-    }
-
-    fn capture_ternary_branch_as_doc(&mut self, stmts: &[ruby_prism::Node<'_>]) -> Doc {
-        self.capture_as_doc(|f| {
-            f.write_ternary_branch_flat(stmts);
-        })
+        let predicate_doc = self.node_doc(&predicate);
+        let true_doc = self.flat_statements_doc(&true_branch);
+        let false_doc = self.flat_statements_doc(&false_branch);
+        let nest_width = self.indent_str.len();
+        predicate_doc.append(Doc::text(" ?")).append(
+            Doc::line()
+                .append(true_doc)
+                .append(Doc::text(" :"))
+                .append(Doc::line())
+                .append(false_doc)
+                .indent(nest_width)
+                .group(),
+        )
     }
 
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) -> Doc {
@@ -1002,94 +640,8 @@ impl Formatter {
         self.bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
-        let leaves: Vec<Doc> = operands.iter().map(|o| self.nested_node_doc(o)).collect();
+        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
         self.infix_chain_doc(leaves, op_str)
-    }
-
-    // Each of these lays out its own multi-line body with `self.indent`
-    // and real newlines. As a `leaf` it is rendered where it will sit and
-    // lifted straight back out, so the bytes are what the string emitter
-    // produced and every width decision inside is made against the real
-    // column -- the same bargain `statements_doc` makes, and sound for the
-    // same reason: a body's indent comes from nesting depth, never from a
-    // break decision.
-    //
-    // Listed under `self_indented` in the dispatch, so `visit` leaves the
-    // leading indent to the writer -- an implicit `begin` has no keyword
-    // of its own and starts with a body statement that indents itself.
-    pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_if_node(node);
-        })
-    }
-
-    pub(super) fn fmt_else_node(&mut self, node: &ruby_prism::ElseNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_else_node(node);
-        })
-    }
-
-    pub(super) fn fmt_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_begin_node(node);
-        })
-    }
-
-    pub(super) fn fmt_rescue_modifier_node(
-        &mut self,
-        node: &ruby_prism::RescueModifierNode<'_>,
-    ) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_rescue_modifier_node(node);
-        })
-    }
-
-    pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_unless_node(node);
-        })
-    }
-
-    pub(super) fn fmt_while_node(&mut self, node: &ruby_prism::WhileNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_while_node(node);
-        })
-    }
-
-    pub(super) fn fmt_until_node(&mut self, node: &ruby_prism::UntilNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_until_node(node);
-        })
-    }
-
-    pub(super) fn fmt_for_node(&mut self, node: &ruby_prism::ForNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_for_node(node);
-        })
-    }
-
-    pub(super) fn fmt_case_node(&mut self, node: &ruby_prism::CaseNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_case_node(node);
-        })
-    }
-
-    pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_when_node(node);
-        })
-    }
-
-    pub(super) fn fmt_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_case_match_node(node);
-        })
-    }
-
-    pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) -> Doc {
-        self.spliced_doc(|f| {
-            f.write_in_node(node);
-        })
     }
 
     /// Collects the operands of a run of the same boolean operator, so
