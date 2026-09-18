@@ -201,6 +201,10 @@ dispatch! {
         ShareableConstantNode => as_shareable_constant_node => fmt_shareable_constant_node,
         AliasMethodNode => as_alias_method_node => fmt_alias_method_node,
         AliasGlobalVariableNode => as_alias_global_variable_node => fmt_alias_global_variable_node,
+        MatchRequiredNode => as_match_required_node => fmt_match_required_node,
+        MatchPredicateNode => as_match_predicate_node => fmt_match_predicate_node,
+        AndNode => as_and_node => fmt_and_node,
+        OrNode => as_or_node => fmt_or_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
@@ -244,10 +248,6 @@ dispatch! {
         WhenNode => as_when_node => fmt_when_node,
         CaseMatchNode => as_case_match_node => fmt_case_match_node,
         InNode => as_in_node => fmt_in_node,
-        AndNode => as_and_node => fmt_and_node,
-        OrNode => as_or_node => fmt_or_node,
-        MatchRequiredNode => as_match_required_node => fmt_match_required_node,
-        MatchPredicateNode => as_match_predicate_node => fmt_match_predicate_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }

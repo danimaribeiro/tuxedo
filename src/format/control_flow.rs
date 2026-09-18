@@ -5,35 +5,34 @@ impl Formatter {
     /// `value => pattern` -- the "rightward assignment" one-line pattern
     /// match that raises `NoMatchingPatternError` on failure (as opposed to
     /// `MatchPredicateNode`'s `in`, which returns `false`).
-    pub(super) fn fmt_match_required_node(&mut self, node: &ruby_prism::MatchRequiredNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.inline = true;
-        self.visit(&node.value());
-        self.output.push_str(" => ");
-        self.inline = true;
-        self.visit(&node.pattern());
-        if !inline {
-            self.output.push('\n');
-        }
+    pub(super) fn fmt_match_required_node(
+        &mut self,
+        node: &ruby_prism::MatchRequiredNode<'_>,
+    ) -> Doc {
+        self.one_line_match_doc(&node.value(), " => ", &node.pattern())
     }
 
     /// `value in pattern` -- the boolean-returning one-line pattern match.
-    pub(super) fn fmt_match_predicate_node(&mut self, node: &ruby_prism::MatchPredicateNode<'_>) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-        self.inline = true;
-        self.visit(&node.value());
-        self.output.push_str(" in ");
-        self.inline = true;
-        self.visit(&node.pattern());
-        if !inline {
-            self.output.push('\n');
-        }
+    pub(super) fn fmt_match_predicate_node(
+        &mut self,
+        node: &ruby_prism::MatchPredicateNode<'_>,
+    ) -> Doc {
+        self.one_line_match_doc(&node.value(), " in ", &node.pattern())
+    }
+
+    /// `value => pattern` / `value in pattern`: both are a value, a
+    /// keyword and a pattern on one line, with no line point of their own.
+    fn one_line_match_doc(
+        &mut self,
+        value: &ruby_prism::Node<'_>,
+        keyword: &str,
+        pattern: &ruby_prism::Node<'_>,
+    ) -> Doc {
+        let mut run = self.begin_run();
+        self.run_node(&mut run, value);
+        self.run_text(&mut run, keyword);
+        self.run_node(&mut run, pattern);
+        self.end_run(run)
     }
 
     pub(super) fn fmt_if_node(&mut self, node: &ruby_prism::IfNode<'_>) {
@@ -947,22 +946,22 @@ impl Formatter {
         })
     }
 
-    pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) {
+    pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) -> Doc {
         let op = node.operator_loc().as_slice();
-        let op_str = std::str::from_utf8(op).unwrap_or("&&");
-        if self.write_verbatim_if_commented(&node.as_node()) {
-            return;
+        let op_str = std::str::from_utf8(op).unwrap_or("&&").to_string();
+        if let Some(doc) = self.verbatim_doc_if_commented(&node.as_node()) {
+            return doc;
         }
-        self.fmt_binary_bool_node(node.left(), op_str, node.right());
+        self.binary_bool_doc(node.left(), &op_str, node.right())
     }
 
-    pub(super) fn fmt_or_node(&mut self, node: &ruby_prism::OrNode<'_>) {
+    pub(super) fn fmt_or_node(&mut self, node: &ruby_prism::OrNode<'_>) -> Doc {
         let op = node.operator_loc().as_slice();
-        let op_str = std::str::from_utf8(op).unwrap_or("||");
-        if self.write_verbatim_if_commented(&node.as_node()) {
-            return;
+        let op_str = std::str::from_utf8(op).unwrap_or("||").to_string();
+        if let Some(doc) = self.verbatim_doc_if_commented(&node.as_node()) {
+            return doc;
         }
-        self.fmt_binary_bool_node(node.left(), op_str, node.right());
+        self.binary_bool_doc(node.left(), &op_str, node.right())
     }
 
     /// Shared renderer for `&&`/`||`. Wraps the pair as a Doc group so an
@@ -975,38 +974,83 @@ impl Formatter {
     /// excludes those: a captured multi-line body's internal newlines aren't
     /// nest-aware, so wrapping it in this Doc would misalign continuation
     /// lines.
-    fn fmt_binary_bool_node(
+    fn binary_bool_doc(
         &mut self,
         left: ruby_prism::Node<'_>,
         op_str: &str,
         right: ruby_prism::Node<'_>,
-    ) {
-        let inline = self.inline;
-        if !inline {
-            self.write_indent();
-        }
-
+    ) -> Doc {
         if super::manages_own_indentation(&left) || super::manages_own_indentation(&right) {
-            self.inline = true;
-            self.visit(&left);
-            self.output.push(' ');
-            self.output.push_str(op_str);
-            self.output.push(' ');
-            self.inline = true;
-            self.visit(&right);
-        } else {
-            let left_doc = self.node_doc(&left);
-            let right_doc = self.node_doc(&right);
-            let nest_width = self.indent_str.len();
-            let doc = left_doc
-                .append(Doc::text(format!(" {op_str}")))
-                .append(Doc::line().append(right_doc).indent(nest_width).group());
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
+            let mut run = self.begin_run();
+            self.run_node(&mut run, &left);
+            self.run_text(&mut run, format!(" {op_str} "));
+            self.run_node(&mut run, &right);
+            return self.end_run(run);
         }
 
-        if !inline {
-            self.output.push('\n');
+        // `a && b && c` is nested `AndNode`s. Left as one group per node,
+        // each level decides to break on its own and the result bin-packs
+        // -- `a &&\n  b && c`. Flattening the same-operator spine into one
+        // group restores the all-or-nothing rule: the whole chain fits on
+        // one line, or every operand gets its own.
+        let mut operands = Vec::new();
+        self.bool_operands(left, op_str, &mut operands);
+        operands.push(right);
+
+        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
+        let nest_width = self.indent_str.len();
+        let separator = Doc::text(format!(" {op_str}")).append(Doc::line());
+        let mut doc = Doc::nil();
+        for (i, leaf) in leaves.into_iter().enumerate() {
+            if i == 0 {
+                doc = leaf;
+            } else {
+                doc = doc.append(separator.clone()).append(leaf);
+            }
+        }
+        doc.indent(nest_width).group()
+    }
+
+    /// Collects the operands of a run of the same boolean operator, so
+    /// `a && b && c` is three operands rather than a nested pair.
+    ///
+    /// Stops at a node that has to go through the verbatim path or that
+    /// lays out its own body: those have to stay whole.
+    fn bool_operands<'a>(
+        &mut self,
+        node: ruby_prism::Node<'a>,
+        op_str: &str,
+        out: &mut Vec<ruby_prism::Node<'a>>,
+    ) {
+        let split = {
+            let matching = |loc: ruby_prism::Location<'_>| {
+                std::str::from_utf8(loc.as_slice()).unwrap_or("") == op_str
+            };
+            let pair = if let Some(and) = node.as_and_node() {
+                matching(and.operator_loc()).then(|| (and.left(), and.right()))
+            } else if let Some(or) = node.as_or_node() {
+                matching(or.operator_loc()).then(|| (or.left(), or.right()))
+            } else {
+                None
+            };
+            match pair {
+                Some((left, right))
+                    if !self.should_write_verbatim(&node)
+                        && !super::manages_own_indentation(&left)
+                        && !super::manages_own_indentation(&right) =>
+                {
+                    Some((left, right))
+                }
+                _ => None,
+            }
+        };
+
+        match split {
+            Some((left, right)) => {
+                self.bool_operands(left, op_str, out);
+                out.push(right);
+            }
+            None => out.push(node),
         }
     }
 }
