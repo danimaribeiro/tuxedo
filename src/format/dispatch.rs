@@ -23,7 +23,7 @@
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
-//!   once and why `forces_list_break` exists.
+//!   once.
 //! - `verbatim` -- source text copied through unchanged.
 //!
 //! Moving a node type from `formatted` to `leaf` is the unit of work in
