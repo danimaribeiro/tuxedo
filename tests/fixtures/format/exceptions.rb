@@ -29,4 +29,11 @@ end
 transmit rescue nil
 socket.close
 
-foo { begin; pool.checkout; dispose.wait; rescue => e; errors << e; end }
+foo {
+  begin
+    pool.checkout
+    dispose.wait
+  rescue => e
+    errors << e
+  end
+}

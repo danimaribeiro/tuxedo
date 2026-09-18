@@ -1,0 +1,15 @@
+queries.map! { |query| if query.one? then query.first else query end }
+Class.new { def create_table(name); end }
+Class.new { def self.a; self; end }
+foo { def a = 1 }
+foo { x = case y when 1 then :one end }
+foo { while queue.any? do queue.shift end }
+foo { begin; risky; rescue StandardError; retry_later; end }
+foo { bar { if a then b end } }
+foo { value ? 1 : 2 }
+foo { value if ready? }
+included.class_methods { def foo; @foo << :included; end } # rubocop:disable Lint/NestedMethodDefinition
+foo { a; b } # about the whole call
+foo { a
+  b # about b
+} # about the call

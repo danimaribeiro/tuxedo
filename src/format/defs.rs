@@ -1,5 +1,79 @@
 use super::Formatter;
 use super::doc::Doc;
+use ruby_prism::Visit;
+
+/// Whether `node` holds a construct that has no one-line spelling without
+/// semicolons: an `if`/`case`/`while`/`begin`/`def`/`class`, or a sequence
+/// of statements. Flat, they come out as `if a; b; else; c; end`, which
+/// RuboCop flags (`Style/IfWithSemicolon`) and which hides structure the
+/// author gave lines to. A brace block holding one expands like
+/// `do...end` instead.
+///
+/// Modifier forms (`a if b`) and ternaries are one-line spellings already
+/// and do not count. An endless `def` does: it is always written out with
+/// its `end`.
+fn holds_block_construct(node: &ruby_prism::Node<'_>) -> bool {
+    struct Finder(bool);
+
+    impl<'pr> Visit<'pr> for Finder {
+        fn visit_if_node(&mut self, node: &ruby_prism::IfNode<'pr>) {
+            self.0 |= node.end_keyword_loc().is_some();
+            ruby_prism::visit_if_node(self, node);
+        }
+        fn visit_unless_node(&mut self, node: &ruby_prism::UnlessNode<'pr>) {
+            self.0 |= node.end_keyword_loc().is_some();
+            ruby_prism::visit_unless_node(self, node);
+        }
+        fn visit_while_node(&mut self, node: &ruby_prism::WhileNode<'pr>) {
+            self.0 |= node.closing_loc().is_some();
+            ruby_prism::visit_while_node(self, node);
+        }
+        fn visit_until_node(&mut self, node: &ruby_prism::UntilNode<'pr>) {
+            self.0 |= node.closing_loc().is_some();
+            ruby_prism::visit_until_node(self, node);
+        }
+        fn visit_begin_node(&mut self, node: &ruby_prism::BeginNode<'pr>) {
+            self.0 |= node.end_keyword_loc().is_some();
+            ruby_prism::visit_begin_node(self, node);
+        }
+        fn visit_def_node(&mut self, node: &ruby_prism::DefNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_def_node(self, node);
+        }
+        fn visit_case_node(&mut self, node: &ruby_prism::CaseNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_case_node(self, node);
+        }
+        fn visit_case_match_node(&mut self, node: &ruby_prism::CaseMatchNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_case_match_node(self, node);
+        }
+        fn visit_for_node(&mut self, node: &ruby_prism::ForNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_for_node(self, node);
+        }
+        fn visit_class_node(&mut self, node: &ruby_prism::ClassNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_class_node(self, node);
+        }
+        fn visit_module_node(&mut self, node: &ruby_prism::ModuleNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_module_node(self, node);
+        }
+        fn visit_singleton_class_node(&mut self, node: &ruby_prism::SingletonClassNode<'pr>) {
+            self.0 = true;
+            ruby_prism::visit_singleton_class_node(self, node);
+        }
+        fn visit_statements_node(&mut self, node: &ruby_prism::StatementsNode<'pr>) {
+            self.0 |= node.body().iter().count() > 1;
+            ruby_prism::visit_statements_node(self, node);
+        }
+    }
+
+    let mut finder = Finder(false);
+    finder.visit(node);
+    finder.0
+}
 
 impl Formatter {
     /// `def name(params)`, the body one level in, `end` back at the
@@ -36,14 +110,13 @@ impl Formatter {
         }
 
         if self.single_line {
-            let body = match node.body() {
-                Some(body) => self.node_doc(&body),
-                None => Doc::nil(),
+            return match node.body() {
+                Some(body) => header
+                    .append(Doc::text("; "))
+                    .append(self.node_doc(&body))
+                    .append(Doc::text("; end")),
+                None => header.append(Doc::text("; end")),
             };
-            return header
-                .append(Doc::text("; "))
-                .append(body)
-                .append(Doc::text("; end"));
         }
 
         // A trailing comment sits after wherever the signature actually
@@ -417,7 +490,7 @@ impl Formatter {
         // Nothing written after the `}` belongs to a statement inside it.
         let was_limit = self.comment_limit.replace(closing_start);
 
-        if !multiline_body && !has_comment {
+        if !multiline_body && !has_comment && !holds_block_construct(&body) {
             // The two shapes are different documents, not two layouts of
             // one: flat, anything inside that would lay out its own lines
             // (a nested `BEGIN { }`, a `begin`/`rescue`) takes its
@@ -448,15 +521,20 @@ impl Formatter {
             }
             self.restore_render_snapshot(snap);
         }
-        self.comment_limit = was_limit;
 
-        let opening_comment = self.trailing_comment_doc(self.line_of(opening_end));
+        // A comment after the `}` of a block written on one line is about
+        // the whole statement, not about what follows the `{`: it stays
+        // after the `}` (`# rubocop:disable` covers only its own line).
+        let opening_comment = (self.line_of(opening_end) != self.line_of(closing_start))
+            .then(|| self.trailing_comment_doc(self.line_of(opening_end)))
+            .flatten();
         self.indent += 1;
         let mut inner = Doc::hardline().append(self.node_doc(&body));
         if let Some(dangling) = self.comments_before_doc(closing_start, true) {
             inner = inner.append(dangling);
         }
         self.indent -= 1;
+        self.comment_limit = was_limit;
         opening_comment
             .unwrap_or_else(Doc::nil)
             .append(inner.indent(nest))
