@@ -471,6 +471,14 @@ impl Formatter {
         }
     }
 
+    /// `...` as a call argument, forwarding a `...` parameter through.
+    pub(super) fn fmt_forwarding_arguments_node(
+        &mut self,
+        _node: &ruby_prism::ForwardingArgumentsNode<'_>,
+    ) -> Doc {
+        Doc::text("...")
+    }
+
     pub(super) fn fmt_forwarding_super_node(
         &mut self,
         node: &ruby_prism::ForwardingSuperNode<'_>,

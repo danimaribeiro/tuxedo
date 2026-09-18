@@ -82,10 +82,6 @@ macro_rules! dispatch {
                             self.fmt_statements_node(&program.statements());
                         }
                     }
-                    // `...` as a call argument, forwarding a `...` parameter through.
-                    ruby_prism::Node::ForwardingArgumentsNode { .. } => {
-                        self.output.push_str("...")
-                    }
                     // `regex =~ str` where `regex` has named captures: Ruby defines
                     // the capture names as local variables as a side effect.
                     // `targets` names those locals but they aren't source text to
@@ -243,6 +239,7 @@ dispatch! {
         BlockParameterNode => as_block_parameter_node => fmt_block_parameter_node,
         CallNode => as_call_node => fmt_call_node,
         SuperNode => as_super_node => fmt_super_node,
+        ForwardingArgumentsNode => as_forwarding_arguments_node => fmt_forwarding_arguments_node,
         ForwardingSuperNode => as_forwarding_super_node => fmt_forwarding_super_node,
         YieldNode => as_yield_node => fmt_yield_node,
         ReturnNode => as_return_node => fmt_return_node,
