@@ -21,8 +21,15 @@
 //!   neither stable nor meaningful. Pointers are blanked here and the
 //!   literal's source text is appended by `NumericLiterals` instead.
 //! - Required locations (`".."` vs `"..."`, `"/i"`) are kept as printed.
+//!
+//! Constant-pool ids are numbered in the order the parser first met each
+//! name, and the fingerprint prints them, so a rewrite that reorders two
+//! statements (a modifier `if` written as a block) renumbers names without
+//! changing the program. `same_modulo_name_order` is the second chance for
+//! output the strict comparison refused.
 
 use ruby_prism::Visit;
+use std::collections::BTreeSet;
 
 /// A location-insensitive fingerprint of `source`'s AST, or `None` if
 /// `source` does not parse.
@@ -66,6 +73,76 @@ pub(super) fn fingerprint(source: &str) -> Option<String> {
         out.push_str(&String::from_utf8_lossy(data.as_slice()));
     }
     Some(out)
+}
+
+/// Whether `source` and `output` are the same program when the only
+/// difference is the order in which names first appear.
+///
+/// Prism numbers the constant pool in that order, and the fingerprint
+/// prints the numbers, so moving `a(b)` past `c(d)` -- `a(b) if c(d)`
+/// written as `if c(d)` / `a(b)` -- renumbers every name in it without
+/// changing the program. Both texts are parsed again behind one prelude
+/// that mentions every name in either of them, sorted, so the pool is
+/// numbered the same way for both and only a real difference is left.
+///
+/// A name the prelude does not know keeps the order-sensitive numbering,
+/// which can only make two equal programs differ, never the reverse: this
+/// is a second chance for output the strict comparison refused.
+pub(super) fn same_modulo_name_order(source: &str, output: &str) -> bool {
+    let mut names = BTreeSet::new();
+    collect_names(source, &mut names);
+    collect_names(output, &mut names);
+    let mut prelude = String::new();
+    for name in &names {
+        if name.starts_with(['@', '$']) {
+            prelude.push_str(name);
+        } else {
+            prelude.push_str("nil.");
+            prelude.push_str(name);
+            if !name.ends_with(['?', '!']) {
+                prelude.push_str(" = nil;nil.");
+                prelude.push_str(name);
+            }
+        }
+        prelude.push('\n');
+    }
+    // Operator methods are names too: `a + b` interns `+`.
+    prelude.push_str(
+        "nil + 1; nil - 1; nil * 1; nil / 1; nil % 1; nil ** 1; nil == 1; nil != 1; nil < 1;\n\
+         nil > 1; nil <= 1; nil >= 1; nil <=> 1; nil === 1; nil =~ 1; nil !~ 1; nil << 1;\n\
+         nil >> 1; nil & 1; nil | 1; nil ^ 1; -nil; +nil; !nil; ~nil; nil[1]; nil[1] = 2; nil.()\n",
+    );
+    let pooled = |text: &str| fingerprint(&format!("{prelude}{text}"));
+    match (pooled(source), pooled(output)) {
+        (Some(before), Some(after)) => before == after,
+        _ => false,
+    }
+}
+
+/// Every identifier-shaped run in `text`, with its `@`/`@@`/`$` sigil:
+/// a superset of the names the parser interns (it also finds words in
+/// strings and comments, which costs nothing).
+fn collect_names(text: &str, out: &mut BTreeSet<String>) {
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let start = i;
+        while i < chars.len() && matches!(chars[i], '@' | '$') {
+            i += 1;
+        }
+        if i < chars.len() && (chars[i].is_alphabetic() || chars[i] == '_') {
+            while i < chars.len() && is_word(chars[i]) {
+                i += 1;
+            }
+            if i < chars.len() && matches!(chars[i], '?' | '!') {
+                i += 1;
+            }
+            out.insert(chars[start..i].iter().collect());
+        } else if i == start {
+            i += 1;
+        }
+    }
 }
 
 /// Returns a description of the first point where two fingerprints
@@ -192,6 +269,25 @@ mod tests {
         assert!(same("foo(1, # note\n    2)\n", "foo(1, 2)\n# note\n"));
         assert!(same("#note\nfoo\n", "# note\nfoo\n"));
         assert!(same("x = 'a'\n", "x = \"a\"\n"));
+    }
+
+    #[test]
+    fn a_statement_moved_past_another_is_layout() {
+        let pooled = super::same_modulo_name_order;
+        assert!(pooled("a(b) if c(d)\n", "if c(d)\n  a(b)\nend\n"));
+        assert!(pooled("a(b) unless c(d)\n", "unless c(d)\n  a(b)\nend\n"));
+        assert!(pooled("@x = y if z?\n", "if z?\n  @x = y\nend\n"));
+        assert!(pooled("f(x + 1) if g(x)\n", "if g(x)\n  f(x + 1)\nend\n"));
+    }
+
+    #[test]
+    fn a_changed_name_is_not_layout() {
+        let pooled = super::same_modulo_name_order;
+        assert!(!pooled("a(b) if c(d)\n", "if c(d)\n  a(e)\nend\n"));
+        assert!(!pooled("a(b) if c(d)\n", "if c(d)\n  b(a)\nend\n"));
+        assert!(!pooled("a + b if c\n", "if c\n  a - b\nend\n"));
+        assert!(!pooled("@x = y if z\n", "if z\n  @w = y\nend\n"));
+        assert!(!pooled("a(b) if c(d)\n", "unless c(d)\n  a(b)\nend\n"));
     }
 
     #[test]

@@ -191,7 +191,8 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String,
         let before = verify::fingerprint(source);
         let after = verify::fingerprint(&result);
         match (before, after) {
-            (Some(before), Some(after)) if before == after => {}
+            (Some(before), Some(after))
+                if before == after || verify::same_modulo_name_order(source, &result) => {}
             (Some(before), Some(after)) => {
                 return Err(FormatError::AstMismatch {
                     detail: verify::first_difference(&before, &after),

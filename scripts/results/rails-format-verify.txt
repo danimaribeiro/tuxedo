@@ -10,35 +10,49 @@ Running tuxedo format...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
   DISPLACED: actioncable/test/channel/test_case_test.rb:194 trailing of `end`: # no-op
+  DISPLACED: actionpack/lib/action_dispatch/middleware/remote_ip.rb:152 leading of `raise`: # We don't know which came from the proxy, and which from th
   DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:617 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:623 trailing of `end`: # :nodoc:
+  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:61 leading of `raise`: # Currently the OpenSSL bindings do not raise an error if au
+  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:62 leading of `raise`: # truncated, which would allow an attacker to easily forge i
+  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:63 leading of `raise`: # https://github.com/ruby/openssl/issues/63
+  DISPLACED: activerecord/lib/active_record/encryption/configurable.rb:25 leading of `properties`: # Set the default for this property here instead of in +Conf
+  DISPLACED: activerecord/lib/active_record/encryption/configurable.rb:26 leading of `properties`: # to happen *after* the keys have been set.
+  DISPLACED: activerecord/lib/active_record/scoping/named.rb:222 leading of `generate_relation_method`: # Most Kernel extends are both singleton and instance me
+  DISPLACED: activerecord/lib/active_record/scoping/named.rb:223 leading of `generate_relation_method`: # respond_to is a fast check, but we don't want to defin
+  DISPLACED: activerecord/lib/active_record/scoping/named.rb:224 leading of `generate_relation_method`: # only on the module (ex. Module#name)
   DISPLACED: activerecord/lib/active_record/statement_cache.rb:31 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/lib/active_record/tasks/database_tasks.rb:7 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/test/cases/associations/join_model_test.rb:25 leading of `:`: # Reload edges table from fixtures as otherwise repeated tes
+  DISPLACED: activerecord/test/cases/finder_test.rb:1765 leading of `Account`: # ensure this test can run independently of order
+  DISPLACED: activerecord/test/cases/migration/columns_test.rb:137 leading of `skip`: # MariaDB starting with 10.2.8
+  DISPLACED: activerecord/test/cases/migration/columns_test.rb:138 leading of `skip`: # Dropping a column that is part of a multi-column UNIQUE co
   DISPLACED: activerecord/test/cases/reflection_test.rb:180 trailing of `account_invalid`: # has_one, without :class_name
+  DISPLACED: activestorage/test/models/attachment_test.rb:234 leading of `ActiveStorage`: # Restore the original method
+  DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:102 leading of `transliterated`: # Restore the string encoding of the input if it was n
+  DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:103 leading of `transliterated`: # Apply invalid/undef :replace as tidy_bytes does
   DISPLACED: activesupport/lib/active_support/message_pack/extensions.rb:18 trailing of `end`: # :nodoc:
   DISPLACED: activesupport/test/current_attributes_test.rb:285 trailing of `end`: # Sets the cache because of a `method_added` hook
   DISPLACED: railties/lib/rails/code_statistics.rb:33 trailing of `"`: # rubocop:disable Style/MutableConstant
-  DISPLACED: railties/lib/rails/generators/rails/app/app_generator.rb:322 trailing of `=`: # :nodoc:
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2116  Layout/LineLength [Safe Correctable]
+  2108  Layout/LineLength [Safe Correctable]
   174   Layout/HeredocIndentation [Safe Correctable]
   147   Layout/ClosingHeredocIndentation [Safe Correctable]
   18    Layout/SpaceInsidePercentLiteralDelimiters [Safe Correctable]
   15    Layout/HashAlignment [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
-  12    Layout/MultilineOperationIndentation [Safe Correctable]
   9     Layout/MultilineMethodCallIndentation [Safe Correctable]
+  8     Layout/MultilineOperationIndentation [Safe Correctable]
   6     Layout/FirstArrayElementLineBreak [Safe Correctable]
   6     Layout/IndentationWidth [Safe Correctable]
   6     Layout/MultilineArrayLineBreaks [Safe Correctable]
   6     Layout/SpaceInsideStringInterpolation [Safe Correctable]
   5     Layout/EndAlignment [Safe Correctable]
-  5     Layout/FirstArgumentIndentation [Safe Correctable]
   4     Layout/ElseAlignment [Safe Correctable]
   1     Layout/ExtraSpacing [Safe Correctable]
+  1     Layout/FirstArgumentIndentation [Safe Correctable]
   1     Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
 
 ======================================================================
@@ -47,8 +61,8 @@ Running tuxedo format...
   meaning     0 files refused: formatting would have changed the AST
   parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    75088 total, 11 displaced
-  layout      2545 offenses across 17 distinct cops
+  comments    75088 total, 30 displaced
+  layout      2529 offenses across 17 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.

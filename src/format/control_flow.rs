@@ -48,7 +48,13 @@ impl Formatter {
             return self.ternary_doc(node);
         }
         if is_modifier {
-            return self.modifier_doc(node.statements(), " if ", &node.predicate());
+            return self.conditional_modifier_doc(
+                "if",
+                node.location().end_offset(),
+                &node.predicate(),
+                node.statements(),
+                node.statements(),
+            );
         }
 
         let header = Doc::text(if is_elsif { "elsif " } else { "if " })
@@ -64,7 +70,13 @@ impl Formatter {
 
     pub(super) fn fmt_unless_node(&mut self, node: &ruby_prism::UnlessNode<'_>) -> Doc {
         if node.end_keyword_loc().is_none() {
-            return self.modifier_doc(node.statements(), " unless ", &node.predicate());
+            return self.conditional_modifier_doc(
+                "unless",
+                node.location().end_offset(),
+                &node.predicate(),
+                node.statements(),
+                node.statements(),
+            );
         }
         let header = Doc::text("unless ").append(self.condition_doc(&node.predicate()));
         self.branching_doc(
@@ -138,6 +150,48 @@ impl Formatter {
             Some(subsequent) => self.node_doc(&subsequent),
             None => Doc::text("end"),
         })
+    }
+
+    /// `body if cond` / `body unless cond`, or the block form when the
+    /// modifier does not fit on one line.
+    ///
+    /// A modifier's condition is never broken: the statement would end
+    /// with `if options.key?(` and the reader could not tell the body
+    /// from the condition (`Style/MultilineIfModifier`). So the choice is
+    /// between one flat line and `if cond` / body / `end`, and it is the
+    /// printer's, by width. Prism parses both spellings as the same node.
+    ///
+    /// A modifier that has no flat shape at all (a `do...end` call or a
+    /// heredoc in it) stays a modifier. `while`/`until` never take this
+    /// path: `begin ... end while cond` runs its body first, and the block
+    /// form would not.
+    fn conditional_modifier_doc(
+        &mut self,
+        keyword: &str,
+        end_offset: usize,
+        predicate: &ruby_prism::Node<'_>,
+        statements: Option<ruby_prism::StatementsNode<'_>>,
+        block_statements: Option<ruby_prism::StatementsNode<'_>>,
+    ) -> Doc {
+        let spaced = format!(" {keyword} ");
+        if self.single_line {
+            return self.modifier_doc(statements, &spaced, predicate);
+        }
+        let snap = self.render_snapshot();
+        let modifier = self.modifier_doc(statements, &spaced, predicate);
+        if modifier.breaks() {
+            return modifier;
+        }
+        self.restore_render_snapshot(snap);
+        // A comment after the statement is the statement's, in either
+        // shape, and is taken by whoever owns the statement's line. The
+        // block form must not claim it as its header's: the printer may
+        // still pick the modifier, which has no header to carry it.
+        let was_limit = self.comment_limit.replace(end_offset);
+        let header = Doc::text(format!("{keyword} ")).append(self.condition_doc(predicate));
+        let block = self.branching_doc(header, predicate, block_statements, None, None);
+        self.comment_limit = was_limit;
+        Doc::if_break(block, modifier.flat()).group()
     }
 
     /// `body if cond`, `body unless cond`, `body while cond`,
