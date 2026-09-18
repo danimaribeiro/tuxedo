@@ -109,7 +109,11 @@ impl Formatter {
     /// has to wrap nests one level deeper than the link it belongs to --
     /// the indent a `Doc` carries is relative to the one already in effect,
     /// which here is the chain's own.
-    fn try_build_chain_doc(&mut self, node: &ruby_prism::CallNode<'_>) -> Option<Doc> {
+    ///
+    /// `tail` is appended to the last link, inside the group: a block
+    /// header shares the line that link's arguments end on, so it has to
+    /// be measured as part of it rather than after the whole chain.
+    fn try_build_chain_doc(&mut self, node: &ruby_prism::CallNode<'_>, tail: Doc) -> Option<Doc> {
         let (base, links) = collect_chain(node)?;
 
         // The base stays in `output` while the links are built, so a link's
@@ -124,7 +128,7 @@ impl Formatter {
         // `write_commented_bracketed_items`), and so is any argument that
         // lays out its own body, and those have to be told.
         self.indent += 1;
-        let segments: Vec<Doc> = links
+        let mut segments: Vec<Doc> = links
             .iter()
             .chain(std::iter::once(node))
             .map(|link| {
@@ -135,11 +139,29 @@ impl Formatter {
             })
             .collect();
         self.indent -= 1;
+        if let Some(last) = segments.pop() {
+            segments.push(last.append(tail));
+        }
         let base_doc = self.end_run(run);
 
         let nest_width = self.indent_str.len();
-        let tail = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
-        Some(self.join_after_head(base_doc, tail.indent(nest_width).group()))
+        let links_doc = Doc::concat(segments.into_iter().map(|seg| Doc::softline().append(seg)));
+        Some(self.join_after_head(base_doc, links_doc.indent(nest_width).group()))
+    }
+
+    /// A block's ` do |params|` / ` { |params|` header, as a `Doc` to
+    /// append to the argument list it will share a line with. Nothing when
+    /// the call has no block, or carries a block-pass argument (`&:sym`)
+    /// in that slot instead.
+    ///
+    /// Building it visits the parameters, which leaves `inline` set, and
+    /// the head built next is laid out as if it had been -- the width
+    /// measurement this replaces did the same.
+    fn block_tail_doc(&mut self, block: Option<&ruby_prism::Node<'_>>) -> Doc {
+        match block.and_then(|b| b.as_block_node()) {
+            Some(block) => self.block_header_doc(&block),
+            None => Doc::nil(),
+        }
     }
 
     pub(super) fn fmt_call_node(&mut self, node: &ruby_prism::CallNode<'_>) -> Doc {
@@ -151,24 +173,23 @@ impl Formatter {
             return doc;
         }
 
-        // ` do |params|` follows the argument list on the same line, and
-        // the block is not part of the document the list is measured in
-        // (see `with_block_doc`), so the room it takes has to be held back
-        // by hand.
-        let reserve = self.do_end_header_width(node.block());
-        self.trailing_reserve += reserve;
-        let head = self.call_head_doc(node);
-        self.trailing_reserve -= reserve;
+        // ` do |x|` shares the line the argument list ends on, so it is
+        // part of what has to fit. Threaded into the head, so whichever
+        // group ends up holding the arguments -- a plain list, or the last
+        // link of a chain -- measures the header along with them.
+        let block = real_block(node);
+        let tail = self.block_tail_doc(block.as_ref());
+        let head = self.call_head_doc(node, tail);
 
-        match real_block(node) {
-            Some(block) => self.with_block_doc(head, &block, reserve),
+        match block {
+            Some(block) => self.with_block_doc(head, &block),
             None => self.join_after_head(head.prefix, head.args),
         }
     }
 
     /// A call without its block: the receiver, the message and the
     /// arguments, in whichever of Ruby's spellings the call uses.
-    fn call_head_doc(&mut self, node: &ruby_prism::CallNode<'_>) -> CallHead {
+    fn call_head_doc(&mut self, node: &ruby_prism::CallNode<'_>, tail: Doc) -> CallHead {
         let name = node.name();
         let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
 
@@ -177,7 +198,10 @@ impl Formatter {
             self.run_text(&mut run, name_str);
             let args = self.call_args_doc(node, node.opening_loc().is_some());
             let prefix = self.end_run(run);
-            return CallHead { prefix, args };
+            return CallHead {
+                prefix,
+                args: args.append(tail),
+            };
         };
 
         // An operator method called with an explicit `.`/`&.`
@@ -205,9 +229,7 @@ impl Formatter {
             return CallHead::whole(self.attribute_write_doc(node, &receiver, name_str));
         }
         if is_identifier_call {
-            // The chain is one group and the block header follows all of
-            // it, so the whole thing is the part to hold room back from.
-            if let Some(doc) = self.try_build_chain_doc(node) {
+            if let Some(doc) = self.try_build_chain_doc(node, tail.clone()) {
                 return CallHead {
                     prefix: Doc::nil(),
                     args: doc,
@@ -219,7 +241,10 @@ impl Formatter {
             self.run_text(&mut run, name_str);
             let args = self.call_args_doc(node, node.opening_loc().is_some());
             let prefix = self.end_run(run);
-            return CallHead { prefix, args };
+            return CallHead {
+                prefix,
+                args: args.append(tail),
+            };
         }
         CallHead::whole(self.operator_call_doc(node, receiver, name_str))
     }
@@ -407,32 +432,31 @@ impl Formatter {
 
     /// `head` with a real `{ }` / `do...end` block appended.
     ///
-    /// A block lays its own body out imperatively, with raw newlines and
+    /// A block *body* lays itself out imperatively, with raw newlines and
     /// absolute indents, so it cannot share a document with a group the
     /// printer has not laid out yet: the printer measures a text leaf as
     /// one long line, and the argument list in front of it would break for
     /// want of room the body does not really take on that line. `head` is
     /// rendered here, where it will sit, and the whole thing comes back as
-    /// one leaf -- with `reserve` held back for the ` do |params|` header
-    /// the block is about to append (see `do_end_header_width`).
-    fn with_block_doc(
-        &mut self,
-        head: CallHead,
-        block: &ruby_prism::Node<'_>,
-        reserve: usize,
-    ) -> Doc {
+    /// one leaf.
+    ///
+    /// The block's *header* is the exception: `head.args` already carries
+    /// it (see `fmt_call_node`), so the argument list and the ` do |x|`
+    /// that shares its last line render as one document.
+    fn with_block_doc(&mut self, head: CallHead, block: &ruby_prism::Node<'_>) -> Doc {
         self.spliced_doc(|f| {
             let rendered = f.render_doc_to_string(head.prefix);
             f.output.push_str(&rendered);
-            f.trailing_reserve += reserve;
             let rendered = f.render_doc_to_string(head.args);
-            f.trailing_reserve -= reserve;
             f.output.push_str(&rendered);
             // A block always continues the line its call ends on: it writes
             // no indent of its own and must not be terminated with a
             // newline.
             f.inline = true;
-            f.visit(block);
+            match block.as_block_node() {
+                Some(b) => f.write_block_body(&b),
+                None => f.visit(block),
+            }
         })
     }
 
@@ -454,19 +478,17 @@ impl Formatter {
             .zip(node.rparen_loc())
             .map(|(open, close)| (open.end_offset(), close.start_offset()));
 
-        let reserve = self.do_end_header_width(node.block());
-        self.trailing_reserve += reserve;
+        let tail = self.block_tail_doc(block.as_ref());
         let mut run = self.begin_run();
         self.run_text(&mut run, "super");
         let args = self.arg_list_doc(node.lparen_loc().is_some(), positional, block_pass, span);
         let head = CallHead {
             prefix: self.end_run(run),
-            args,
+            args: args.append(tail),
         };
-        self.trailing_reserve -= reserve;
 
         match block {
-            Some(block) => self.with_block_doc(head, &block, reserve),
+            Some(block) => self.with_block_doc(head, &block),
             None => self.join_after_head(head.prefix, head.args),
         }
     }

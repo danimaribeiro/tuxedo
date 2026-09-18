@@ -303,22 +303,24 @@ impl Formatter {
         let operator = node.operator_loc().as_slice().to_vec();
         self.write_bytes(&operator);
         let brace = node.opening_loc().as_slice() == b"{";
-        if let Some(parameters) = super::explicit_parameters(node.parameters()) {
-            self.inline = true;
-            // " {"/" do" follows right after the parameter list on the
-            // same line -- reserve its width so an overlong param list
-            // wraps instead of pushing the whole line past line_length
-            // (render_doc_to_string can't see what gets appended after it
-            // renders). Brace-block bodies overflow their own line
-            // independently and aren't reserved for here.
-            let reserve = if brace { 0 } else { " do".len() };
-            self.trailing_reserve += reserve;
-            self.visit(&parameters);
-            self.trailing_reserve -= reserve;
+        let opening = Doc::text(if brace { " {" } else { " do" });
+        match super::explicit_parameters(node.parameters()) {
+            // The opening follows right after the parameter list on the
+            // same line, so the two render as one document: an overlong
+            // parameter list then wraps instead of pushing the line past
+            // `line_length`, which it would if the opening were appended
+            // after the list had already chosen its shape.
+            Some(parameters) => {
+                self.inline = true;
+                let doc = self.node_doc(&parameters).append(opening);
+                let rendered = self.render_doc_to_string(doc);
+                self.output.push_str(&rendered);
+            }
+            None => {
+                let rendered = self.render_doc_to_string(opening);
+                self.output.push_str(&rendered);
+            }
         }
-
-        self.output.push(' ');
-        self.output.push_str(if brace { "{" } else { "do" });
 
         let (opening_end, closing_start) = (
             node.opening_loc().end_offset(),
@@ -345,18 +347,34 @@ impl Formatter {
         }
     }
 
-    pub(super) fn write_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
+    /// The header a block continues its call's line with: ` do` or ` {`,
+    /// plus ` |params|` when the block declares any.
+    ///
+    /// A `Doc` rather than writes, so a caller can append it to the
+    /// argument list's own group and have the printer measure the two
+    /// together -- the width this takes is what decides whether those
+    /// arguments still fit on the line. Block parameters never wrap (see
+    /// `fmt_block_parameters_node`), so it is always one line.
+    pub(super) fn block_header_doc(&mut self, node: &ruby_prism::BlockNode<'_>) -> Doc {
         let brace = node.opening_loc().as_slice() == b"{";
-
-        self.output.push(' ');
-        self.output.push_str(if brace { "{" } else { "do" });
-
-        if let Some(params) = super::explicit_parameters(node.parameters()) {
-            self.output.push(' ');
-            self.inline = true;
-            self.visit(&params);
+        let doc = Doc::text(if brace { " {" } else { " do" });
+        match super::explicit_parameters(node.parameters()) {
+            Some(params) => doc.append(Doc::text(" ")).append(self.node_doc(&params)),
+            None => doc,
         }
+    }
 
+    pub(super) fn write_block_node(&mut self, node: &ruby_prism::BlockNode<'_>) {
+        let header = self.block_header_doc(node);
+        let rendered = self.render_doc_to_string(header);
+        self.output.push_str(&rendered);
+        self.write_block_body(node);
+    }
+
+    /// Everything after the header: a `{ }` body, or the newline, the
+    /// indented statements and the `end` of a `do...end`.
+    pub(super) fn write_block_body(&mut self, node: &ruby_prism::BlockNode<'_>) {
+        let brace = node.opening_loc().as_slice() == b"{";
         let (opening_end, closing_start) = (
             node.opening_loc().end_offset(),
             node.closing_loc().start_offset(),
@@ -451,11 +469,7 @@ impl Formatter {
             let flat_width =
                 " ".len() + unicode_width::UnicodeWidthStr::width(captured.as_str()) + " }".len();
             if !captured.contains('\n')
-                && self
-                    .current_column()
-                    .saturating_add(flat_width)
-                    .saturating_add(self.trailing_reserve)
-                    <= self.line_length
+                && self.current_column().saturating_add(flat_width) <= self.line_length
             {
                 self.output.push(' ');
                 self.output.push_str(&captured);
