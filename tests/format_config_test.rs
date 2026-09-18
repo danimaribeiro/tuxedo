@@ -30,3 +30,25 @@ fn indent_size_default() {
     let output = tuxedo::format_with_config(CLASS_INPUT, &config).unwrap();
     insta::assert_snapshot!(output);
 }
+
+const ARRAY_INPUT: &str = "ROLES = [\"administrator\", \"moderator\", \"contributor\"]\n";
+
+/// The width the formatter measures against is the configured one, not
+/// the 120-column default: the same literal fits on one line under the
+/// default and expands under a narrow limit.
+#[test]
+fn line_length_narrow() {
+    let config = FormatConfig {
+        line_length: 20,
+        ..Default::default()
+    };
+    let output = tuxedo::format_with_config(ARRAY_INPUT, &config).unwrap();
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn line_length_default() {
+    let config = FormatConfig::default();
+    let output = tuxedo::format_with_config(ARRAY_INPUT, &config).unwrap();
+    insta::assert_snapshot!(output);
+}

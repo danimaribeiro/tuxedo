@@ -191,7 +191,7 @@ entirely to a future `Style/IfUnlessModifier`-style lint rule, which means:
 
 Config is already unified for the part that's genuinely cross-cutting:
 `Config` (`src/config.rs`) holds both `FormatConfig` (`line_length`,
-`indent_size`, `quote_style`) and `LintConfig` in one struct from one
+`indent_size`) and `LintConfig` in one struct from one
 `.tuxedo.toml` — a lint fixer reads `config.format.*` from the same place
 format does, no separate config to reconcile.
 
