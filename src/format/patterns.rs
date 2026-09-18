@@ -141,13 +141,19 @@ impl Formatter {
     }
 
     /// `BEGIN { ... }`
-    pub(super) fn fmt_pre_execution_node(&mut self, node: &ruby_prism::PreExecutionNode<'_>) {
-        self.write_execution_block("BEGIN", node.statements());
+    pub(super) fn fmt_pre_execution_node(
+        &mut self,
+        node: &ruby_prism::PreExecutionNode<'_>,
+    ) -> Doc {
+        self.spliced_doc(|f| f.write_execution_block("BEGIN", node.statements()))
     }
 
     /// `END { ... }`
-    pub(super) fn fmt_post_execution_node(&mut self, node: &ruby_prism::PostExecutionNode<'_>) {
-        self.write_execution_block("END", node.statements());
+    pub(super) fn fmt_post_execution_node(
+        &mut self,
+        node: &ruby_prism::PostExecutionNode<'_>,
+    ) -> Doc {
+        self.spliced_doc(|f| f.write_execution_block("END", node.statements()))
     }
 
     /// `BEGIN`/`END` only take braces (never `do...end`), and unlike a

@@ -10,11 +10,12 @@
 //! unchanged, and a node type added by a future Prism release is a compile
 //! error instead of a silent deletion.
 //!
-//! There are four groups, and they differ in what the `fmt_*` method
-//! does, not in what it is allowed to render:
+//! There are three groups, and they differ in where the node's leading
+//! indent comes from, not in what the node is allowed to render:
 //!
-//! - `leaf` -- returns a [`Doc`]. `visit` renders it; `leaf_doc` hands it
-//!   back unrendered so an enclosing group can measure and lay it out.
+//! - `leaf` -- its `fmt_*` returns a [`Doc`]. `visit` writes the indent
+//!   and renders it; `leaf_doc` hands it back unrendered so an enclosing
+//!   group can measure and lay it out.
 //! - `self_indented` -- also returns a [`Doc`], but owns the indent it
 //!   starts at, so `visit` must not write one first. These are the
 //!   constructs with a body, plus the body itself: a `StatementsNode`
@@ -22,15 +23,15 @@
 //!   own (an implicit `begin` starts with a body statement that indents
 //!   itself), and a block writes none at all because it continues the
 //!   line its call ends on.
-//! - `formatted` -- writes to `self.output`. To compose one of these into
-//!   a `Doc`, `node_doc` has to render it first and wrap the string as one
-//!   opaque leaf, which is why nested collections get rendered more than
-//!   once.
-//! - `verbatim` -- source text copied through unchanged.
+//! - `verbatim` -- source text copied through unchanged, as a `Doc::text`
+//!   leaf.
 //!
-//! Moving a node type from `formatted` to `leaf` is the unit of work in
-//! the migration; the lists are generated from one macro invocation so
-//! they cannot disagree about which group a node is in.
+//! Every node type now returns a `Doc`; what a `self_indented` one hands
+//! back is still, for most of them, the old string emitter's output
+//! lifted out by `spliced_doc` as one opaque leaf. Turning those into
+//! documents the printer can lay out is the remaining work, and the lists
+//! are generated from one macro invocation so they cannot disagree about
+//! which group a node is in.
 
 use super::Formatter;
 use super::doc::Doc;
@@ -39,7 +40,6 @@ macro_rules! dispatch {
     (
         leaf { $($leaf_variant:ident => $leaf_cast:ident => $leaf_fmt:ident,)* }
         self_indented { $($si_variant:ident => $si_cast:ident => $si_fmt:ident,)* }
-        formatted { $($variant:ident => $cast:ident => $fmt:ident,)* }
         verbatim { $($raw:ident,)* }
     ) => {
         impl Formatter {
@@ -72,13 +72,6 @@ macro_rules! dispatch {
                             }
                         }
                     )*
-                    $(
-                        ruby_prism::Node::$variant { .. } => {
-                            if let Some(concrete) = node.$cast() {
-                                self.$fmt(&concrete);
-                            }
-                        }
-                    )*
                     ruby_prism::Node::ProgramNode { .. } => {
                         if let Some(program) = node.as_program_node() {
                             self.write_statements_node(&program.statements());
@@ -101,10 +94,12 @@ macro_rules! dispatch {
                 }
             }
 
-            /// The `Doc` for `node` if its `fmt_*` returns one, `None` if it
-            /// still writes strings. Callers want [`Formatter::node_doc`],
-            /// which falls back to capturing; this is the half of the
-            /// decision that the dispatch list owns.
+            /// The `Doc` for `node`, for the node types that have one of
+            /// their own -- everything but the handful `visit` dispatches
+            /// by hand (`ProgramNode`, `MatchWriteNode`, the implicit
+            /// parameter markers). Callers want
+            /// [`Formatter::node_doc`]; this is the half of the decision
+            /// that the dispatch list owns.
             pub(super) fn leaf_doc(&mut self, node: &ruby_prism::Node<'_>) -> Option<Doc> {
                 match node {
                     $(
@@ -117,6 +112,9 @@ macro_rules! dispatch {
                             node.$si_cast().map(|concrete| self.$si_fmt(&concrete))
                         }
                     )*
+                    $(ruby_prism::Node::$raw { .. })|* => {
+                        Some(Doc::text(self.verbatim_text(node)))
+                    }
                     _ => None,
                 }
             }
@@ -271,8 +269,6 @@ dispatch! {
         ModuleNode => as_module_node => fmt_module_node,
         SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
         StatementsNode => as_statements_node => fmt_statements_node,
-    }
-    formatted {
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }

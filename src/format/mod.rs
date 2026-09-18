@@ -433,29 +433,20 @@ impl Formatter {
             .group()
     }
 
-    /// Captures whatever `render` writes to `self.output` into an owned
-    /// string, restoring the real `output` afterwards, and wraps the capture
-    /// as an opaque `Doc::text` leaf. This is how content that hasn't been
-    /// ported to build `Doc` values natively (i.e. everything, today) still
-    /// renders correctly inside a `Doc`-based construct: it's rendered once,
-    /// the normal way, and treated as an unsplittable block of text.
-    fn capture_as_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
-        Doc::text(self.capture_to_string(render))
-    }
-
-    /// The same as `capture_as_doc` for everything the caller sees, but
-    /// `render` writes into `output` where its text will actually sit and
-    /// the text is only lifted back out afterwards, instead of being
-    /// rendered into a detached buffer.
+    /// Whatever `render` writes to `self.output`, lifted back out as one
+    /// opaque `Doc::text` leaf.
     ///
-    /// Use this wherever the old string emitter wrote in place and the
-    /// result goes straight back at the same position. Everything `render`
-    /// can look at is then what it used to see: `current_column` is the
-    /// real one, `capture_depth` stays put (so a nested list still takes
-    /// its comment branch, and an adjacent-literal run still wraps), and
-    /// the bytes are identical. `capture_as_doc` is for the other case --
-    /// a child being *measured* for a group that may still move it, where
-    /// there is no position to render at yet.
+    /// `render` writes where its text will actually sit, so everything it
+    /// can look at is what the old string emitter saw: `current_column`
+    /// is the real one, `capture_depth` stays put (so a nested list still
+    /// takes its comment branch, and an adjacent-literal run still
+    /// wraps), and the bytes are identical. This is how a construct that
+    /// still lays its body out imperatively takes part in a `Doc`.
+    ///
+    /// The leaf that comes back has the construct's line breaks baked
+    /// into it at absolute columns, which [`Doc::fixed_lines`] reports:
+    /// an enclosing group can place it, but cannot move the lines inside
+    /// it.
     fn spliced_doc(&mut self, render: impl FnOnce(&mut Self)) -> Doc {
         let start = self.output.len();
         render(self);
@@ -1483,21 +1474,23 @@ impl Formatter {
     /// The `Doc` for `node` rendered inline, wherever a construct needs one
     /// of its children as a value rather than as output.
     ///
-    /// For a node whose `fmt_*` already returns a `Doc` this is that `Doc`,
-    /// composable and measured by the enclosing group. For every other node
-    /// it is still the node's string output wrapped as one opaque leaf, so
-    /// this is the seam the rest of the migration moves nodes across.
+    /// Every node type listed in `dispatch.rs` has a `Doc` of its own, so
+    /// the fallback is only for the handful `visit` dispatches by hand:
+    /// `MatchWriteNode`, which forwards to its call, and the implicit
+    /// parameter markers, which render nothing. Neither has a layout
+    /// decision to make, so rendering them in place is the same document
+    /// either way.
     fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
-        // Set before either branch, not just inside the capture: today's
-        // callers leave `inline` true afterwards, and something downstream
-        // reads it (`write_leaf` never clears it). Keeping the flag's
-        // behaviour identical is what makes moving a node type onto the
-        // `Doc` path a no-op for output.
+        // Set before either branch: today's callers leave `inline` true
+        // afterwards, and something downstream reads it (`write_leaf`
+        // never clears it). Keeping the flag's behaviour identical is
+        // what makes moving a node type onto the `Doc` path a no-op for
+        // output.
         self.inline = true;
         if let Some(doc) = self.leaf_doc(node) {
             return doc;
         }
-        self.capture_as_doc(|f| f.visit(node))
+        self.spliced_doc(|f| f.visit(node))
     }
 }
 
