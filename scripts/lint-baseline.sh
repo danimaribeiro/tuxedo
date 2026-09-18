@@ -71,7 +71,20 @@ TUXEDO_BIN="$ROOT/target/release/tuxedo"
 echo "Formatting a working copy with tuxedo..." >&2
 rm -rf "$BASE/tuxedo"
 cp -r "$SRC" "$BASE/tuxedo"
+# Every corpus has a few files that were never Ruby -- an ERB template
+# under a .rb name, a fixture of deliberately broken code (thor's
+# spec/fixtures/doc has two). tuxedo leaves those exactly as it found
+# them and exits non-zero, which under `set -e` took the whole run
+# down. Hide them from the walk rather than swallowing the exit
+# status, so a file tuxedo refuses for any other reason still stops
+# the run: tuxedo's walk honours `.ignore`. They stay in the copy, so
+# both rubocop passes below still see the file set the baseline does.
+find "$BASE/tuxedo" -name '*.rb' -print0 |
+  xargs -0 -r -P "$(nproc)" -I{} \
+    sh -c 'ruby -c "$1" >/dev/null 2>&1 || printf "%s\n" "${1#"$2"/}"' _ {} "$BASE/tuxedo" \
+    > "$BASE/tuxedo/.ignore"
 "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null
+rm -f "$BASE/tuxedo/.ignore"
 
 # Parses `rubocop --format offenses` output into "<count>\t<CopName>" lines,
 # ignoring everything else (the pending-new-cops notice, the total line).
