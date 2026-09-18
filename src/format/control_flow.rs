@@ -614,25 +614,17 @@ impl Formatter {
     /// Shared renderer for `&&`/`||`. Wraps the spine as one Doc group so
     /// an overlong line breaks after each operator with the operands
     /// indented one level, instead of always rendering flat regardless of
-    /// width -- see `infix_chain_doc`, which `operator_call_doc` shares for
+    /// width -- see `infix_doc`, which `operator_call_doc` shares for
     /// `a + b + c`.
     ///
-    /// Falls back to the flat shape when an operand lays out its own
-    /// multi-line body (see `manages_own_indentation`): no line point of
-    /// this group could move it.
+    /// `infix_doc` falls back to the flat shape when an operand turns out
+    /// to be multi-line, which no line point of this group could move.
     fn binary_bool_doc(
         &mut self,
         left: ruby_prism::Node<'_>,
         op_str: &str,
         right: ruby_prism::Node<'_>,
     ) -> Doc {
-        // An operand that lays out its own multi-line body ends the
-        // grouping here: this pair goes flat and whatever is nested in
-        // `left` still gets a group of its own.
-        if super::manages_own_indentation(&left) || super::manages_own_indentation(&right) {
-            return self.flat_infix_doc(&[left, right], op_str);
-        }
-
         // `a && b && c` is nested `AndNode`s, and one group per node would
         // bin-pack. Flattening the same-operator spine into one group
         // restores the all-or-nothing rule.
@@ -641,14 +633,14 @@ impl Formatter {
         operands.push(right);
 
         let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_chain_doc(leaves, op_str)
+        self.infix_doc(leaves, op_str)
     }
 
     /// Collects the operands of a run of the same boolean operator, so
     /// `a && b && c` is three operands rather than a nested pair.
     ///
-    /// Stops at a node that has to go through the verbatim path or that
-    /// lays out its own body: those have to stay whole.
+    /// Stops at a node that has to go through the verbatim path: that one
+    /// has to stay whole.
     fn bool_operands<'a>(
         &mut self,
         node: ruby_prism::Node<'a>,
@@ -667,13 +659,7 @@ impl Formatter {
                 None
             };
             match pair {
-                Some((left, right))
-                    if !self.should_write_verbatim(&node)
-                        && !super::manages_own_indentation(&left)
-                        && !super::manages_own_indentation(&right) =>
-                {
-                    Some((left, right))
-                }
+                Some((left, right)) if !self.should_write_verbatim(&node) => Some((left, right)),
                 _ => None,
             }
         };

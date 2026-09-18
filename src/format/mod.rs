@@ -24,62 +24,6 @@ fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
         .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
 }
 
-/// True if `node` is a call or lambda whose block breaks onto its own lines
-/// regardless of width -- a `do...end` block. A `{ }` block is not one of
-/// these: it has a one-line shape, and which shape it takes is the
-/// printer's decision rather than something a caller can read off the
-/// node.
-fn has_multiline_block(node: &ruby_prism::Node<'_>) -> bool {
-    if let Some(call) = node.as_call_node() {
-        return call
-            .block()
-            .and_then(|block| block.as_block_node())
-            .is_some_and(|block| block.opening_loc().as_slice() != b"{");
-    }
-    if let Some(lambda) = node.as_lambda_node() {
-        return lambda.opening_loc().as_slice() != b"{";
-    }
-    false
-}
-
-/// True for a node that is multi-line whatever room it is given: a keyword
-/// construct with a body, or a call with a `do...end` block. Ternaries and
-/// modifier `if`/`unless`/`while`/`until` are excluded -- they have a
-/// one-line shape.
-///
-/// An infix spine asks this of its operands and goes flat when one says
-/// yes. Not because such an operand cannot be nested -- its lines are
-/// `Doc::hardline`s now, and an enclosing indent reaches them -- but
-/// because a group holding one can never fit, so its every line point
-/// breaks, and `a &&\n  begin` reads worse than `a && begin`.
-pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
-    if let Some(if_node) = node.as_if_node() {
-        // Block `if`/`elsif` has an `end`; ternary has no `if` keyword;
-        // modifier `x if y` has an `if` keyword but no `end`.
-        return if_node.if_keyword_loc().is_some() && if_node.end_keyword_loc().is_some();
-    }
-    if let Some(unless_node) = node.as_unless_node() {
-        return unless_node.end_keyword_loc().is_some();
-    }
-    if let Some(while_node) = node.as_while_node() {
-        return while_node.closing_loc().is_some();
-    }
-    if let Some(until_node) = node.as_until_node() {
-        return until_node.closing_loc().is_some();
-    }
-    matches!(
-        node,
-        ruby_prism::Node::CaseNode { .. }
-            | ruby_prism::Node::CaseMatchNode { .. }
-            | ruby_prism::Node::BeginNode { .. }
-            | ruby_prism::Node::ForNode { .. }
-            | ruby_prism::Node::DefNode { .. }
-            | ruby_prism::Node::ClassNode { .. }
-            | ruby_prism::Node::ModuleNode { .. }
-            | ruby_prism::Node::SingletonClassNode { .. }
-    ) || has_multiline_block(node)
-}
-
 /// A block's or lambda's parameter list, if it has one written in the
 /// source. Prism also fills the `parameters` slot for a block that only
 /// *uses* implicit parameters (`it`, `_1`) -- a marker node with no text of
@@ -1230,27 +1174,61 @@ impl Formatter {
     /// The first operand is left outside the `indent`: it starts the line
     /// at the statement's own indent, so line points of its own belong at
     /// that indent too, not one level in from it.
-    fn infix_chain_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
+    fn infix_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
+        if !leaves.iter().any(Doc::breaks) {
+            return self.chain_doc(leaves, op);
+        }
+
+        // An operand that is already multi-line ends the group it is in.
+        // A group holding one can never fit, so it would break at *every*
+        // one of its line points, and
+        //
+        //     a &&
+        //       begin
+        //         ...
+        //       end
+        //
+        // reads worse than `a && begin ... end` for no gain: that operand
+        // was going to be multi-line either way. The operands around it
+        // still get a group each, so a spine that is only partly
+        // multi-line keeps the line points it can still use.
+        //
+        // Asking the built document rather than the operand's node type
+        // catches every such operand, including one that is multi-line for
+        // a reason no list of keyword node types would name.
+        let mut parts = Vec::new();
+        let mut run: Vec<Doc> = Vec::new();
+        for leaf in leaves {
+            if leaf.breaks() {
+                if !run.is_empty() {
+                    parts.push(self.chain_doc(std::mem::take(&mut run), op));
+                }
+                parts.push(leaf);
+            } else {
+                run.push(leaf);
+            }
+        }
+        if !run.is_empty() {
+            parts.push(self.chain_doc(run, op));
+        }
+
+        // Nothing joins the segments but the operator: a line point here
+        // is one the printer would always take.
+        let mut parts = parts.into_iter();
+        let first = parts.next().unwrap_or_else(Doc::nil);
+        first.append(Doc::concat(
+            parts.map(|part| Doc::text(format!(" {op} ")).append(part)),
+        ))
+    }
+
+    /// The whole spine as one group: flat, or one operand per line.
+    fn chain_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
         let mut leaves = leaves.into_iter();
         let first = leaves.next().unwrap_or_else(Doc::nil);
         let rest = Doc::concat(
             leaves.map(|leaf| Doc::text(format!(" {op}")).append(Doc::line()).append(leaf)),
         );
         first.append(rest.indent(self.indent_str.len())).group()
-    }
-
-    /// The same chain on one line, each operand written where it will sit:
-    /// the shape for a spine with an operand that lays out its own
-    /// multi-line body, which no line point of a group could move.
-    fn flat_infix_doc(&mut self, operands: &[ruby_prism::Node<'_>], op: &str) -> Doc {
-        let mut run = self.begin_run();
-        for (i, operand) in operands.iter().enumerate() {
-            if i > 0 {
-                self.run_text(&mut run, format!(" {op} "));
-            }
-            self.run_node(&mut run, operand);
-        }
-        self.end_run(run)
     }
 }
 
