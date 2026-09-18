@@ -131,7 +131,10 @@ dispatch! {
     // group is free -- it can be measured without being rendered first --
     // and any line points it carries of its own (an adjacent-literal
     // concatenation's `\` wraps) are decided by the printer along with
-    // everything around them.
+    // everything around them. A few of these still hand back a leaf that
+    // is already broken at absolute columns (a call with a `do...end`
+    // block); `Doc::fixed_lines` reports that, and whoever composes it
+    // lays it out in place instead.
     leaf {
         LocalVariableReadNode => as_local_variable_read_node => fmt_local_variable_read_node,
         GlobalVariableReadNode => as_global_variable_read_node => fmt_global_variable_read_node,
@@ -238,6 +241,13 @@ dispatch! {
         NoKeywordsParameterNode => as_no_keywords_parameter_node => fmt_no_keywords_parameter_node,
         ForwardingParameterNode => as_forwarding_parameter_node => fmt_forwarding_parameter_node,
         BlockParameterNode => as_block_parameter_node => fmt_block_parameter_node,
+        CallNode => as_call_node => fmt_call_node,
+        SuperNode => as_super_node => fmt_super_node,
+        ForwardingSuperNode => as_forwarding_super_node => fmt_forwarding_super_node,
+        YieldNode => as_yield_node => fmt_yield_node,
+        ReturnNode => as_return_node => fmt_return_node,
+        BreakNode => as_break_node => fmt_break_node,
+        NextNode => as_next_node => fmt_next_node,
     }
     // Returns a `Doc` but writes its own leading indent (see above).
     self_indented {
@@ -264,13 +274,6 @@ dispatch! {
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
-        CallNode => as_call_node => fmt_call_node,
-        SuperNode => as_super_node => fmt_super_node,
-        ForwardingSuperNode => as_forwarding_super_node => fmt_forwarding_super_node,
-        YieldNode => as_yield_node => fmt_yield_node,
-        ReturnNode => as_return_node => fmt_return_node,
-        BreakNode => as_break_node => fmt_break_node,
-        NextNode => as_next_node => fmt_next_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }

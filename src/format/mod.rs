@@ -361,12 +361,23 @@ struct Formatter {
     /// a group can render flat and still push the full line past
     /// `line_length`. See `do_end_header_width`.
     trailing_reserve: usize,
-    /// How many `capture_to_string` frames are active. A `{ }` body or
-    /// implicit string-concat wrap that injects raw newlines while the
-    /// result is being captured as `Doc::text` would bake those breaks in
-    /// so a surrounding Doc nest (e.g. `a || b { ... }`) only shifts the
-    /// first line. Stay flat while capturing.
+    /// How many `capture_to_string` frames are active, plus any raised by
+    /// `nested_node_doc`. A `{ }` body or implicit string-concat wrap that
+    /// injects raw newlines while the result is being built as one leaf
+    /// would bake those breaks in, so a surrounding Doc nest (e.g.
+    /// `a || b { ... }`) only shifts the first line. Stay flat while it is
+    /// raised.
     capture_depth: usize,
+    /// Set while a construct is being laid out on one physical line
+    /// whatever it costs: a `{ }` body nested inside another, or one being
+    /// measured for its flat form. A group that broke for width in there
+    /// would put a newline into text the caller is about to close with
+    /// ` }` on the same line.
+    ///
+    /// Not the same as `single_line`, which a parenthesized body also sets
+    /// to join its statements with `; ` -- a group breaking inside *that*
+    /// is how an overlong `(a || b)` wraps, and has to stay possible.
+    forced_flat: bool,
     /// Where the `when`/`in` clause about to be rendered stops: the start
     /// of the next clause, the `else`, or the `end`. Set by the enclosing
     /// `case` right before it visits each clause, which has no other way
@@ -379,6 +390,11 @@ struct Formatter {
 /// characters, which cannot appear in Ruby source that Prism accepted.
 const HEREDOC_MARK_START: char = '\u{E000}';
 const HEREDOC_MARK_END: char = '\u{E001}';
+
+/// The width a `Doc` is laid out against when nothing in it is allowed to
+/// break (see `forced_flat`). Not `usize::MAX`: the printer adds the
+/// column the document starts at to it.
+const UNBOUNDED_WIDTH: usize = usize::MAX / 2;
 
 impl Formatter {
     fn new(source: &str, parsed: &ruby_prism::ParseResult<'_>, config: &FormatConfig) -> Self {
@@ -405,6 +421,7 @@ impl Formatter {
             heredoc_end_line: None,
             trailing_reserve: 0,
             capture_depth: 0,
+            forced_flat: false,
             clause_closer: None,
         }
     }
@@ -460,10 +477,15 @@ impl Formatter {
     ///
     /// `trailing_reserve` comes off the line length instead of the column,
     /// so it holds room at the *end* of the line for something not in the
-    /// document yet (a block's ` do |x|` header).
+    /// document yet (a block's ` do |x|` header). `forced_flat` takes the
+    /// width out of the picture altogether.
     fn render_doc_to_string(&self, doc: Doc) -> String {
         let column = self.current_column();
-        let width = self.line_length.saturating_sub(self.trailing_reserve);
+        let width = if self.forced_flat {
+            UNBOUNDED_WIDTH
+        } else {
+            self.line_length.saturating_sub(self.trailing_reserve)
+        };
         let padded = Doc::text(" ".repeat(column)).append(doc.indent(self.indent_width()));
         let rendered = padded.render(width);
         // The pad is one space per column and nothing breaks inside it, so
@@ -565,14 +587,7 @@ impl Formatter {
         std::mem::replace(&mut self.output, saved)
     }
 
-    fn capture_inline(&mut self, node: &ruby_prism::Node<'_>) -> String {
-        self.capture_to_string(|f| {
-            f.inline = true;
-            f.visit(node);
-        })
-    }
-
-    /// Side effects `capture_inline` / `capture_as_doc` can take that a
+    /// Side effects `node_doc` / `capture_as_doc` can take that a
     /// subsequent re-`visit` would take again -- comments consumed, heredoc
     /// bodies queued, indent left shifted if a visitor failed to restore it.
     fn capture_snapshot(&self) -> CaptureSnapshot {
@@ -990,54 +1005,57 @@ impl Formatter {
         Doc::join(leaves, Doc::text(",").append(Doc::hardline()))
     }
 
-    /// Bare command args that already span lines, or whose flat form
-    /// would overflow `line_length`: first argument stays on the call
-    /// line, every later argument starts on its own line at one indent.
-    /// Ruby has no paren-less way to put the first argument on a new
-    /// line, and Tuxedo does not rewrite command style into a
-    /// parenthesized call.
+    /// The expanded shape of a bare command argument list: the first
+    /// argument stays on the call line, every later one starts a line of
+    /// its own at one indent. Ruby has no paren-less way to put the first
+    /// argument on a new line, and Tuxedo does not rewrite command style
+    /// into a parenthesized call.
     ///
-    /// Subsequent arguments are visited at +1 indent so a nested
-    /// collection that wraps uses that indent for its own brackets;
-    /// the first argument is visited at the statement indent because it
-    /// continues the call line.
-    fn write_expanded_bare_args(&mut self, items: &[ruby_prism::Node<'_>]) {
+    /// The first argument is rendered at the statement indent because it
+    /// continues the call line; the later ones sit inside the `indent`, so
+    /// a nested collection of theirs that wraps uses that deeper indent for
+    /// its own brackets. Each is rendered where it will actually sit and
+    /// lifted back out, the same bargain `expanded_items_doc` makes.
+    fn expanded_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+        let start = self.output.len();
         self.output.push(' ');
-        let last = items.len().saturating_sub(1);
+        let mut leaves = Vec::with_capacity(items.len());
         for (i, item) in items.iter().enumerate() {
             if i > 0 {
                 self.output.push('\n');
                 self.indent += 1;
                 self.write_indent();
             }
+            let item_start = self.output.len();
             self.inline = true;
             self.visit(item);
-            while self.output.ends_with('\n') {
+            while self.output.len() > item_start && self.output.ends_with('\n') {
                 self.output.pop();
             }
-            if i != last {
-                self.output.push(',');
-            }
+            leaves.push(Doc::text(self.output[item_start..].to_string()));
             if i > 0 {
                 self.indent -= 1;
             }
         }
+        self.output.truncate(start);
+        Doc::text(" ").append(Self::bare_args_body_doc(
+            leaves,
+            Doc::hardline(),
+            self.indent_str.len(),
+        ))
     }
 
-    /// True if emitting `captured` as ` a, b, c` on the current line
-    /// would pass `line_length` (including any `trailing_reserve` for a
-    /// following `do |params|` header).
-    fn bare_args_overflow(&self, captured: &[String]) -> bool {
-        let args_width: usize = captured
-            .iter()
-            .map(|s| unicode_width::UnicodeWidthStr::width(s.as_str()))
-            .sum();
-        let seps = captured.len().saturating_sub(1) * ", ".len();
-        let flat_width = " ".len() + args_width + seps;
-        self.current_column()
-            .saturating_add(flat_width)
-            .saturating_add(self.trailing_reserve)
-            > self.line_length
+    /// `a, b, c` for a bare command list, with `separator` after each
+    /// comma: the first argument carries no line point in front of it (it
+    /// continues the call line) and is left outside the `indent`, so a
+    /// collection of its own that wraps keeps the statement's indent the
+    /// way the string emitter gave it.
+    fn bare_args_body_doc(leaves: Vec<Doc>, separator: Doc, nest_width: usize) -> Doc {
+        let mut leaves = leaves.into_iter();
+        let first = leaves.next().unwrap_or_else(Doc::nil);
+        let rest =
+            Doc::concat(leaves.map(|leaf| Doc::text(",").append(separator.clone()).append(leaf)));
+        first.append(rest.indent(nest_width))
     }
 
     /// Renders a call's argument list, including a block-pass argument
@@ -1045,7 +1063,11 @@ impl Formatter {
     /// same `block()` slot as a real `{ }`/`do...end` block, but unlike a
     /// real block it belongs inside the argument list (comma-joined with
     /// any positional args), not after the closing paren.
-    fn write_call_args(&mut self, node: &ruby_prism::CallNode<'_>, parenthesized: bool) {
+    pub(super) fn call_args_doc(
+        &mut self,
+        node: &ruby_prism::CallNode<'_>,
+        parenthesized: bool,
+    ) -> Doc {
         let span = node
             .opening_loc()
             .zip(node.closing_loc())
@@ -1058,36 +1080,32 @@ impl Formatter {
             Some(b @ ruby_prism::Node::BlockArgumentNode { .. }) => Some(b),
             _ => None,
         };
-        self.write_arg_list(parenthesized, positional, block_pass, span);
+        self.arg_list_doc(parenthesized, positional, block_pass, span)
     }
 
-    /// Shared argument-list renderer for calls, `super`, and `yield`.
+    /// Shared argument-list builder for calls, `super`, and `yield`.
     ///
-    /// Parenthesized lists expand all-or-nothing when any argument
-    /// hard-breaks *or* captures as multi-line (a nested array/hash/call
-    /// that wrapped internally). Capturing those as `Doc::text` would leave
-    /// sibling arguments on the same line as the broken nested collection.
-    /// Keyword pairs are flattened out of Prism's `KeywordHashNode` so
-    /// `foo(a, k: 1, j: 2)` wraps one pair per line, not as one opaque
-    /// leaf. Parenthesized lists that still fit go through the Doc wrap
-    /// path.
+    /// Parenthesized lists are one all-or-nothing group, block indented
+    /// like any other bracketed list (`bracketed_items_doc`). Keyword
+    /// pairs are flattened out of Prism's `KeywordHashNode` first, so
+    /// `foo(a, k: 1, j: 2)` wraps one pair per line rather than as one
+    /// opaque leaf.
     ///
-    /// Bare command calls stay unparenthesized. When any argument is
-    /// already multi-line, or the flat `a, b, c` form would pass
-    /// `line_length`, siblings move to their own line at one indent with
-    /// the first argument remaining on the call line. That covers
-    /// Layout/MultilineMethodArgumentLineBreaks and Layout/LineLength
-    /// for command style without adding parentheses (a single argument
-    /// that itself exceeds the limit still cannot wrap).
-    fn write_arg_list<'a>(
+    /// Bare command calls stay unparenthesized and get their own group:
+    /// either ` a, b, c` on the call line, or the first argument there and
+    /// every later one on its own line at one indent. That covers
+    /// Layout/MultilineMethodArgumentLineBreaks and Layout/LineLength for
+    /// command style without adding parentheses (a single argument that
+    /// itself exceeds the limit still cannot wrap).
+    pub(super) fn arg_list_doc<'a>(
         &mut self,
         parenthesized: bool,
         mut items: Vec<ruby_prism::Node<'a>>,
         block_pass: Option<ruby_prism::Node<'a>>,
         span: Option<(usize, usize)>,
-    ) {
+    ) -> Doc {
         if items.is_empty() && block_pass.is_none() && !parenthesized {
-            return;
+            return Doc::nil();
         }
 
         if let Some(block_pass) = block_pass {
@@ -1102,57 +1120,62 @@ impl Formatter {
         // sharing a line on an already-broken call).
         let items = flatten_keyword_hash_args(items);
 
-        let has_args = !items.is_empty();
-        if parenthesized && has_args {
-            let doc =
-                self.bracketed_items_doc("(", Doc::softline(), &items, Doc::softline(), ")", span);
-            let rendered = self.render_doc_to_string(doc);
-            self.output.push_str(&rendered);
-            return;
+        if parenthesized && !items.is_empty() {
+            return self.bracketed_items_doc(
+                "(",
+                Doc::softline(),
+                &items,
+                Doc::softline(),
+                ")",
+                span,
+            );
         }
 
         if !parenthesized && items.len() > 1 && !self.single_line {
-            let snap = self.capture_snapshot();
-            let captured: Vec<String> =
-                items.iter().map(|item| self.capture_inline(item)).collect();
-            if captured.iter().any(|s| s.contains('\n')) || self.bare_args_overflow(&captured) {
-                self.restore_capture_snapshot(snap);
-                self.write_expanded_bare_args(&items);
-                return;
-            }
-            self.output.push(' ');
-            for (i, arg) in captured.iter().enumerate() {
-                if i > 0 {
-                    self.output.push_str(", ");
-                }
-                self.output.push_str(arg);
-            }
-            return;
+            return self.bare_args_doc(&items);
         }
 
-        self.output.push(if parenthesized { '(' } else { ' ' });
+        // A single bare argument, an empty `()`, or a list being forced
+        // onto one line: no line point anywhere, so it is built left to
+        // right and each argument measures the column it really starts at.
+        let mut run = self.begin_run();
+        self.run_text(&mut run, if parenthesized { "(" } else { " " });
         for (i, arg) in items.iter().enumerate() {
             if i > 0 {
-                self.output.push_str(", ");
+                self.run_text(&mut run, ", ");
             }
-            self.inline = true;
-            self.visit(arg);
+            self.run_node(&mut run, arg);
         }
         if parenthesized {
-            self.output.push(')');
+            self.run_text(&mut run, ")");
         }
+        self.end_run(run)
     }
 
-    /// Renders a call's real block (`{ }` / `do...end`), if it has one —
-    /// as opposed to a block-pass argument, which write_call_args handles.
-    fn write_call_block(&mut self, node: &ruby_prism::CallNode<'_>) {
-        if let Some(block @ ruby_prism::Node::BlockNode { .. }) = node.block() {
-            // A block always continues the line its call ends on: it writes
-            // no indent of its own and must not be terminated with a
-            // newline, whatever `inline` the call was reached with.
-            self.inline = true;
-            self.visit(&block);
+    /// A bare command argument list as one all-or-nothing group. An
+    /// argument that is already multi-line (a `do...end` block call, a
+    /// collection that has to expand) leaves no flat form to choose, so
+    /// the expanded shape is built directly -- the same two-step
+    /// `bracketed_items_doc` takes, and for the same reason: such an
+    /// argument is still an opaque text leaf that the printer would
+    /// measure as one long line.
+    fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+        if items.iter().any(forces_list_break) {
+            return self.expanded_bare_args_doc(items);
         }
+        let snap = self.capture_snapshot();
+        let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
+        if leaves.iter().any(Doc::breaks) {
+            self.restore_capture_snapshot(snap);
+            return self.expanded_bare_args_doc(items);
+        }
+        Doc::text(" ")
+            .append(Self::bare_args_body_doc(
+                leaves,
+                Doc::line(),
+                self.indent_str.len(),
+            ))
+            .group()
     }
 
     /// Writes a leaf/literal node (a symbol, a literal, a variable read, ...)
@@ -1306,35 +1329,6 @@ impl Formatter {
         text
     }
 
-    /// Safety valve for a comment in a place the emitter has nowhere to
-    /// put it: between the operands of an operator, or between the links
-    /// of a method chain.
-    ///
-    /// ```ruby
-    /// methods = public_instance_methods(true) -
-    ///   # Except for public instance methods of Base and its ancestors
-    ///   Base.public_instance_methods(true)
-    /// ```
-    ///
-    /// Those constructs are rendered through captured one-line strings, so
-    /// the comment would stay pending and surface after the statement,
-    /// describing nothing. If a pending comment sits in one of `node`'s
-    /// gaps (see `has_comment_in_gaps`), copies `node` through verbatim
-    /// instead and returns true: an unformatted expression beats a
-    /// misplaced comment.
-    ///
-    /// Not while capturing (the verbatim text may span lines, which a
-    /// captured leaf must not), and not if the node may contain a heredoc
-    /// (see `write_verbatim`'s known gap) -- both fall back to the old
-    /// behavior. Goes away once these constructs are built as Docs.
-    fn write_verbatim_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> bool {
-        if !self.should_write_verbatim(node) {
-            return false;
-        }
-        self.write_verbatim(node);
-        true
-    }
-
     /// Whether `node` has to be copied through verbatim because a comment
     /// sits between its parts.
     fn should_write_verbatim(&mut self, node: &ruby_prism::Node<'_>) -> bool {
@@ -1356,10 +1350,22 @@ impl Formatter {
             .contains("<<")
     }
 
-    /// [`Formatter::write_verbatim_if_commented`] for a caller that returns
-    /// a `Doc`: `Some` with the source text copied through when a comment
-    /// sits somewhere the emitter cannot put it, `None` to carry on
-    /// formatting normally.
+    /// Safety valve for a comment in a place the emitter has nowhere to
+    /// put it: between the operands of an operator, or between the links
+    /// of a method chain.
+    ///
+    /// ```ruby
+    /// methods = public_instance_methods(true) -
+    ///   # Except for public instance methods of Base and its ancestors
+    ///   Base.public_instance_methods(true)
+    /// ```
+    ///
+    /// Those constructs are built out of one-line leaves, so the comment
+    /// would stay pending and surface after the statement, describing
+    /// nothing. If a pending comment sits in one of `node`'s gaps (see
+    /// `has_comment_in_gaps`), `Some` with `node`'s source text copied
+    /// through instead: an unformatted expression beats a misplaced
+    /// comment. `None` to carry on formatting normally.
     fn verbatim_doc_if_commented(&mut self, node: &ruby_prism::Node<'_>) -> Option<Doc> {
         if !self.should_write_verbatim(node) {
             return None;
@@ -1501,9 +1507,101 @@ impl Formatter {
     }
 
     /// Ends a run: drops the text it wrote and returns what it built.
+    ///
+    /// Unless one of its children came back at fixed columns, in which
+    /// case the text is what it built -- the run wrote every child where
+    /// it will sit, and a document mixing a fixed leaf with a group the
+    /// printer has yet to lay out gets that group wrong (see
+    /// [`Doc::fixed_lines`]). Taking the text keeps exactly the bytes the
+    /// run already produced.
     fn end_run(&mut self, run: InlineRun) -> Doc {
+        let doc = Doc::concat(run.leaves);
+        if doc.fixed_lines() {
+            return Doc::text(self.output.split_off(run.start));
+        }
         self.output.truncate(run.start);
-        Doc::concat(run.leaves)
+        doc
+    }
+
+    /// [`Formatter::node_doc`] for a child the caller will place after a
+    /// line point of its own -- an `&&`'s operand, an infix operator's
+    /// right-hand side.
+    ///
+    /// A child at fixed columns (see [`Doc::fixed_lines`]) cannot go
+    /// there: the indent would move the break in front of it and leave the
+    /// newlines inside it where they were. So it is asked for again with
+    /// `capture_depth` raised, which is what holds a `{ }` body flat --
+    /// one line always nests. Asking first rather than raising the depth
+    /// up front is what keeps a child that wraps through the printer (an
+    /// adjacent-literal concatenation's `\` breaks) free to do so: those
+    /// line points are the printer's, and they indent like any other.
+    fn nested_node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        let snap = self.capture_snapshot();
+        let doc = self.node_doc(node);
+        if !doc.fixed_lines() {
+            return doc;
+        }
+        self.restore_capture_snapshot(snap);
+        self.capture_depth += 1;
+        let doc = self.node_doc(node);
+        self.capture_depth -= 1;
+        doc
+    }
+
+    /// `head` and `tail` one after the other, laid out in place when either
+    /// of them already carries lines of its own.
+    ///
+    /// The printer measures a leaf with newlines in it as one long line
+    /// rather than as the column its last line really ends at (see
+    /// [`Doc::fixed_lines`]). A group after one is laid out against a width
+    /// that has nothing to do with where it sits -- an argument list after
+    /// a `do...end` receiver expanded every time -- and a group before one
+    /// is measured as though the whole body had to fit on its line.
+    /// Rendering both here, where they go, is what the string emitter did,
+    /// and the pair comes back as one leaf.
+    fn join_after_head(&mut self, head: Doc, tail: Doc) -> Doc {
+        if !head.fixed_lines() && !tail.fixed_lines() {
+            return head.append(tail);
+        }
+        self.spliced_doc(|f| {
+            let rendered = f.render_doc_to_string(head);
+            f.output.push_str(&rendered);
+            let rendered = f.render_doc_to_string(tail);
+            f.output.push_str(&rendered);
+        })
+    }
+
+    /// An infix chain (`a && b && c`, `a + b + c`) as one all-or-nothing
+    /// group: every operand on the line, or each on its own at one indent
+    /// with the operator left behind at the end of the line before it.
+    ///
+    /// The whole spine is one group rather than one per operator: nested
+    /// groups each decide on their own and the result bin-packs
+    /// (`a &&\n  b && c`), which is the thing Tuxedo exists not to do.
+    /// The first operand is left outside the `indent`: it starts the line
+    /// at the statement's own indent, so line points of its own belong at
+    /// that indent too, not one level in from it.
+    fn infix_chain_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
+        let mut leaves = leaves.into_iter();
+        let first = leaves.next().unwrap_or_else(Doc::nil);
+        let rest = Doc::concat(
+            leaves.map(|leaf| Doc::text(format!(" {op}")).append(Doc::line()).append(leaf)),
+        );
+        first.append(rest.indent(self.indent_str.len())).group()
+    }
+
+    /// The same chain on one line, each operand written where it will sit:
+    /// the shape for a spine with an operand that lays out its own
+    /// multi-line body, which no line point of a group could move.
+    fn flat_infix_doc(&mut self, operands: &[ruby_prism::Node<'_>], op: &str) -> Doc {
+        let mut run = self.begin_run();
+        for (i, operand) in operands.iter().enumerate() {
+            if i > 0 {
+                self.run_text(&mut run, format!(" {op} "));
+            }
+            self.run_node(&mut run, operand);
+        }
+        self.end_run(run)
     }
 
     /// The `Doc` for `node` rendered inline, wherever a construct needs one

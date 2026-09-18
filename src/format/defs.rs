@@ -416,10 +416,13 @@ impl Formatter {
         if self.single_line || self.capture_depth > 0 {
             self.output.push(' ');
             let was_single_line = self.single_line;
+            let was_forced_flat = self.forced_flat;
             self.single_line = true;
+            self.forced_flat = true;
             self.inline = true;
             self.visit(&body);
             self.single_line = was_single_line;
+            self.forced_flat = was_forced_flat;
             self.output.push_str(" }");
             return;
         }

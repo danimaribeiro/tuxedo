@@ -973,51 +973,37 @@ impl Formatter {
         self.binary_bool_doc(node.left(), &op_str, node.right())
     }
 
-    /// Shared renderer for `&&`/`||`. Wraps the pair as a Doc group so an
-    /// overlong line breaks right after the operator with the right-hand
-    /// side indented one level, instead of always rendering flat regardless
-    /// of width -- the same pattern `fmt_call_node` uses for a single-arg
-    /// operator-style call. Falls back to the old flat rendering when either
-    /// side manages its own multi-line body imperatively (see
-    /// `manages_own_indentation`), for the same reason `write_call_args`
-    /// excludes those: a captured multi-line body's internal newlines aren't
-    /// nest-aware, so wrapping it in this Doc would misalign continuation
-    /// lines.
+    /// Shared renderer for `&&`/`||`. Wraps the spine as one Doc group so
+    /// an overlong line breaks after each operator with the operands
+    /// indented one level, instead of always rendering flat regardless of
+    /// width -- see `infix_chain_doc`, which `operator_call_doc` shares for
+    /// `a + b + c`.
+    ///
+    /// Falls back to the flat shape when an operand lays out its own
+    /// multi-line body (see `manages_own_indentation`): no line point of
+    /// this group could move it.
     fn binary_bool_doc(
         &mut self,
         left: ruby_prism::Node<'_>,
         op_str: &str,
         right: ruby_prism::Node<'_>,
     ) -> Doc {
+        // An operand that lays out its own multi-line body ends the
+        // grouping here: this pair goes flat and whatever is nested in
+        // `left` still gets a group of its own.
         if super::manages_own_indentation(&left) || super::manages_own_indentation(&right) {
-            let mut run = self.begin_run();
-            self.run_node(&mut run, &left);
-            self.run_text(&mut run, format!(" {op_str} "));
-            self.run_node(&mut run, &right);
-            return self.end_run(run);
+            return self.flat_infix_doc(&[left, right], op_str);
         }
 
-        // `a && b && c` is nested `AndNode`s. Left as one group per node,
-        // each level decides to break on its own and the result bin-packs
-        // -- `a &&\n  b && c`. Flattening the same-operator spine into one
-        // group restores the all-or-nothing rule: the whole chain fits on
-        // one line, or every operand gets its own.
+        // `a && b && c` is nested `AndNode`s, and one group per node would
+        // bin-pack. Flattening the same-operator spine into one group
+        // restores the all-or-nothing rule.
         let mut operands = Vec::new();
         self.bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
-        let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        let nest_width = self.indent_str.len();
-        let separator = Doc::text(format!(" {op_str}")).append(Doc::line());
-        let mut doc = Doc::nil();
-        for (i, leaf) in leaves.into_iter().enumerate() {
-            if i == 0 {
-                doc = leaf;
-            } else {
-                doc = doc.append(separator.clone()).append(leaf);
-            }
-        }
-        doc.indent(nest_width).group()
+        let leaves: Vec<Doc> = operands.iter().map(|o| self.nested_node_doc(o)).collect();
+        self.infix_chain_doc(leaves, op_str)
     }
 
     // Each of these lays out its own multi-line body with `self.indent`
