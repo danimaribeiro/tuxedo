@@ -1,0 +1,20 @@
+# A multi-line operand ends the group it sits in, rather than dissolving
+# the whole spine or forcing every operator onto its own line.
+
+# The block is the multi-line operand. The operands before and after it
+# stay on its line: a group holding it could never fit, so it would have
+# broken at every operator for no gain.
+found = assoc.reader.any? { |source|
+  target_reflection = source.send(name)
+  target_reflection.include?(record)
+} || target.include?(record)
+
+# Only the run that can still use a line point gets one: the three plain
+# conditions are a group and break, while the `do...end` and the `+` after
+# it are joined flat onto the line the run ends on.
+report = first_condition_that_is_quite_long_indeed && second_condition_that_is_also_quite_long && third_condition_as_well && values.map do |value|
+  value.to_s
+end.join + "\n"
+
+# No multi-line operand: the whole spine is one all-or-nothing group.
+ok = first_condition_here && second_condition_here && third_condition_here && fourth_condition_x

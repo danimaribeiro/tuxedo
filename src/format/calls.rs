@@ -1,5 +1,5 @@
 use super::doc::Doc;
-use super::{Formatter, has_real_block, manages_own_indentation};
+use super::{Formatter, has_real_block};
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
@@ -381,19 +381,13 @@ impl Formatter {
             return self.end_run(run);
         };
 
-        // An operand that lays out its own multi-line body ends the
-        // grouping here: this pair goes flat and whatever is nested in the
-        // receiver still gets a group of its own.
-        if manages_own_indentation(&receiver) || manages_own_indentation(&arg) {
-            return self.flat_infix_doc(&[receiver, arg], name_str);
-        }
-
         let mut operands = Vec::new();
         Self::operator_operands(node, name_str, &mut operands);
         operands.push(arg);
 
+        let condition = std::mem::take(&mut self.condition_spine);
         let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_chain_doc(leaves, name_str)
+        self.infix_doc(leaves, name_str, condition)
     }
 
     /// The operands of `node`'s receiver spine, in source order, as long as
