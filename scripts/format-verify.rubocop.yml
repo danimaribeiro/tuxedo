@@ -1,11 +1,13 @@
 # Rubocop config used only for scripts/format-verify.sh (see that script).
 #
-# Unlike scripts/format-compare.rubocop.yml — which approximates rubocop's
-# stock behaviour so the two tools' *output* can be diffed — this file
-# describes the layout Tuxedo is actually aiming for: consistent formatting
-# optimized for diff quality. It is a specification, not a baseline.
+# Unlike scripts/format-compare.rubocop.yml -- which approximates rubocop's
+# stock behaviour so the two tools' *output* can be diffed -- this file
+# describes the layout Tuxedo is actually aiming for. It is a specification,
+# not a baseline: every cop below is set to the style Tuxedo emits, so an
+# offense it reports is either a formatter bug or one of the two
+# disagreements listed at the end of this comment.
 #
-# Two properties, both deliberate:
+# Two properties, both deliberate (CLAUDE.md, "The goal"):
 #
 #   1. All-or-nothing expansion. A collection either fits on one line or
 #      every element gets its own line. Rubocop's defaults bin-pack (fill
@@ -14,102 +16,49 @@
 #      unrelated lines. The six `*LineBreak`/`*LineBreaks` cops below are
 #      what forbid packing; all six ship disabled by default.
 #
-#   2. Block indentation. When a collection expands, the bracket sits alone
-#      on its own line and the elements sit at a fixed indent from the
-#      start of the statement — not aligned under the opening bracket.
-#      Bracket alignment makes the *name* of the thing control the
-#      indentation of every element, so renaming a variable reindents the
-#      whole literal.
+#   2. Block indentation. When a collection, argument list, method chain
+#      or keyword value expands, its continuation sits at a fixed indent
+#      from the start of the statement -- never aligned under the opening
+#      bracket, the receiver, or the keyword. Alignment makes the *name* of
+#      the thing control the indentation of everything under it, so
+#      renaming a variable reindents the whole literal. Every cop with an
+#      "aligned" default is set to its fixed-indent style below.
 #
-# Note there is deliberately no trailing comma on the last element:
-# rubocop's `Style/TrailingCommaIn*` defaults to `no_comma`, and this file
-# does not override it (it is a Style cop anyway, outside the Layout
-# department this config is used with).
+# There is deliberately no trailing comma on the last element: rubocop's
+# `Style/TrailingCommaIn*` defaults to `no_comma`, and this file does not
+# override it (it is a Style cop anyway, outside the Layout department
+# this config is used with).
 #
 # This config is passed via `-c`, so it starts from rubocop's own defaults
 # and ignores whatever .rubocop.yml the project under test ships.
 #
-# --- Known, permanent disagreements ---
+# What the number means: rubocop only checks a line break that is *there*.
+# It never asks whether Tuxedo should have broken a construct it kept flat,
+# so zero offenses is a subset relation ("everything Tuxedo emits, rubocop
+# accepts"), not byte equality with rubocop's own autocorrect.
 #
-# Some cops can never reach 0 offenses without abandoning the block-
-# indentation spec above. These are not bugs to fix -- don't re-litigate
-# them without a real change to the spec itself.
+# --- The two disagreements that can never reach zero ---
 #
-# | Cop                                     | Disagreement |
-# |------------------------------------------|--------------|
-# | Layout/ElseAlignment, Layout/EndAlignment, Layout/CaseIndentation, Layout/BeginEndAlignment, Layout/IndentationWidth (partial) | For an `if`/`case`/`begin`/`unless`/`while`/`until` used as a value (`x = if ...`, `x << if ...`, `type = case value`, `x = begin ... end`), rubocop's stock defaults want the keyword's dependents (`else`/`end`/`when`) aligned under the column the opening keyword sits at -- e.g. `message << if cond` puts `if` after `message << `, so `else`/`end` must sit there too; `type = case value` puts `case` well past the statement's own indent, so `when` must match it. That's bracket alignment: the column depends on what precedes the keyword, so renaming `message`/`type` reindents the whole value. Tuxedo keeps `else`/`end`/`when` at a fixed indent from the statement instead (`write_assignment_to` in format/mod.rs -- fixed 2026-09-14, see below). See `test-projects/thor/lib/thor/actions.rb`'s `message << if source_paths.empty? ... end`, `lib/thor/parser/option.rb`'s `type = case value ... when ... end`, and `lib/thor/command.rb`'s `... && begin ... end`. (A project's own `.rubocop.yml` -- thor's included -- may set `EnforcedStyleAlignWith: variable`, which *is* block-indented, but `-c` here bypasses project overrides on purpose.) |
-# | Layout/LineLength (partial)               | A *single* literal that itself exceeds the limit (one string/regex, or `raise "huge message"` with no sibling to break after) can't wrap without adding parens or splitting the string into new adjacent parts. Tuxedo does not invent those splits. Adjacent literals the author already wrote (`"foo" "bar"`) now wrap at those existing part boundaries with a trailing `\`. `{ }` block bodies that overflow now expand like `do...end`. A `#{}` hole is held on one line for the same reason: the break would be legal (the hole is code, not string content) but the continuation would sit at a column belonging to the string around it, so an overlong literal with a hole in it counts here rather than wrapping. Remaining hits: comments, `it "..."`, and monolithic strings. |
-# | Layout/MultilineMethodCallIndentation     | Rubocop's stock default is `aligned`: a broken `.method` chain's continuation should align under the column its *base* expression starts at. When the base sits mid-statement (`X unless Thor::Base\n  .subclass_files\n  .keys`), that column depends on what precedes it (`unless `, an assignment, ...), so renaming/moving it reindents the whole chain -- the same bracket-alignment problem as ElseAlignment, just for chains. Tuxedo's chain-breaking (calls.rs's `try_build_chain_doc`) always indents one fixed level from the statement instead. See `test-projects/thor/lib/thor/runner.rb:227`. |
+# Both follow from property 2, and neither is a bug to fix. Everything
+# else this config reports is a formatter bug; those are tracked as GitHub
+# issues, not here.
 #
-# --- Known gaps (missing features, not spec conflicts -- worth fixing) ---
+# Layout/ElseAlignment, Layout/EndAlignment, Layout/CaseIndentation,
+# Layout/BeginEndAlignment, Layout/IndentationWidth (partial):
+#   For a keyword used as a value in a position that is *not* a plain
+#   assignment (`x << if cond`, `foo(if cond ...)`, `a || begin ... end`),
+#   rubocop has no style that puts `else`/`end`/`when` at the statement's
+#   indent: even `variable`/`start_of_line` only cover the `x = if` shape.
+#   Tuxedo keeps them at a fixed indent from the statement in every
+#   position. The `EnforcedStyleAlignWith: variable` / `EnforcedStyle: end`
+#   settings below cover the assignment shape, which is most of them.
 #
-# | Gap | Notes |
-# |-----|-------|
-# | `&&`/`\|\|` chains still bin-pack | `fmt_and_node`/`fmt_or_node` (control_flow.rs) now wrap a single `a && b` pair via `fmt_binary_bool_node`, same Doc-group pattern as the operator-style call path in calls.rs. A chain of same-precedence ops (`a && b && c`) is left-associative (`(a && b) && c`), so it wraps pairwise rather than putting every operand on its own line -- still an improvement over never wrapping, but not full all-or-nothing expansion for chains longer than two. See `test-projects/thor/lib/thor/command.rb:140` and `lib/thor/group.rb:189`. |
-# | `Layout/HeredocIndentation`, `Layout/ClosingHeredocIndentation` | Tuxedo never touches a heredoc's opening style (`<<-`/`<<~`/plain `<<`) or reindents its body/closing delimiter -- heredoc content is often whitespace-significant test fixture data (see `test-projects/thor/spec/shell/basic_spec.rb`'s `<<-TABLE` blocks), and switching to `<<~` changes what gets stripped from every content line, which is a content edit, not a layout one. Rubocop wants `<<-` upgraded to `<<~` and its closing delimiter reindented to match; fixing this safely would need per-heredoc-style logic to prove the body has no meaningful leading whitespace before touching it. Not attempted yet. |
-# | A `.method` chain's receiver doesn't reserve width for the chain continuation | `fmt_call_node`'s non-chain identifier-call branch (calls.rs) visits `node.receiver()` before adding anything to `trailing_reserve` for the `op`/`name_str` (and beyond) that gets appended right after -- so a receiver whose own args need to decide whether to wrap (e.g. `expect(action(...))` before `.to eq(...)`) can't see that the physical line continues past its own closing paren, and may stay flat when the *full* line overflows. The same class of bug already fixed for `do \|params\|` block headers via `do_end_header_width`/`trailing_reserve`, just never extended to plain method-call continuations. Confirmed rare in practice: 1 of thor's 25 `Layout/LineLength` hits, 5 of rails' 2460 (see `test-projects/thor/spec/actions/file_manipulation_spec.rb:613`'s `expect(action(...)).to eq(`). Not attempted -- computing the guaranteed same-line suffix width generalizes poorly across arbitrarily deep chains for a small payoff. |
-#
-# Fixed 2026-09-14: `write_assignment_to` (format/mod.rs) used to try
-# bracket-aligning an `if`/`unless`/`case`/`while`/`until`/`begin` value's
-# body under the `=` via `prefix_len / indent_str.len()` -- flooring a raw
-# character offset into whole indent levels, which only landed on the
-# correct column when `prefix_len` happened to be an exact multiple of
-# the indent width. Off by one otherwise (rubocop's "Use 2 (not 1)"
-# `Layout/IndentationWidth` complaints), and it was the same
-# rename-reflows-the-body bracket-alignment problem the project already
-# rejects for `x << if ...` -- just reached via `=` instead. Now every
-# value renders at the statement's own fixed indent, matching `<<` and
-# the disagreement entry above (which now covers `=` too). See
-# `test-projects/thor/lib/thor/parser/option.rb`'s
-# `type = case value ... when ... end`.
-#
-# Fixed 2026-09-10: nested collections that wrap internally no longer leave
-# the outer call/array/hash on the Doc-wrap path with `Doc::text` newlines
-# baked in. If a captured argument contains a newline, the outer list
-# expands and re-visits at the correct indent -- which also fixes array
-# literals inside a broken method chain (`Set.new([...]).freeze`). Keyword
-# pairs are flattened out of Prism's KeywordHashNode so `foo(a, k: 1, j: 2)`
-# wraps one pair per line. See `write_bracketed_items` /
-# `flatten_keyword_hash_args` in format/mod.rs and
-# `tests/fixtures/format/nested_collection_args.rb`.
-#
-# Fixed 2026-09-12: a bare command whose argument is already multi-line
-# (`foo a, 'hello\nworld'`, `foo bar(\n  ...\n), extra`) now puts each
-# sibling argument on its own line, first argument remaining on the call
-# line. Command style is kept -- parens are not added. See
-# `write_expanded_bare_args` and `tests/fixtures/format/bare_multiline_args.rb`.
-#
-# Fixed 2026-09-12: the same one-arg-per-line shape now also applies when
-# a multi-arg command is still one physical line but would overflow
-# `line_length` (`assert_equal a, b, "long message"`). See
-# `bare_args_overflow` and `tests/fixtures/format/bare_overlong_args.rb`.
-#
-# Fixed 2026-09-12: adjacent string literals (`"foo" "bar"`) wrap at the
-# existing part boundaries with a trailing `\` when they overflow, at one
-# indent from the statement. A `{ }` / brace-lambda body that does not
-# fit on the current line expands like `do...end` instead of staying
-# `single_line`. See `implicit_string_concat_doc` and
-# `write_brace_block_body`, plus `tests/fixtures/format/string_concatenation.rb`
-# and `tests/fixtures/format/blocks.rb`.
-#
-# Fixed 2026-09-10: parenthesized calls/arrays/hashes with a hard-breaking
-# argument (`if`/`case`/`begin`/`do...end`/`def`/…) now expand all-or-nothing
-# instead of staying on the flat imperative path. Ternaries and modifier
-# `if`/`unless` no longer count as hard-breaking, so an overlong call like
-# `foo(cond ? a : b, lots, of, args)` reaches the Doc-wrap path. See
-# `write_arg_list` / `write_expanded_bracketed_items` in format/mod.rs and
-# `tests/fixtures/format/expanded_hard_break_args.rb`.
-#
-# Fixed 2026-09-05: method chains (`a.b.c.d`) now break -- see
-# `try_build_chain_doc` in calls.rs. Also fixed the same day:
-# `render_doc_to_string`'s width used to ignore content a
-# caller knew would be appended right after the Doc rendered (a call's
-# `do |params|` block header, a lambda's), so e.g.
-# `Tempfile.open(long, args) do |temp|` didn't wrap its arg list even
-# though the full line overflowed. Fixed via `Formatter::trailing_reserve`
-# (set by `do_end_header_width`, consulted by `render_doc_to_string`) --
-# see `test-projects/thor/lib/thor/shell/basic.rb:367` and
-# `tests/fixtures/format/blocks.rb`'s `Tempfile.open` case.
+# Layout/LineLength (partial):
+#   A single literal wider than the limit (one string, one regex, a comment,
+#   `raise "huge message"` with nothing to break after) cannot wrap without
+#   inventing a split. Tuxedo does not invent splits. A `#{}` hole is held
+#   on one line for the same reason. Every other LineLength hit is a
+#   construct Tuxedo does not break yet, and is a bug.
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
 Layout/FirstArrayElementLineBreak:
@@ -144,6 +93,10 @@ Layout/MultilineMethodCallBraceLayout:
   EnforcedStyle: new_line
 Layout/MultilineOperationIndentation:
   EnforcedStyle: indented
+# `aligned` (the default) wants a broken `.method` chain under the column
+# its receiver starts at; `indented` is the fixed indent from the statement.
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
 # An `if`/`case`/`begin` used as a value keeps its `end`/`when` at the
 # statement's own indent, not under the column the opening keyword
 # happens to sit at -- same fixed-indent rule as the cops above, applied
@@ -155,11 +108,11 @@ Layout/CaseIndentation:
 Layout/BeginEndAlignment:
   EnforcedStyleAlignWith: start_of_line
 
-# --- Carried over from format-compare.rubocop.yml ---
-# Tuxedo does not preserve hand-aligned columns yet; it always collapses
-# runs of spaces to one. Leaving AllowForAlignment on would report every
-# hand-aligned block as an offense against a feature Tuxedo has not
-# implemented. Remove these once alignment preservation lands.
+# --- Hand-aligned columns ---
+# Tuxedo collapses a run of spaces to one, by design: a column aligned by
+# hand is bracket alignment done manually, and every edit to the longest
+# entry reindents the rest. These cops default to allowing such runs, so
+# they are told not to, or they would never report one Tuxedo left behind.
 Layout/ExtraSpacing:
   AllowForAlignment: false
 Layout/SpaceAroundOperators:

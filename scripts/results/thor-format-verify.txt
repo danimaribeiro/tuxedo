@@ -15,7 +15,6 @@ Running tuxedo format...
   23  Layout/LineLength [Safe Correctable]
   15  Layout/ClosingHeredocIndentation [Safe Correctable]
   13  Layout/HeredocIndentation [Safe Correctable]
-  3   Layout/MultilineMethodCallIndentation [Safe Correctable]
   1   Layout/BeginEndAlignment [Safe Correctable]
 
 ======================================================================
@@ -25,7 +24,7 @@ Running tuxedo format...
   parse       78 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    1974 total, 0 displaced
-  layout      55 offenses across 5 distinct cops
+  layout      52 offenses across 4 distinct cops
 ======================================================================
 
 Output kept at test-projects/thor/verify for inspection.
