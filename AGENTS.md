@@ -229,8 +229,10 @@ its removal plan to the issue that owns it.
 
 - `src/main.rs` — CLI entry point (clap-based). Two subcommands: `format` and `check`.
   Both accept paths (or read from stdin when no paths given), walk the filesystem via
-  `walk_and_process`, and either rewrite files in place or just report (`--check` /
-  without `--fix`).
+  `walk_and_process`, and either rewrite files in place (through `write_atomic`) or just
+  report (`--check` / `--diff` / without `--fix`). `--check` and `--diff` both leave the
+  tree alone and exit 1 when there was work to do; `--stdin-filename` names the buffer in
+  messages so an editor's diagnostics point at a real path.
 - `src/walk.rs` — shared file-walking/parallel-processing logic (`walk_and_process`) used
   by both the `format` and `check` commands; respects `.gitignore` unless `--no-ignore`.
   Matches Ruby by extension (`.rb`, `.rake`, `.gemspec`, `.ru`) and by name (`Rakefile`,

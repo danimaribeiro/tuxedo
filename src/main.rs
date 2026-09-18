@@ -31,9 +31,17 @@ struct FormatArgs {
     #[arg(long)]
     check: bool,
 
+    /// Print a unified diff of what would change instead of writing
+    #[arg(long)]
+    diff: bool,
+
     /// Dump the Prism AST (stdin only)
     #[arg(long)]
     ast: bool,
+
+    /// Report this path instead of "stdin" when reading from stdin
+    #[arg(long, value_name = "PATH")]
+    stdin_filename: Option<PathBuf>,
 
     /// Path to config file
     #[arg(long)]
@@ -60,6 +68,10 @@ struct CheckArgs {
     /// Auto-fix lint violations
     #[arg(long)]
     fix: bool,
+
+    /// Report this path instead of "stdin" when reading from stdin
+    #[arg(long, value_name = "PATH")]
+    stdin_filename: Option<PathBuf>,
 
     /// Path to config file
     #[arg(long)]
@@ -111,6 +123,23 @@ fn read_stdin() -> String {
     })
 }
 
+/// What to call the source on stdin in a message: the path the editor
+/// named, so its diagnostics point at a file the user can open.
+fn stdin_label(stdin_filename: Option<&PathBuf>) -> String {
+    stdin_filename.map_or_else(|| "stdin".to_string(), |path| path.display().to_string())
+}
+
+/// A unified diff of one file's formatting, built whole before it is
+/// printed: the walk formats on several threads, and one `print!` of one
+/// string is one lock on stdout, where a line-at-a-time loop would let
+/// two files' diffs interleave.
+fn unified_diff(label: &str, before: &str, after: &str) -> String {
+    similar::TextDiff::from_lines(before, after)
+        .unified_diff()
+        .header(label, label)
+        .to_string()
+}
+
 /// Names the paths the walk could not read, and says whether there were
 /// any -- both commands end on the same "did anything go wrong" question.
 fn report_unreadable(errors: usize) -> bool {
@@ -132,17 +161,37 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
             println!("{:#?}", result.node());
             return;
         }
-        match tuxedo::format_with_config(&source, format_config) {
-            Ok(formatted) => print!("{formatted}"),
+        let label = stdin_label(args.stdin_filename.as_ref());
+        let formatted = match tuxedo::format_with_config(&source, format_config) {
+            Ok(formatted) => formatted,
             Err(e) => {
-                eprintln!("error: stdin:{e}");
+                eprintln!("error: {label}:{e}");
                 std::process::exit(EXIT_ERROR);
             }
+        };
+
+        if args.diff {
+            print!("{}", unified_diff(&label, &source, &formatted));
+        } else if args.check {
+            if formatted != source && !args.quiet {
+                println!("would reformat: {label}");
+            }
+        } else {
+            // The buffer goes back where it came from, whole: an editor
+            // filter replaces what it piped in with what it reads out.
+            print!("{formatted}");
+        }
+        if (args.diff || args.check) && formatted != source {
+            std::process::exit(1);
         }
         return;
     }
 
+    // Both report without touching the tree, and both make a run that
+    // found work to do exit 1.
     let check_mode = args.check;
+    let diff_mode = args.diff;
+    let reporting_only = check_mode || diff_mode;
     let quiet = args.quiet;
     let errors = std::sync::atomic::AtomicUsize::new(0);
     let errors_ref = &errors;
@@ -166,7 +215,12 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
                 return None;
             }
 
-            if check_mode {
+            if diff_mode {
+                print!(
+                    "{}",
+                    unified_diff(&path.display().to_string(), source, &formatted)
+                );
+            } else if check_mode {
                 if !quiet {
                     println!("would reformat: {}", path.display());
                 }
@@ -190,7 +244,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
     let errors = errors.load(std::sync::atomic::Ordering::Relaxed);
     let unchanged = result.total - result.changed - errors;
 
-    if check_mode {
+    if reporting_only {
         eprintln!(
             "{} files checked: {} would be reformatted, {} already formatted, {} could not be formatted",
             result.total, result.changed, unchanged, errors
@@ -206,7 +260,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
     if errors > 0 || unreadable {
         std::process::exit(EXIT_ERROR);
     }
-    if check_mode && result.changed > 0 {
+    if reporting_only && result.changed > 0 {
         std::process::exit(1);
     }
 }
@@ -214,9 +268,10 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
 fn run_check(args: CheckArgs, _config: tuxedo::Config) {
     if args.paths.is_empty() {
         let source = read_stdin();
+        let label = stdin_label(args.stdin_filename.as_ref());
         let diagnostics = tuxedo::check(&source);
         for d in &diagnostics {
-            println!("stdin:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
+            println!("{label}:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
         }
         return;
     }
