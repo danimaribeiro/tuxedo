@@ -10,15 +10,16 @@
 //! unchanged, and a node type added by a future Prism release is a compile
 //! error instead of a silent deletion.
 //!
-//! There are three groups, and they differ in what the `fmt_*` method
+//! There are four groups, and they differ in what the `fmt_*` method
 //! does, not in what it is allowed to render:
 //!
 //! - `leaf` -- returns a [`Doc`]. `visit` renders it; `leaf_doc` hands it
 //!   back unrendered so an enclosing group can measure and lay it out.
-//! - `self_indented` -- also returns a [`Doc`], but writes its own
-//!   leading indent, so `visit` must not write one first. These are the
-//!   constructs with a body: some start with a keyword, but an implicit
-//!   `begin` starts with a body statement that indents itself.
+//! - `self_indented` -- also returns a [`Doc`], but owns the indent it
+//!   starts at, so `visit` must not write one first. These are the
+//!   constructs with a body: most write their own (an implicit `begin`
+//!   starts with a body statement that indents itself), and a block
+//!   writes none at all because it continues the line its call ends on.
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
@@ -26,7 +27,7 @@
 //! - `verbatim` -- source text copied through unchanged.
 //!
 //! Moving a node type from `formatted` to `leaf` is the unit of work in
-//! the migration; the two lists are generated from one macro invocation so
+//! the migration; the lists are generated from one macro invocation so
 //! they cannot disagree about which group a node is in.
 
 use super::Formatter;
@@ -224,6 +225,19 @@ dispatch! {
         MatchPredicateNode => as_match_predicate_node => fmt_match_predicate_node,
         AndNode => as_and_node => fmt_and_node,
         OrNode => as_or_node => fmt_or_node,
+        ConstantPathNode => as_constant_path_node => fmt_constant_path_node,
+        ParametersNode => as_parameters_node => fmt_parameters_node,
+        BlockParametersNode => as_block_parameters_node => fmt_block_parameters_node,
+        RequiredParameterNode => as_required_parameter_node => fmt_required_parameter_node,
+        OptionalParameterNode => as_optional_parameter_node => fmt_optional_parameter_node,
+        RestParameterNode => as_rest_parameter_node => fmt_rest_parameter_node,
+        ImplicitRestNode => as_implicit_rest_node => fmt_implicit_rest_node,
+        RequiredKeywordParameterNode => as_required_keyword_parameter_node => fmt_required_keyword_parameter_node,
+        OptionalKeywordParameterNode => as_optional_keyword_parameter_node => fmt_optional_keyword_parameter_node,
+        KeywordRestParameterNode => as_keyword_rest_parameter_node => fmt_keyword_rest_parameter_node,
+        NoKeywordsParameterNode => as_no_keywords_parameter_node => fmt_no_keywords_parameter_node,
+        ForwardingParameterNode => as_forwarding_parameter_node => fmt_forwarding_parameter_node,
+        BlockParameterNode => as_block_parameter_node => fmt_block_parameter_node,
     }
     // Returns a `Doc` but writes its own leading indent (see above).
     self_indented {
@@ -241,35 +255,22 @@ dispatch! {
         InNode => as_in_node => fmt_in_node,
         RescueNode => as_rescue_node => fmt_rescue_node,
         EnsureNode => as_ensure_node => fmt_ensure_node,
+        DefNode => as_def_node => fmt_def_node,
+        LambdaNode => as_lambda_node => fmt_lambda_node,
+        BlockNode => as_block_node => fmt_block_node,
+        ClassNode => as_class_node => fmt_class_node,
+        ModuleNode => as_module_node => fmt_module_node,
+        SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
     }
     formatted {
         StatementsNode => as_statements_node => fmt_statements_node,
         CallNode => as_call_node => fmt_call_node,
         SuperNode => as_super_node => fmt_super_node,
         ForwardingSuperNode => as_forwarding_super_node => fmt_forwarding_super_node,
-        DefNode => as_def_node => fmt_def_node,
-        RequiredParameterNode => as_required_parameter_node => fmt_required_parameter_node,
-        OptionalParameterNode => as_optional_parameter_node => fmt_optional_parameter_node,
-        RestParameterNode => as_rest_parameter_node => fmt_rest_parameter_node,
-        ImplicitRestNode => as_implicit_rest_node => fmt_implicit_rest_node,
-        RequiredKeywordParameterNode => as_required_keyword_parameter_node => fmt_required_keyword_parameter_node,
-        OptionalKeywordParameterNode => as_optional_keyword_parameter_node => fmt_optional_keyword_parameter_node,
-        KeywordRestParameterNode => as_keyword_rest_parameter_node => fmt_keyword_rest_parameter_node,
-        NoKeywordsParameterNode => as_no_keywords_parameter_node => fmt_no_keywords_parameter_node,
-        ForwardingParameterNode => as_forwarding_parameter_node => fmt_forwarding_parameter_node,
-        BlockParameterNode => as_block_parameter_node => fmt_block_parameter_node,
-        ParametersNode => as_parameters_node => fmt_parameters_node,
-        LambdaNode => as_lambda_node => fmt_lambda_node,
-        BlockParametersNode => as_block_parameters_node => fmt_block_parameters_node,
-        BlockNode => as_block_node => fmt_block_node,
         YieldNode => as_yield_node => fmt_yield_node,
         ReturnNode => as_return_node => fmt_return_node,
         BreakNode => as_break_node => fmt_break_node,
         NextNode => as_next_node => fmt_next_node,
-        ClassNode => as_class_node => fmt_class_node,
-        ModuleNode => as_module_node => fmt_module_node,
-        SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
-        ConstantPathNode => as_constant_path_node => fmt_constant_path_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }

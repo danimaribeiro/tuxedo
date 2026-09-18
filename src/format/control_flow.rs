@@ -181,7 +181,7 @@ impl Formatter {
     fn write_begin_node(&mut self, node: &ruby_prism::BeginNode<'_>) {
         let has_keyword = node.begin_keyword_loc().is_some();
         let inline = self.inline;
-        // Set by fmt_block_node when rendering a brace block's body flat
+        // Set by write_brace_block_body when rendering a brace block's body flat
         // (`{ ... }` rather than `do...end`). A `begin`/`rescue`/`ensure`
         // here still has to produce *something* on that one line -- join
         // clauses with "; " instead of real indentation/newlines, the same
@@ -749,7 +749,7 @@ impl Formatter {
 
     /// A `when` clause always ends by leaving a separator in place for
     /// whatever comes next (another `when`, an `else`, or `end`) --
-    /// `; ` in single-line mode (see fmt_block_node), a real newline
+    /// `; ` in single-line mode (see write_brace_block_body), a real newline
     /// otherwise -- so callers never need to add one of their own.
     fn write_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) {
         let single_line = self.single_line;

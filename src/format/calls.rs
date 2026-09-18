@@ -336,6 +336,8 @@ impl Formatter {
         self.write_arg_list(parenthesized, positional, block_pass, span);
 
         if let Some(block @ ruby_prism::Node::BlockNode { .. }) = node.block() {
+            // See write_call_block: a block continues the `super` line.
+            self.inline = true;
             self.visit(&block);
         }
 
@@ -351,7 +353,7 @@ impl Formatter {
         }
         self.output.push_str("super");
         if let Some(block) = node.block() {
-            self.fmt_block_node(&block);
+            self.write_block_node(&block);
         }
         if !inline {
             self.output.push('\n');
