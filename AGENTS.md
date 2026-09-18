@@ -258,28 +258,29 @@ its removal plan to the issue that owns it.
   **Node dispatch is an exhaustive `match`, not `impl Visit`** (`src/format/dispatch.rs`).
   `Visit`'s default for an un-overridden node walks the children and emits nothing for the
   node itself, which silently deletes syntax. Every Prism node type must be listed in
-  `dispatch.rs`, under one of three groups: `leaf` (its `fmt_*` returns a `Doc`),
-  `formatted` (its `fmt_*` writes to `self.output`) or `verbatim` (source text copied
-  through unchanged). To add a formatter for a node, move it out of `verbatim`. A node type
-  added by a Prism upgrade is a compile error until it is listed.
+  `dispatch.rs`, under one of four groups: `leaf` (its `fmt_*` returns a `Doc`),
+  `self_indented` (also returns a `Doc`, but owns the indent it starts at, so `visit` must
+  not write one first — these are the constructs with a body), `formatted` (its `fmt_*`
+  writes to `self.output`) or `verbatim` (source text copied through unchanged). To add a
+  formatter for a node, move it out of `verbatim`. A node type added by a Prism upgrade is
+  a compile error until it is listed.
 
   `leaf` is where every node type is headed. Use `self.node_doc(&child)` to get a child as
-  a `Doc`: native for a `leaf` node, and for the rest still the node's string output
-  wrapped as one opaque `Doc::text`, which is what makes nested collections render more
-  than once and what `forces_list_break` exists to work around. Moving a node type from
-  `formatted` to `leaf` is allowed to change output, but not to make it worse — verify by
-  formatting `test-projects/rails` and `test-projects/thor` before and after, diffing the
-  trees, and reading every hunk.
+  a `Doc`: native for a `leaf` or `self_indented` node, and for the rest the node's string
+  output wrapped as one opaque `Doc::text`, which is what makes nested collections render
+  more than once. Moving a node type from `formatted` to `leaf` is allowed to change
+  output, but not to make it worse — verify by formatting `test-projects/rails` and
+  `test-projects/thor` before and after, diffing the trees, and reading every hunk.
 
   **Layout goes through the `Doc` IR** (`src/format/doc.rs`), the only module that names
   `pretty`. Build a `Doc` out of `text`/`line`/`softline`/`hardline`/`if_break`, mark a
   unit with `group` and a nested level with `indent`, and `render` it against a width;
   the group decides flat-or-broken, which is where all-or-nothing expansion comes from.
   Never reach for `pretty` directly — the wrapper is what keeps a printer swap
-  confined to one file. Not every construct builds a `Doc` yet: the rest still write
-  strings into `self.output` and get spliced in as an opaque `Doc::text` leaf by
-  `capture_as_doc`, which is why `forces_list_break` and the `contains('\n')` checks
-  exist.
+  confined to one file. Not every construct builds a `Doc` yet: the constructs with a
+  body still write strings into `self.output` and get lifted back out as one opaque
+  `Doc::text` leaf by `spliced_doc`, which is why `Doc::breaks` has to be asked whether
+  an item is already multi-line instead of leaving that to the printer.
 
   **Comments are placed by position, not attached to nodes.** `comment_cursor` walks the
   file's comments in order and whoever owns a source range consumes the ones inside it:
