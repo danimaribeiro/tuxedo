@@ -270,11 +270,20 @@ impl Formatter {
             } else if let Some(embedded) = part.as_embedded_statements_node() {
                 self.output.push_str("#{");
                 if let Some(statements) = embedded.statements() {
+                    // Flat whatever it costs. A break inside a `#{}` hole
+                    // is valid Ruby -- the hole is code, not string
+                    // content -- but it lands in the middle of a literal
+                    // whose own line structure is fixed, so the
+                    // continuation sits at a column belonging to the
+                    // string rather than to the expression.
                     let was_single_line = self.single_line;
+                    let was_forced_flat = self.forced_flat;
                     self.single_line = true;
+                    self.forced_flat = true;
                     self.inline = true;
                     self.write_statements_node(&statements);
                     self.single_line = was_single_line;
+                    self.forced_flat = was_forced_flat;
                 }
                 self.output.push('}');
             } else {
