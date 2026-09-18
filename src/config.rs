@@ -1,3 +1,11 @@
+//! `.tuxedo.toml`: found by walking up from the current directory unless
+//! `--config` names a path, and [`Config::default`] when there is none.
+//!
+//! Every key here is one the formatter or linter reads, and
+//! `deny_unknown_fields` makes anything else a hard error rather than a
+//! silently ignored setting: a knob nothing consults is a promise to the
+//! user that nothing keeps.
+
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;

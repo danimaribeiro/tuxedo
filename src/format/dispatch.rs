@@ -21,6 +21,11 @@
 //!   tokens (`redo`, `it`, `__ENCODING__`), or text whose whitespace is
 //!   data (a `#{}` hole, a regex literal used as a condition).
 //!
+//! To give a construct a formatter, move its type out of `verbatim`, add
+//! the `fmt_*` to the `formatted` list, and build the document out of
+//! `self.node_doc(&child)` for each child: that call is the only way to get
+//! a child's document, and there is no other visit.
+//!
 //! A handful of node types are dispatched by hand below the macro's lists:
 //! a program, which is its statements; a `MatchWriteNode`, which is its
 //! call; and the markers Prism inserts for a block that uses `it`/`_1`,
