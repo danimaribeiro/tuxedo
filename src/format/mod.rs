@@ -81,84 +81,6 @@ pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
     ) || has_multiline_block(node)
 }
 
-/// True if rendering `node` inline would emit a raw newline -- either
-/// because `node` itself manages its own indentation, or because a nested
-/// collection/call/operator contains one that does. Used to decide that a
-/// parenthesized list can't stay on one line and must expand
-/// all-or-nothing rather than going through `capture_as_doc` (which would
-/// bake those newlines in and then misalign them under a Doc nest).
-///
-/// Does not walk into `{ }` / parenthesized bodies: those force
-/// `single_line` and join inner `if`/`def`/… with `; `, so they stay one
-/// physical line.
-pub(super) fn forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
-    if manages_own_indentation(node) || assoc_forces_list_break(node) {
-        return true;
-    }
-    if let Some(array) = node.as_array_node() {
-        return array.elements().iter().any(|e| forces_list_break(&e));
-    }
-    if let Some(hash) = node.as_hash_node() {
-        return hash.elements().iter().any(|e| assoc_forces_list_break(&e));
-    }
-    if let Some(kw) = node.as_keyword_hash_node() {
-        return kw.elements().iter().any(|e| assoc_forces_list_break(&e));
-    }
-    if let Some(splat) = node.as_splat_node() {
-        return splat.expression().is_some_and(|e| forces_list_break(&e));
-    }
-    if let Some(call) = node.as_call_node() {
-        return call
-            .arguments()
-            .is_some_and(|a| a.arguments().iter().any(|arg| forces_list_break(&arg)));
-    }
-    if let Some(super_node) = node.as_super_node() {
-        return super_node
-            .arguments()
-            .is_some_and(|a| a.arguments().iter().any(|arg| forces_list_break(&arg)));
-    }
-    if let Some(if_node) = node.as_if_node() {
-        return forces_list_break(&if_node.predicate())
-            || statements_force_list_break(if_node.statements())
-            || if_node.subsequent().is_some_and(|s| forces_list_break(&s));
-    }
-    if let Some(unless_node) = node.as_unless_node() {
-        return forces_list_break(&unless_node.predicate())
-            || statements_force_list_break(unless_node.statements())
-            || unless_node
-                .else_clause()
-                .is_some_and(|e| statements_force_list_break(e.statements()));
-    }
-    if let Some(else_node) = node.as_else_node() {
-        return statements_force_list_break(else_node.statements());
-    }
-    if let Some(and_node) = node.as_and_node() {
-        return forces_list_break(&and_node.left()) || forces_list_break(&and_node.right());
-    }
-    if let Some(or_node) = node.as_or_node() {
-        return forces_list_break(&or_node.left()) || forces_list_break(&or_node.right());
-    }
-    false
-}
-
-fn statements_force_list_break(stmts: Option<ruby_prism::StatementsNode<'_>>) -> bool {
-    stmts.is_some_and(|s| s.body().iter().any(|n| forces_list_break(&n)))
-}
-
-/// Like `forces_list_break`, but for a hash element (`AssocNode`/
-/// `AssocSplatNode`): looks at the value being assigned rather than the
-/// element itself, since a hash element is never itself a node
-/// `forces_list_break` would match directly.
-pub(super) fn assoc_forces_list_break(node: &ruby_prism::Node<'_>) -> bool {
-    if let Some(assoc) = node.as_assoc_node() {
-        return forces_list_break(&assoc.value());
-    }
-    if let Some(splat) = node.as_assoc_splat_node() {
-        return splat.value().is_some_and(|value| forces_list_break(&value));
-    }
-    false
-}
-
 /// A block's or lambda's parameter list, if it has one written in the
 /// source. Prism also fills the `parameters` slot for a block that only
 /// *uses* implicit parameters (`it`, `_1`) -- a marker node with no text of
@@ -642,9 +564,6 @@ impl Formatter {
                 f.write_commented_bracketed_items(open, items, close, (start, end))
             });
         }
-        if items.iter().any(forces_list_break) {
-            return self.expanded_bracketed_items_doc(open, items, close);
-        }
         let snap = self.capture_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
@@ -883,14 +802,13 @@ impl Formatter {
 
     /// The must-break bracketed list: opening token alone, every item on
     /// its own line at indent+1, closing token alone at the current
-    /// indent. Used when at least one item already hard-breaks (see
-    /// `forces_list_break`), so a group can't choose "fits on one line" --
-    /// it already doesn't.
+    /// indent. Used when at least one item already hard-breaks, so a group
+    /// can't choose "fits on one line" -- it already doesn't.
     ///
     /// The breaks are [`Doc::hardline`]s rather than raw newlines, which
     /// is what lets this shape sit inside an enclosing group and force it
-    /// open on its own instead of the enclosing construct having to ask
-    /// `forces_list_break` up front.
+    /// open on its own, with no need for the enclosing construct to
+    /// predict the break before rendering.
     fn expanded_bracketed_items_doc(
         &mut self,
         open: &str,
@@ -1160,9 +1078,6 @@ impl Formatter {
     /// argument is still an opaque text leaf that the printer would
     /// measure as one long line.
     fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
-        if items.iter().any(forces_list_break) {
-            return self.expanded_bare_args_doc(items);
-        }
         let snap = self.capture_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {

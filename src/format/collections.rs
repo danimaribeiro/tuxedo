@@ -1,5 +1,5 @@
 use super::doc::Doc;
-use super::{Formatter, assoc_forces_list_break, bytes_doc};
+use super::{Formatter, bytes_doc};
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) -> Doc {
@@ -164,9 +164,6 @@ impl Formatter {
         // the fallback if a keyword hash is visited directly. With no
         // bracket to break after, the first pair stays on the line the
         // call is already on.
-        if elements.iter().any(assoc_forces_list_break) {
-            return self.expanded_items_doc(elements, false);
-        }
         let snap = self.capture_snapshot();
         let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
         if leaves.iter().any(Doc::breaks) {

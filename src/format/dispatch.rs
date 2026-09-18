@@ -23,7 +23,7 @@
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
-//!   once and why `forces_list_break` exists.
+//!   once.
 //! - `verbatim` -- source text copied through unchanged.
 //!
 //! Moving a node type from `formatted` to `leaf` is the unit of work in
@@ -81,10 +81,6 @@ macro_rules! dispatch {
                         if let Some(program) = node.as_program_node() {
                             self.fmt_statements_node(&program.statements());
                         }
-                    }
-                    // `...` as a call argument, forwarding a `...` parameter through.
-                    ruby_prism::Node::ForwardingArgumentsNode { .. } => {
-                        self.output.push_str("...")
                     }
                     // `regex =~ str` where `regex` has named captures: Ruby defines
                     // the capture names as local variables as a side effect.
@@ -243,6 +239,7 @@ dispatch! {
         BlockParameterNode => as_block_parameter_node => fmt_block_parameter_node,
         CallNode => as_call_node => fmt_call_node,
         SuperNode => as_super_node => fmt_super_node,
+        ForwardingArgumentsNode => as_forwarding_arguments_node => fmt_forwarding_arguments_node,
         ForwardingSuperNode => as_forwarding_super_node => fmt_forwarding_super_node,
         YieldNode => as_yield_node => fmt_yield_node,
         ReturnNode => as_return_node => fmt_return_node,
