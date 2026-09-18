@@ -299,7 +299,7 @@ impl Formatter {
             node.closing_loc().start_offset(),
         );
         if brace {
-            let body = self.brace_block_body_doc(node.body(), opening_end, closing_start);
+            let body = self.brace_block_body_doc(node.body(), false, opening_end, closing_start);
             return header.append(body);
         }
         let header_line = self.line_of(opening_end);
@@ -338,7 +338,13 @@ impl Formatter {
             node.closing_loc().start_offset(),
         );
         if brace {
-            return self.brace_block_body_doc(node.body(), opening_end, closing_start);
+            let has_parameters = super::explicit_parameters(node.parameters()).is_some();
+            return self.brace_block_body_doc(
+                node.body(),
+                has_parameters,
+                opening_end,
+                closing_start,
+            );
         }
         // `do |x| # why`: the header ends at the closing pipe when
         // there are parameters, at `do` otherwise.
@@ -368,6 +374,7 @@ impl Formatter {
     fn brace_block_body_doc(
         &mut self,
         body: Option<ruby_prism::Node<'_>>,
+        has_parameters: bool,
         opening_end: usize,
         closing_start: usize,
     ) -> Doc {
@@ -377,7 +384,10 @@ impl Formatter {
 
         let Some(body) = body else {
             if !has_comment {
-                return Doc::text("}");
+                // `{}` when nothing sits between the braces, `{ |x| }` once
+                // a parameter list does: the closing pipe is not a brace
+                // and `|x|}` reads as one token.
+                return Doc::text(if has_parameters { " }" } else { "}" });
             }
             let opening_comment = self.trailing_comment_doc(self.line_of(opening_end));
             self.indent += 1;

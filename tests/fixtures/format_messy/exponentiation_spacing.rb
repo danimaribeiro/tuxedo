@@ -1,0 +1,9 @@
+KEY_LENGTH = 2 ** 8
+limit = base ** exponent
+inverse = base ** -1
+tower = a ** b ** c
+scaled = (a + b) ** 2
+call = 2 ** foo(1, 2)
+splat = foo(**opts)
+router.get { |*_|}
+router.get { |*_|   }

@@ -68,3 +68,6 @@ queue_adapter.with(
 ) do
   perform_enqueued_jobs
 end
+
+router.get { |*_| }
+pool.each { |worker| }

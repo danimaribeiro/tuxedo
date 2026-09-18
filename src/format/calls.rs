@@ -381,6 +381,17 @@ impl Formatter {
             return self.end_run(run);
         };
 
+        // Exponentiation is the one operator written tight (`2**8`), and it
+        // has no line point: an overlong operand breaks inside itself.
+        // `**` is right-associative, so there is no left spine to flatten.
+        if name_str == "**" {
+            let mut run = self.begin_run();
+            self.run_node(&mut run, &receiver);
+            self.run_text(&mut run, "**");
+            self.run_node(&mut run, &arg);
+            return self.end_run(run);
+        }
+
         let mut operands = Vec::new();
         Self::operator_operands(node, name_str, &mut operands);
         operands.push(arg);
