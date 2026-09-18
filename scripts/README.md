@@ -2,9 +2,17 @@
 
 Tooling for checking tuxedo's formatter against real-world Ruby projects. All
 four scripts here expect a project's pristine source at
-`test-projects/<project>/source` — see "Testing against real-world Ruby
-projects" in the root `CLAUDE.md` for how to add one. `test-projects/` is
-gitignored; nothing under it is part of this repo.
+`test-projects/<project>/source`. To add one, clone it there:
+
+```bash
+git clone --depth 1 https://github.com/rails/rails test-projects/rails/source
+```
+
+`test-projects/` is gitignored; nothing under it is part of this repo.
+
+The scripts need `ruby` and `rubocop` on `PATH`. If the shell has neither,
+they are under mise: `mise exec ruby -- scripts/format-verify.sh rails`, or
+put `~/.local/share/mise/installs/ruby/<version>/bin` first on `PATH`.
 
 Each script writes its own working copy under `test-projects/<project>/` and
 regenerates it fresh on every run — those are scratch space, safe to delete.

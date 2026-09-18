@@ -1,3 +1,92 @@
+//! The formatter: Ruby source in, formatted Ruby source out, or a refusal.
+//!
+//! # The pipeline
+//!
+//! [`format_with_config`] runs six stages, and there is no output buffer
+//! anywhere in them:
+//!
+//! 1. Parse with `ruby_prism`. Any syntax error is [`FormatError::Syntax`]:
+//!    Prism recovers and still hands back a tree, but that tree has holes,
+//!    and formatting from it would write the holes back as the program.
+//! 2. Build **one [`Doc`] for the whole file** ([`Formatter::node_doc`],
+//!    dispatched in [`dispatch`]). Every `fmt_*` returns a document; nothing
+//!    writes text.
+//! 3. Render it once against `line_length` ([`Doc::render`]). The printer
+//!    decides every line break; see [`doc`] for the vocabulary.
+//! 4. Splice heredoc bodies in after the lines their tags landed on
+//!    ([`Formatter::splice_heredoc_bodies`]), then append `__END__` data
+//!    byte for byte.
+//! 5. Verify: the output is parsed again and its AST fingerprint compared
+//!    with the source's ([`verify`]). A difference is
+//!    [`FormatError::AstMismatch`]: a Tuxedo bug, caught before it reaches
+//!    the disk.
+//!
+//! Both errors mean "leave the file exactly as it was"; the CLI exits 2.
+//!
+//! # Invariants every `fmt_*` relies on
+//!
+//! **`node_doc` is the only entry point.** A construct gets each child as a
+//! `Doc` through `self.node_doc(&child)` and composes it. There is no
+//! separate visit that emits output, and no node type is handled by
+//! default: [`dispatch`] lists every one, under `formatted` (has a `fmt_*`)
+//! or `verbatim` (source bytes copied through as one text leaf).
+//!
+//! **No `fmt_*` writes its own indentation.** A document carries no leading
+//! indent and no terminating newline. Where it sits is its caller's
+//! decision, and a body's indent is the [`Doc::indent`] the construct that
+//! owns it wraps around it ([`Formatter::clause_body_doc`] /
+//! [`Formatter::keyword_body_doc`] are the shared shape). The same document
+//! is a method body at one depth and a module body at another without
+//! knowing which. [`Formatter::indent`] is still counted, but only so a
+//! comment that belongs one level out can find that level.
+//!
+//! **[`Doc::breaks`] chooses between two documents, not two layouts.** A
+//! hardline forces every group around it open by itself, so the printer
+//! needs no help choosing flat or broken. What needs help is a construct
+//! that must decide *which tree to build*: a bracketed list with an
+//! already-broken item is built in its expanded shape
+//! ([`Formatter::bracketed_items_doc`] builds the items, asks, and rebuilds
+//! after restoring a [`RenderSnapshot`]), and a `{ }` block whose body
+//! breaks is built the way `do...end` is.
+//!
+//! **Comments are placed by position, not attached to nodes.** Prism keeps
+//! them outside the tree. [`Formatter::comments`] holds them in source order
+//! with one cursor, and whoever builds a source range consumes the ones
+//! inside it: `fmt_statements_node` takes own-line comments above each
+//! statement, [`Formatter::trailing_comment_doc`] the one at the end of a
+//! header line (`class Foo # :nodoc:`), [`Formatter::comments_before_doc`]
+//! those at the bottom of a body before `end`/`else`/`when`/`rescue`, and
+//! [`Formatter::commented_bracketed_items_doc`] a list with comments
+//! between its brackets (which forces it to expand). The cursor only moves
+//! forward, so a construct with a body that skips the header call or the
+//! bottom-of-body call displaces every comment nested inside it, and one
+//! unclaimed comment blocks all the ones after it. [`Formatter::comment_limit`]
+//! stops a statement inside a one-line body from claiming a comment written
+//! after the body's closing token. A comment between operator operands or
+//! chain links has nowhere to go yet, so [`Formatter::verbatim_doc_if_commented`]
+//! copies that one expression through unchanged.
+//!
+//! # Debugging a construct
+//!
+//! Dump the tree first instead of guessing field names; the output matches
+//! `ruby_prism`'s generated accessors one to one:
+//!
+//! ```sh
+//! echo 'x = a ? b : c' | cargo run --release -- format --ast
+//! echo 'x = a ? b : c' | cargo run --release -- format
+//! ```
+//!
+//! When the output is wrong, it is one of three things: the wrong tree was
+//! built (a `breaks` decision), the right tree was grouped wrong (a
+//! `group`/`indent` placement), or a comment moved because nobody consumed
+//! it. The AST check fires on none of those; it fires when a `fmt_*` dropped
+//! or changed a token.
+
+// These docs are read with `--document-private-items`: the map in
+// CLAUDE.md points here for how the formatter works, and most of what it
+// names is private on purpose.
+#![allow(rustdoc::private_intra_doc_links)]
+
 use crate::config::FormatConfig;
 use doc::Doc;
 mod assignment;
@@ -394,9 +483,7 @@ impl Formatter {
     }
 
     /// The pending comment that sits at the end of `line`, if there is
-    /// one, as ` # text` ready to append to that line's leaf. The `Doc`
-    /// counterpart of [`Formatter::emit_trailing_comment_if_same_line`],
-    /// for callers that build a line rather than write one.
+    /// one, as ` # text` ready to append to that line's leaf.
     ///
     /// No deferral is involved and none is needed: the caller appends this
     /// after everything else that belongs on the line, which is what

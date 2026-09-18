@@ -1,3 +1,24 @@
+//! The `tuxedo` command line: `format` and `check`.
+//!
+//! Both subcommands take paths, or read one buffer from stdin when given
+//! none, and walk the filesystem through [`tuxedo::walk_and_process`]
+//! (`.gitignore`-aware unless `--no-ignore`; Ruby by extension and by
+//! name). `format` rewrites in place through [`tuxedo::write_atomic`], or
+//! only reports with `--check` / `--diff`; `check` reports lint
+//! diagnostics, or rewrites with `--fix`. `--stdin-filename` names the
+//! stdin buffer in messages so an editor's diagnostics point at a real
+//! path, and `--ast` dumps the Prism tree of stdin for debugging.
+//!
+//! Exit status: 0 nothing to do; 1 when `--check`, `--diff` or `check`
+//! found work; 2 ([`EXIT_ERROR`]) when a file could not be formatted (a
+//! syntax error, an AST mismatch, an unreadable path, a failed write). A
+//! file that fails is left exactly as it was.
+
+// These docs are read with `--document-private-items`: the map in
+// CLAUDE.md points here for how the formatter works, and most of what it
+// names is private on purpose.
+#![allow(rustdoc::private_intra_doc_links)]
+
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
