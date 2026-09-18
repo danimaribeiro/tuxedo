@@ -49,8 +49,8 @@ fn has_multiline_block(node: &ruby_prism::Node<'_>) -> bool {
 /// are excluded: they render on one line (or via their own Doc wrap) and
 /// must not kick a surrounding call/array off the Doc-wrap path.
 ///
-/// Such a node can't be safely captured with `capture_as_doc` and then
-/// nested inside a `Doc::line()`-driven wrapper: the wrapper only shifts
+/// Such a node can't be safely built as a leaf and then nested inside a
+/// `Doc::line()`-driven wrapper: the wrapper only shifts
 /// the break immediately before the captured text, not the raw newlines
 /// already baked into it, so only the first line would move.
 pub(super) fn manages_own_indentation(node: &ruby_prism::Node<'_>) -> bool {
@@ -235,7 +235,9 @@ pub(super) struct InlineRun {
     leaves: Vec<Doc>,
 }
 
-struct CaptureSnapshot {
+/// Everything a speculative render moves that a later re-`visit` of the
+/// same node would move again.
+struct RenderSnapshot {
     comment_cursor: usize,
     pending_heredocs_len: usize,
     heredoc_end_line: Option<usize>,
@@ -273,13 +275,18 @@ struct Formatter {
     /// blank-line preservation in `fmt_statements_node` see a multi-line
     /// gap where the source had none.
     heredoc_end_line: Option<usize>,
-    /// How many `capture_to_string` frames are active, plus any raised by
-    /// `nested_node_doc`. A `{ }` body or implicit string-concat wrap that
-    /// injects raw newlines while the result is being built as one leaf
-    /// would bake those breaks in, so a surrounding Doc nest (e.g.
-    /// `a || b { ... }`) only shifts the first line. Stay flat while it is
-    /// raised.
-    capture_depth: usize,
+    /// Set while a construct is being built as a leaf that a surrounding
+    /// `Doc` line point will place, so nothing inside it may lay out
+    /// lines of its own. A `{ }` body or an implicit string-concat wrap
+    /// that injected raw newlines in there would bake those breaks in at
+    /// the columns they were built at, and the nest around them (e.g.
+    /// `a || b { ... }`) would then shift only the first line.
+    ///
+    /// Not the same as `forced_flat`, which takes width out of the
+    /// printer's hands: this one is about a construct that decides its
+    /// own shape imperatively and has to be told to pick the one-line
+    /// one.
+    hold_flat: bool,
     /// Set while a construct is being laid out on one physical line
     /// whatever it costs: a `{ }` body nested inside another, or one being
     /// measured for its flat form. A group that broke for width in there
@@ -331,7 +338,7 @@ impl Formatter {
             source: source.to_string(),
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
-            capture_depth: 0,
+            hold_flat: false,
             forced_flat: false,
             clause_closer: None,
         }
@@ -438,7 +445,7 @@ impl Formatter {
     ///
     /// `render` writes where its text will actually sit, so everything it
     /// can look at is what the old string emitter saw: `current_column`
-    /// is the real one, `capture_depth` stays put (so a nested list still
+    /// is the real one, `hold_flat` stays put (so a nested list still
     /// takes its comment branch, and an adjacent-literal run still
     /// wraps), and the bytes are identical. This is how a construct that
     /// still lays its body out imperatively takes part in a `Doc`.
@@ -453,19 +460,12 @@ impl Formatter {
         Doc::text(self.output.split_off(start))
     }
 
-    fn capture_to_string(&mut self, render: impl FnOnce(&mut Self)) -> String {
-        let saved = std::mem::take(&mut self.output);
-        self.capture_depth += 1;
-        render(self);
-        self.capture_depth -= 1;
-        std::mem::replace(&mut self.output, saved)
-    }
-
-    /// Side effects `node_doc` / `capture_as_doc` can take that a
-    /// subsequent re-`visit` would take again -- comments consumed, heredoc
-    /// bodies queued, indent left shifted if a visitor failed to restore it.
-    fn capture_snapshot(&self) -> CaptureSnapshot {
-        CaptureSnapshot {
+    /// Side effects a render takes that a subsequent re-`visit` would take
+    /// again -- comments consumed, heredoc bodies queued, indent left
+    /// shifted if a visitor failed to restore it. Taken before a render
+    /// the caller may decide to throw away, restored when it does.
+    fn render_snapshot(&self) -> RenderSnapshot {
+        RenderSnapshot {
             comment_cursor: self.comment_cursor,
             pending_heredocs_len: self.pending_heredocs.len(),
             heredoc_end_line: self.heredoc_end_line,
@@ -473,7 +473,7 @@ impl Formatter {
         }
     }
 
-    fn restore_capture_snapshot(&mut self, snap: CaptureSnapshot) {
+    fn restore_render_snapshot(&mut self, snap: RenderSnapshot) {
         self.comment_cursor = snap.comment_cursor;
         self.pending_heredocs.truncate(snap.pending_heredocs_len);
         self.heredoc_end_line = snap.heredoc_end_line;
@@ -504,7 +504,7 @@ impl Formatter {
     ) -> Doc {
         if let Some((start, end)) = span
             && !self.single_line
-            && self.capture_depth == 0
+            && !self.hold_flat
             && self.has_pending_comment_in(start, end)
         {
             // The one shape still laid out imperatively: it consumes
@@ -516,10 +516,10 @@ impl Formatter {
                 f.write_commented_bracketed_items(open, items, close, (start, end))
             });
         }
-        let snap = self.capture_snapshot();
+        let snap = self.render_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
-            self.restore_capture_snapshot(snap);
+            self.restore_render_snapshot(snap);
             return self.expanded_bracketed_items_doc(open, items, close);
         }
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
@@ -618,7 +618,7 @@ impl Formatter {
     }
 
     fn flush_comments(&mut self, offset: usize, after_statements: bool, bottom_of_body: bool) {
-        if self.single_line || self.capture_depth > 0 {
+        if self.single_line || self.hold_flat {
             return;
         }
         // A comment the author aligned with the branch keyword that follows
@@ -1030,10 +1030,10 @@ impl Formatter {
     /// argument is still an opaque text leaf that the printer would
     /// measure as one long line.
     fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
-        let snap = self.capture_snapshot();
+        let snap = self.render_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
-            self.restore_capture_snapshot(snap);
+            self.restore_render_snapshot(snap);
             return self.expanded_bare_args_doc(items);
         }
         Doc::text(" ")
@@ -1083,11 +1083,11 @@ impl Formatter {
         );
         let index = self.pending_heredocs.len();
         self.pending_heredocs.push(body);
-        // A marker rather than an offset into `output`: argument lists are
-        // rendered into a detached buffer by `capture_as_doc`, so an
-        // offset taken there points into that temporary and not into the
-        // final output. A marker travels with the text wherever it is
-        // spliced.
+        // A marker rather than an offset into `output`: a speculative
+        // render can be thrown away and the text written again somewhere
+        // else, so an offset taken while it is built points at the wrong
+        // place afterwards. A marker travels with the text wherever it
+        // ends up.
         bytes_doc(opening).append(Doc::text(format!(
             "{HEREDOC_MARK_START}{index}{HEREDOC_MARK_END}"
         )))
@@ -1199,7 +1199,7 @@ impl Formatter {
     /// Whether `node` has to be copied through verbatim because a comment
     /// sits between its parts.
     fn should_write_verbatim(&mut self, node: &ruby_prism::Node<'_>) -> bool {
-        if self.single_line || self.capture_depth > 0 {
+        if self.single_line || self.hold_flat {
             return false;
         }
         let location = node.location();
@@ -1396,22 +1396,22 @@ impl Formatter {
     ///
     /// A child at fixed columns (see [`Doc::fixed_lines`]) cannot go
     /// there: the indent would move the break in front of it and leave the
-    /// newlines inside it where they were. So it is asked for again with
-    /// `capture_depth` raised, which is what holds a `{ }` body flat --
-    /// one line always nests. Asking first rather than raising the depth
-    /// up front is what keeps a child that wraps through the printer (an
+    /// newlines inside it where they were. So it is asked for again under
+    /// `hold_flat`, which is what holds a `{ }` body to one line -- one
+    /// line always nests. Asking first rather than setting the flag up
+    /// front is what keeps a child that wraps through the printer (an
     /// adjacent-literal concatenation's `\` breaks) free to do so: those
     /// line points are the printer's, and they indent like any other.
     fn nested_node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
-        let snap = self.capture_snapshot();
+        let snap = self.render_snapshot();
         let doc = self.node_doc(node);
         if !doc.fixed_lines() {
             return doc;
         }
-        self.restore_capture_snapshot(snap);
-        self.capture_depth += 1;
+        self.restore_render_snapshot(snap);
+        let was_hold_flat = std::mem::replace(&mut self.hold_flat, true);
         let doc = self.node_doc(node);
-        self.capture_depth -= 1;
+        self.hold_flat = was_hold_flat;
         doc
     }
 

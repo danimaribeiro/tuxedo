@@ -164,10 +164,10 @@ impl Formatter {
         // the fallback if a keyword hash is visited directly. With no
         // bracket to break after, the first pair stays on the line the
         // call is already on.
-        let snap = self.capture_snapshot();
+        let snap = self.render_snapshot();
         let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
         if leaves.iter().any(Doc::breaks) {
-            self.restore_capture_snapshot(snap);
+            self.restore_render_snapshot(snap);
             return self.expanded_items_doc(elements, false);
         }
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));

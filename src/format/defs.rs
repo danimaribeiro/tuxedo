@@ -417,7 +417,7 @@ impl Formatter {
     ) {
         let has_comment = self.has_pending_comment_in(opening_end, closing_start)
             && !self.single_line
-            && self.capture_depth == 0;
+            && !self.hold_flat;
         let Some(body) = body else {
             if has_comment {
                 self.output.push('\n');
@@ -431,7 +431,7 @@ impl Formatter {
             return;
         };
 
-        if self.single_line || self.capture_depth > 0 {
+        if self.single_line || self.hold_flat {
             self.output.push(' ');
             let was_single_line = self.single_line;
             let was_forced_flat = self.forced_flat;
@@ -458,25 +458,33 @@ impl Formatter {
             .is_some_and(|s| s.body().iter().count() > 1);
 
         if !multiline_body && !has_comment {
-            let snap = self.capture_snapshot();
-            let was_single_line = self.single_line;
-            self.single_line = true;
-            let captured = self.capture_to_string(|f| {
-                f.inline = true;
-                f.visit(&body);
-            });
+            // Written out where it would really go and kept only if it
+            // fits: `current_column` after the fact *is* the width
+            // measurement, so there is nothing to add up by hand. Held
+            // flat while it is written, because a body that broke for
+            // width here would report itself unfit by the newline it put
+            // in rather than by the column it reached -- the same answer,
+            // but only for a body the printer happened to give a line
+            // point to.
+            let snap = self.render_snapshot();
+            let start = self.output.len();
+            let was_single_line = std::mem::replace(&mut self.single_line, true);
+            let was_forced_flat = std::mem::replace(&mut self.forced_flat, true);
+            self.output.push(' ');
+            self.inline = true;
+            self.visit(&body);
+            self.output.push_str(" }");
             self.single_line = was_single_line;
-            let flat_width =
-                " ".len() + unicode_width::UnicodeWidthStr::width(captured.as_str()) + " }".len();
-            if !captured.contains('\n')
-                && self.current_column().saturating_add(flat_width) <= self.line_length
-            {
-                self.output.push(' ');
-                self.output.push_str(&captured);
-                self.output.push_str(" }");
+            self.forced_flat = was_forced_flat;
+
+            // A hardline in the body (a `do...end` call, an expanded
+            // collection) survives `forced_flat`, and it is what says the
+            // flat shape does not exist at all.
+            if !self.output[start..].contains('\n') && self.current_column() <= self.line_length {
                 return;
             }
-            self.restore_capture_snapshot(snap);
+            self.output.truncate(start);
+            self.restore_render_snapshot(snap);
         }
         self.output.push('\n');
         self.emit_trailing_comment_if_same_line(self.line_of(opening_end));

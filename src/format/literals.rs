@@ -216,17 +216,17 @@ impl Formatter {
     /// in the broken shape. Parts that fit stay on one line with a single
     /// space. A `{ }` body that's still being forced flat (`single_line`)
     /// never introduces those breaks, and neither does a single part,
-    /// which has no separator to break at, nor a run being captured as
-    /// `Doc::text` for an enclosing group (`capture_depth`), where a raw
-    /// newline would be baked into the leaf and the group's nest could
-    /// only ever shift its first line.
+    /// which has no separator to break at, nor a run being built as one
+    /// leaf for an enclosing group (`hold_flat`), where a raw newline
+    /// would be baked into the leaf and the group's nest could only ever
+    /// shift its first line.
     fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
         let leaves: Vec<Doc> = parts
             .iter()
             .map(|part| bytes_doc(part.location().as_slice()))
             .collect();
 
-        if self.single_line || self.capture_depth > 0 || leaves.len() <= 1 {
+        if self.single_line || self.hold_flat || leaves.len() <= 1 {
             return Doc::join(leaves, Doc::text(" "));
         }
 
