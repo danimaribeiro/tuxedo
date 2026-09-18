@@ -92,7 +92,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
         if !single_line {
             // A comment above `elsif`/`else`/`end` belongs to the branch
@@ -154,7 +154,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
 
         if single_line {
@@ -211,7 +211,7 @@ impl Formatter {
         }
 
         if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
+            self.write_statements_node(&statements);
         }
 
         // Where each section of the body stops: a comment above `rescue`/
@@ -273,7 +273,7 @@ impl Formatter {
                     self.indent += 1;
                 }
                 if let Some(statements) = else_clause.statements() {
-                    self.fmt_statements_node(&statements);
+                    self.write_statements_node(&statements);
                 }
                 if !single_line {
                     if let Some(closer) = ensure_offset {
@@ -379,7 +379,7 @@ impl Formatter {
         }
 
         if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
+            self.write_statements_node(&statements);
         }
 
         if !single_line {
@@ -418,7 +418,7 @@ impl Formatter {
         }
 
         if let Some(statements) = node.statements() {
-            self.fmt_statements_node(&statements);
+            self.write_statements_node(&statements);
         }
 
         if !single_line {
@@ -478,7 +478,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
         if !single_line {
             let closer = node
@@ -561,7 +561,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
 
         if single_line {
@@ -627,7 +627,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
 
         if single_line {
@@ -663,7 +663,7 @@ impl Formatter {
 
         self.indent += 1;
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
         self.flush_comments_before(
             node.end_keyword_loc().start_offset(),
@@ -782,7 +782,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
 
         if single_line {
@@ -867,7 +867,7 @@ impl Formatter {
         }
 
         if let Some(body) = node.statements() {
-            self.fmt_statements_node(&body);
+            self.write_statements_node(&body);
         }
 
         if single_line {
@@ -918,8 +918,8 @@ impl Formatter {
             self.write_ternary_branch_flat(&false_branch);
         } else {
             let predicate_doc = self.node_doc(&predicate);
-            let true_doc = self.capture_ternary_branch_as_doc(&true_branch);
-            let false_doc = self.capture_ternary_branch_as_doc(&false_branch);
+            let true_doc = self.flat_statements_doc(&true_branch);
+            let false_doc = self.flat_statements_doc(&false_branch);
             let nest_width = self.indent_str.len();
             let doc = predicate_doc.append(Doc::text(" ?")).append(
                 Doc::line()
@@ -947,12 +947,6 @@ impl Formatter {
             self.inline = true;
             self.visit(stmt);
         }
-    }
-
-    fn capture_ternary_branch_as_doc(&mut self, stmts: &[ruby_prism::Node<'_>]) -> Doc {
-        self.capture_as_doc(|f| {
-            f.write_ternary_branch_flat(stmts);
-        })
     }
 
     pub(super) fn fmt_and_node(&mut self, node: &ruby_prism::AndNode<'_>) -> Doc {

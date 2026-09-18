@@ -5,13 +5,12 @@ use super::doc::Doc;
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
         let inner = match node.body() {
-            Some(body) => self.capture_as_doc(|f| {
-                let was_single_line = f.single_line;
-                f.single_line = true;
-                f.inline = true;
-                f.visit(&body);
-                f.single_line = was_single_line;
-            }),
+            Some(body) => {
+                let was_single_line = std::mem::replace(&mut self.single_line, true);
+                let doc = self.node_doc(&body);
+                self.single_line = was_single_line;
+                doc
+            }
             None => Doc::nil(),
         };
         Doc::text("(").append(inner).append(Doc::text(")"))
@@ -274,7 +273,7 @@ impl Formatter {
                     let was_single_line = self.single_line;
                     self.single_line = true;
                     self.inline = true;
-                    self.fmt_statements_node(&statements);
+                    self.write_statements_node(&statements);
                     self.single_line = was_single_line;
                 }
                 self.output.push('}');

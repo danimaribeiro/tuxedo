@@ -170,7 +170,7 @@ impl Formatter {
             self.output.push_str(keyword);
             self.output.push_str(" { ");
             let single_line = std::mem::replace(&mut self.single_line, true);
-            self.fmt_statements_node(&statements);
+            self.write_statements_node(&statements);
             self.single_line = single_line;
             self.output.push_str(" }");
             return;
@@ -180,7 +180,7 @@ impl Formatter {
         self.output.push_str(keyword);
         self.output.push_str(" {\n");
         self.indent += 1;
-        self.fmt_statements_node(&statements);
+        self.write_statements_node(&statements);
         self.indent -= 1;
         self.write_indent();
         self.output.push_str("}\n");

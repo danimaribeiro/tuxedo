@@ -146,18 +146,53 @@ impl Formatter {
         false
     }
 
-    pub(super) fn fmt_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
+    /// A body, in whichever of its two shapes is in force: `; `-joined on
+    /// one line while `single_line` is set (a `( )` body, a `{ }` block, a
+    /// ternary branch), one statement per line otherwise.
+    ///
+    /// The two shapes differ in more than their separator. The flat one
+    /// composes -- its statements keep their own line points, so whatever
+    /// group ends up holding it decides where they break. The block one
+    /// does not: its leaves are rendered at absolute columns and come back
+    /// as one opaque [`Doc::text`], terminating newline included, on which
+    /// an enclosing [`Doc::indent`] is a no-op. That is sound for a body
+    /// specifically, whose indent is fixed by nesting depth rather than by
+    /// any group's decision to break -- see `statements_doc`.
+    pub(super) fn fmt_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) -> Doc {
         if self.single_line {
-            for (i, stmt) in node.body().iter().enumerate() {
-                if i > 0 {
-                    self.output.push_str("; ");
-                }
-                self.inline = true;
-                self.visit(&stmt);
-            }
-            return;
+            let stmts: Vec<_> = node.body().iter().collect();
+            return self.flat_statements_doc(&stmts);
         }
+        Doc::text(self.block_statements_text(node))
+    }
 
+    /// [`Formatter::fmt_statements_node`] straight into `output`, for the
+    /// constructs that still write their body imperatively. The body
+    /// carries its own leading indent, so the render pads out to the
+    /// column and nothing else -- the text arrives complete.
+    pub(super) fn write_statements_node(&mut self, node: &ruby_prism::StatementsNode<'_>) {
+        let doc = self.fmt_statements_node(node);
+        let rendered = self.render_doc_to_string(doc);
+        self.output.push_str(&rendered);
+    }
+
+    /// Statements on one line, `; ` between them: a parenthesized body, a
+    /// `{ }` block body, a ternary branch.
+    ///
+    /// Composed rather than rendered. Each statement keeps the line points
+    /// it built, so the group that ends up holding them measures them
+    /// against the column they will really sit at; rendering here would
+    /// fix that column now, and for a body an enclosing group has not
+    /// placed yet there is no such column to fix it to.
+    pub(super) fn flat_statements_doc(&mut self, stmts: &[ruby_prism::Node<'_>]) -> Doc {
+        let leaves: Vec<Doc> = stmts.iter().map(|stmt| self.node_doc(stmt)).collect();
+        Doc::join(leaves, Doc::text("; "))
+    }
+
+    /// The block form: one statement per line, rendered where it will sit
+    /// and handed back as finished text with its terminating newline on
+    /// it.
+    fn block_statements_text(&mut self, node: &ruby_prism::StatementsNode<'_>) -> String {
         let doc = self.statements_doc(node);
         // The leaves already carry their own indent (see `statement_doc`),
         // so this renders with no nesting of its own -- every `hardline` in
@@ -170,10 +205,9 @@ impl Formatter {
         // caller afterwards; a newline here would open the file with a
         // blank line.
         if rendered.is_empty() {
-            return;
+            return rendered;
         }
-        self.output.push_str(&rendered);
-        self.output.push('\n');
+        rendered + "\n"
     }
 
     /// The body as a `Doc`: one leaf per own-line comment and per

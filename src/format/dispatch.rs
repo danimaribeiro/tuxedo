@@ -17,9 +17,11 @@
 //!   back unrendered so an enclosing group can measure and lay it out.
 //! - `self_indented` -- also returns a [`Doc`], but owns the indent it
 //!   starts at, so `visit` must not write one first. These are the
-//!   constructs with a body: most write their own (an implicit `begin`
-//!   starts with a body statement that indents itself), and a block
-//!   writes none at all because it continues the line its call ends on.
+//!   constructs with a body, plus the body itself: a `StatementsNode`
+//!   indents every statement in it, most keyword constructs write their
+//!   own (an implicit `begin` starts with a body statement that indents
+//!   itself), and a block writes none at all because it continues the
+//!   line its call ends on.
 //! - `formatted` -- writes to `self.output`. To compose one of these into
 //!   a `Doc`, `node_doc` has to render it first and wrap the string as one
 //!   opaque leaf, which is why nested collections get rendered more than
@@ -79,7 +81,7 @@ macro_rules! dispatch {
                     )*
                     ruby_prism::Node::ProgramNode { .. } => {
                         if let Some(program) = node.as_program_node() {
-                            self.fmt_statements_node(&program.statements());
+                            self.write_statements_node(&program.statements());
                         }
                     }
                     // `regex =~ str` where `regex` has named captures: Ruby defines
@@ -268,9 +270,9 @@ dispatch! {
         ClassNode => as_class_node => fmt_class_node,
         ModuleNode => as_module_node => fmt_module_node,
         SingletonClassNode => as_singleton_class_node => fmt_singleton_class_node,
+        StatementsNode => as_statements_node => fmt_statements_node,
     }
     formatted {
-        StatementsNode => as_statements_node => fmt_statements_node,
         PreExecutionNode => as_pre_execution_node => fmt_pre_execution_node,
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }
