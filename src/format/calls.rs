@@ -385,8 +385,9 @@ impl Formatter {
         Self::operator_operands(node, name_str, &mut operands);
         operands.push(arg);
 
+        let condition = std::mem::take(&mut self.condition_spine);
         let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_doc(leaves, name_str)
+        self.infix_doc(leaves, name_str, condition)
     }
 
     /// The operands of `node`'s receiver spine, in source order, as long as

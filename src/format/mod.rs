@@ -235,6 +235,12 @@ struct Formatter {
     /// on -- so `foo { bar } # why` had the body's only statement claim a
     /// comment written about the whole call.
     comment_limit: Option<usize>,
+    /// Set while a block condition is being built, and taken by the first
+    /// infix spine that comes of it -- the one whose line points are the
+    /// condition's own. A spine nested inside a bracketed construct in the
+    /// condition is not it: an argument list and a block body carry their
+    /// own indentation and must not be shifted.
+    condition_spine: bool,
     /// Where the `when`/`in` clause about to be rendered stops: the start
     /// of the next clause, the `else`, or the `end`. Set by the enclosing
     /// `case` right before it visits each clause, which has no other way
@@ -270,6 +276,7 @@ impl Formatter {
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
             comment_limit: None,
+            condition_spine: false,
             clause_closer: None,
         }
     }
@@ -1174,9 +1181,9 @@ impl Formatter {
     /// The first operand is left outside the `indent`: it starts the line
     /// at the statement's own indent, so line points of its own belong at
     /// that indent too, not one level in from it.
-    fn infix_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
+    fn infix_doc(&self, leaves: Vec<Doc>, op: &str, condition: bool) -> Doc {
         if !leaves.iter().any(Doc::breaks) {
-            return self.chain_doc(leaves, op);
+            return self.chain_doc(leaves, op, condition);
         }
 
         // An operand that is already multi-line ends the group it is in.
@@ -1201,7 +1208,7 @@ impl Formatter {
         for leaf in leaves {
             if leaf.breaks() {
                 if !run.is_empty() {
-                    parts.push(self.chain_doc(std::mem::take(&mut run), op));
+                    parts.push(self.chain_doc(std::mem::take(&mut run), op, condition));
                 }
                 parts.push(leaf);
             } else {
@@ -1209,7 +1216,7 @@ impl Formatter {
             }
         }
         if !run.is_empty() {
-            parts.push(self.chain_doc(run, op));
+            parts.push(self.chain_doc(run, op, condition));
         }
 
         // Nothing joins the segments but the operator: a line point here
@@ -1222,13 +1229,20 @@ impl Formatter {
     }
 
     /// The whole spine as one group: flat, or one operand per line.
-    fn chain_doc(&self, leaves: Vec<Doc>, op: &str) -> Doc {
+    ///
+    /// A spine that is a block condition takes a second level, so that a
+    /// condition which breaks is not drawn at the same indent as the body
+    /// underneath it -- see `condition_doc`.
+    fn chain_doc(&self, leaves: Vec<Doc>, op: &str, condition: bool) -> Doc {
+        let levels = if condition { 2 } else { 1 };
         let mut leaves = leaves.into_iter();
         let first = leaves.next().unwrap_or_else(Doc::nil);
         let rest = Doc::concat(
             leaves.map(|leaf| Doc::text(format!(" {op}")).append(Doc::line()).append(leaf)),
         );
-        first.append(rest.indent(self.indent_str.len())).group()
+        first
+            .append(rest.indent(levels * self.indent_str.len()))
+            .group()
     }
 }
 

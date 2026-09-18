@@ -52,7 +52,7 @@ impl Formatter {
         }
 
         let header = Doc::text(if is_elsif { "elsif " } else { "if " })
-            .append(self.node_doc(&node.predicate()));
+            .append(self.condition_doc(&node.predicate()));
         self.branching_doc(
             header,
             &node.predicate(),
@@ -66,7 +66,7 @@ impl Formatter {
         if node.end_keyword_loc().is_none() {
             return self.modifier_doc(node.statements(), " unless ", &node.predicate());
         }
-        let header = Doc::text("unless ").append(self.node_doc(&node.predicate()));
+        let header = Doc::text("unless ").append(self.condition_doc(&node.predicate()));
         self.branching_doc(
             header,
             &node.predicate(),
@@ -74,6 +74,34 @@ impl Formatter {
             node.else_clause().map(|e| e.as_node()),
             node.end_keyword_loc().map(|e| e.start_offset()),
         )
+    }
+
+    /// The condition of a block `if`/`elsif`/`unless`/`while`/`until`, one
+    /// level deeper than the body it sits above.
+    ///
+    /// A condition that breaks and a body are otherwise drawn at the same
+    /// indent -- both one level in from the statement -- so a reader
+    /// cannot tell where the condition ends and the body starts:
+    ///
+    /// ```ruby
+    /// Correctable = if defined?(SpellChecker) &&
+    ///   defined?(Correctable)
+    ///   Module.new do
+    /// ```
+    ///
+    /// `defined?(Correctable)` is still the condition; `Module.new` is the
+    /// body. The extra level is what separates them, and it is what
+    /// `Layout/MultilineOperationIndentation: indented` -- set in
+    /// `scripts/format-verify.rubocop.yml` -- holds Tuxedo to. A condition
+    /// with no line point in it is unaffected: an indent only moves lines
+    /// that break.
+    fn condition_doc(&mut self, predicate: &ruby_prism::Node<'_>) -> Doc {
+        self.condition_spine = true;
+        let doc = self.node_doc(predicate);
+        // A condition with no spine of its own leaves it set; it must not
+        // reach the next one built anywhere else.
+        self.condition_spine = false;
+        doc
     }
 
     /// The shared body of a block `if`/`elsif`/`unless`: header, body, and
@@ -401,7 +429,7 @@ impl Formatter {
         predicate: &ruby_prism::Node<'_>,
         closing: Option<ruby_prism::Location<'_>>,
     ) -> Doc {
-        let header = Doc::text(keyword.to_string()).append(self.node_doc(predicate));
+        let header = Doc::text(keyword.to_string()).append(self.condition_doc(predicate));
         let body = statements.map(|s| s.as_node());
         if self.single_line {
             return header
@@ -628,12 +656,13 @@ impl Formatter {
         // `a && b && c` is nested `AndNode`s, and one group per node would
         // bin-pack. Flattening the same-operator spine into one group
         // restores the all-or-nothing rule.
+        let condition = std::mem::take(&mut self.condition_spine);
         let mut operands = Vec::new();
         self.bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
         let leaves: Vec<Doc> = operands.iter().map(|o| self.node_doc(o)).collect();
-        self.infix_doc(leaves, op_str)
+        self.infix_doc(leaves, op_str, condition)
     }
 
     /// Collects the operands of a run of the same boolean operator, so
