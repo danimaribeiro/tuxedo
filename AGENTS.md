@@ -310,9 +310,10 @@ its removal plan to the issue that owns it.
   `Diagnostic`s (rule name, message, line/col).
 - `src/config.rs` — config loading. Looks for `.tuxedo.toml`, walking up from the current
   directory if no explicit `--config` path is given; falls back to `Config::default()`.
-  Config controls `line_length`, `indent_size`, `quote_style` (format) and
-  `enabled`/`disabled` lint rules — deserialized with `deny_unknown_fields`, so an unknown
-  config key is a hard error.
+  Config controls `line_length` and `indent_size` (format) and `enabled`/`disabled` lint
+  rules — deserialized with `deny_unknown_fields`, so an unknown config key is a hard
+  error. Every key it accepts is one the formatter reads; a knob nothing consults is a
+  promise to the user that nothing keeps.
 
 ### Ruby gem packaging (`ruby/`)
 

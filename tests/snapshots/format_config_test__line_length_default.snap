@@ -1,0 +1,5 @@
+---
+source: tests/format_config_test.rs
+expression: output
+---
+ROLES = ["administrator", "moderator", "contributor"]

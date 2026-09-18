@@ -17,7 +17,6 @@ pub struct Config {
 pub struct FormatConfig {
     pub line_length: usize,
     pub indent_size: usize,
-    pub quote_style: QuoteStyle,
 }
 
 impl Default for FormatConfig {
@@ -25,7 +24,6 @@ impl Default for FormatConfig {
         Self {
             line_length: 120,
             indent_size: 2,
-            quote_style: QuoteStyle::Single,
         }
     }
 }
@@ -38,14 +36,6 @@ pub struct LintConfig {
 
     #[serde(default)]
     pub disabled: Vec<String>,
-}
-
-#[derive(Debug, Default, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum QuoteStyle {
-    #[default]
-    Single,
-    Double,
 }
 
 impl Config {
