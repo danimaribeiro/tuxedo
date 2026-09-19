@@ -174,11 +174,27 @@ pub(super) fn first_difference(before: &str, after: &str) -> String {
 
 fn normalize(debug: &str) -> String {
     const OPTIONAL_LOCATION: &str = "Some(\"";
+    const STRING_NODE: &str = "StringNode(";
     let bytes = debug.as_bytes();
     let mut out = String::with_capacity(debug.len());
     let mut i = 0;
     while i < bytes.len() {
-        if debug[i..].starts_with(OPTIONAL_LOCATION) {
+        if debug[i..].starts_with(STRING_NODE) && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
+        {
+            // The source text of a string's content is not compared: the
+            // unescaped bytes that follow it are the value, and the text
+            // differs by layout alone in a `<<~` heredoc, whose body moves
+            // with the code around it while Ruby strips the margin.
+            out.push_str(STRING_NODE);
+            i += STRING_NODE.len();
+            i = copy_location(debug, i, &mut out);
+            out.push_str(", ");
+            i = (i + 2).min(bytes.len());
+            if bytes.get(i) == Some(&b'"') {
+                i = (string_literal_end(bytes, i + 1) + 1).min(bytes.len());
+                out.push_str("\"\"");
+            }
+        } else if debug[i..].starts_with(OPTIONAL_LOCATION) {
             let text_start = i + OPTIONAL_LOCATION.len();
             let text_end = string_literal_end(bytes, text_start);
             // `Some("` + text + `")`
@@ -209,6 +225,17 @@ fn normalize(debug: &str) -> String {
         }
     }
     out
+}
+
+/// Copies the optional location at `i` (`None` or `Some("text")`) to `out`
+/// as `None`, returning the index after it.
+fn copy_location(debug: &str, i: usize, out: &mut String) -> usize {
+    out.push_str("None");
+    if debug[i..].starts_with("Some(\"") {
+        (string_literal_end(debug.as_bytes(), i + 6) + 2).min(debug.len())
+    } else {
+        (i + 4).min(debug.len())
+    }
 }
 
 /// Index of the closing `"` of a `Debug`-escaped string literal whose

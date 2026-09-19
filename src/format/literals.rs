@@ -67,8 +67,9 @@ impl Formatter {
                 .as_ref()
                 .map_or(node.content_loc().end_offset(), |c| c.end_offset());
             let body = self.heredoc_body(body_start, body_end);
+            let opening_start = opening.start_offset();
             let opening = opening.as_slice().to_vec();
-            return self.heredoc_doc(&opening, body, body_end);
+            return self.heredoc_doc(&opening, opening_start, body, body_end);
         }
 
         if node.opening_loc().is_some() {
@@ -191,8 +192,9 @@ impl Formatter {
                 (Some(start), Some(closing)) => self.heredoc_body(start, closing.end_offset()),
                 _ => String::new(),
             };
+            let opening_start = opening_loc.start_offset();
             let opening_bytes = opening_loc.as_slice().to_vec();
-            return self.heredoc_doc(&opening_bytes, body, body_end);
+            return self.heredoc_doc(&opening_bytes, opening_start, body, body_end);
         }
 
         // No delimiters of its own means this isn't one literal at all —
