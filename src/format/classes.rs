@@ -1,5 +1,6 @@
 use super::Formatter;
 use super::doc::Doc;
+use crate::config::AccessModifierStyle;
 
 impl Formatter {
     pub(super) fn fmt_class_node(&mut self, node: &ruby_prism::ClassNode<'_>) -> Doc {
@@ -10,23 +11,13 @@ impl Formatter {
                 .append(self.node_doc(&superclass));
         }
         let header_line = self.line_of(node.location().start_offset());
-        self.keyword_body_doc(
-            header,
-            header_line,
-            node.body(),
-            Some(node.end_keyword_loc().start_offset()),
-        )
+        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
     }
 
     pub(super) fn fmt_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) -> Doc {
         let header = Doc::text("module ").append(self.node_doc(&node.constant_path()));
         let header_line = self.line_of(node.constant_path().location().end_offset());
-        self.keyword_body_doc(
-            header,
-            header_line,
-            node.body(),
-            Some(node.end_keyword_loc().start_offset()),
-        )
+        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
     }
 
     pub(super) fn fmt_singleton_class_node(
@@ -35,12 +26,29 @@ impl Formatter {
     ) -> Doc {
         let header = Doc::text("class << ").append(self.node_doc(&node.expression()));
         let header_line = self.line_of(node.location().start_offset());
-        self.keyword_body_doc(
-            header,
-            header_line,
-            node.body(),
-            Some(node.end_keyword_loc().start_offset()),
-        )
+        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
+    }
+
+    /// A class, module or `class <<` body: `keyword_body_doc`, with the
+    /// body's statement list told it is one, since that is the list whose
+    /// access modifiers `access_modifier_style` places.
+    fn class_body_doc(
+        &mut self,
+        header: Doc,
+        header_line: usize,
+        body: Option<ruby_prism::Node<'_>>,
+        end: ruby_prism::Location<'_>,
+    ) -> Doc {
+        let was_body = self.class_body;
+        if self.access_modifier_style == AccessModifierStyle::Outdent {
+            self.class_body = body
+                .as_ref()
+                .and_then(|b| b.as_statements_node())
+                .map(|s| s.location().start_offset());
+        }
+        let doc = self.keyword_body_doc(header, header_line, body, Some(end.start_offset()));
+        self.class_body = was_body;
+        doc
     }
 
     pub(super) fn fmt_constant_path_node(

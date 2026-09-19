@@ -21,10 +21,14 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, default)]
 pub struct FormatConfig {
     pub line_length: usize,
     pub indent_size: usize,
+    /// Whether a hash literal has a space inside its braces.
+    pub hash_brace_space: HashBraceSpace,
+    /// Where `private`, `protected` and `public` sit in a class body.
+    pub access_modifier_style: AccessModifierStyle,
 }
 
 impl Default for FormatConfig {
@@ -32,8 +36,30 @@ impl Default for FormatConfig {
         Self {
             line_length: 120,
             indent_size: 2,
+            hash_brace_space: HashBraceSpace::default(),
+            access_modifier_style: AccessModifierStyle::default(),
         }
     }
+}
+
+/// `{ key: value }` (`space`) or `{key: value}` (`no_space`). Block braces
+/// are a separate construct and keep their spaces either way.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HashBraceSpace {
+    #[default]
+    Space,
+    NoSpace,
+}
+
+/// `indent` puts an access modifier at the body's indent, `outdent` one
+/// level out, at the indent of the `class` keyword.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccessModifierStyle {
+    #[default]
+    Indent,
+    Outdent,
 }
 
 #[derive(Debug, Default, Deserialize)]

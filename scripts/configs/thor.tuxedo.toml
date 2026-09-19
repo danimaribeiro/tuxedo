@@ -1,0 +1,5 @@
+# Thor's own .rubocop.yml picks these two styles; lint-baseline.sh formats its
+# copy with them so the project-cfg column measures what the options can fix.
+[format]
+hash_brace_space = "no_space"
+access_modifier_style = "outdent"

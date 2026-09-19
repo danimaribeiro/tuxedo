@@ -87,7 +87,7 @@
 // names is private on purpose.
 #![allow(rustdoc::private_intra_doc_links)]
 
-use crate::config::FormatConfig;
+use crate::config::{AccessModifierStyle, FormatConfig, HashBraceSpace};
 use doc::Doc;
 mod assignment;
 mod calls;
@@ -294,6 +294,15 @@ struct Formatter {
     single_line: bool,
     indent_str: String,
     line_length: usize,
+    hash_brace_space: HashBraceSpace,
+    access_modifier_style: AccessModifierStyle,
+    /// The start of the statement list that is the body of the class,
+    /// module or `class <<` being laid out, so that list (and not one
+    /// nested in it) places its access modifiers by `access_modifier_style`.
+    class_body: Option<usize>,
+    /// Set by a statement list that has drawn the break in front of its
+    /// first item itself; see `clause_body_doc`.
+    body_owns_first_break: bool,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     line_starts: Vec<usize>,
@@ -420,6 +429,10 @@ impl Formatter {
             single_line: false,
             indent_str: " ".repeat(config.indent_size),
             line_length: config.line_length,
+            hash_brace_space: config.hash_brace_space,
+            access_modifier_style: config.access_modifier_style,
+            class_body: None,
+            body_owns_first_break: false,
             comments,
             comment_cursor: 0,
             line_starts: line_starts(source),
@@ -765,7 +778,15 @@ impl Formatter {
         self.indent += 1;
         let mut inner = Doc::nil();
         if let Some(body) = body {
-            inner = inner.append(Doc::hardline()).append(self.node_doc(&body));
+            let body_doc = self.node_doc(&body);
+            // A statement list that opens with an outdented access modifier
+            // draws the break before it, under its own dedent: the printer
+            // takes a line's indent from what follows the break.
+            if std::mem::take(&mut self.body_owns_first_break) {
+                inner = inner.append(body_doc);
+            } else {
+                inner = inner.append(Doc::hardline()).append(body_doc);
+            }
         }
         if let Some(offset) = closer
             && let Some(comments) = self.comments_before_doc(offset, has_body)

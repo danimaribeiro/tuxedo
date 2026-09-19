@@ -85,7 +85,14 @@ find "$BASE/tuxedo" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
   xargs -0 -r -P "$(nproc)" -I{} \
     sh -c 'ruby -c "$1" >/dev/null 2>&1 || printf "%s\n" "${1#"$2"/}"' _ {} "$BASE/tuxedo" \
     > "$BASE/tuxedo/.ignore"
-"$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null
+# A project that picked non-default styles gets them from
+# scripts/configs/<project>.tuxedo.toml, so the project-cfg column below
+# measures what tuxedo can do with the options it has.
+CONFIG_ARGS=()
+if [ -f "$ROOT/scripts/configs/$PROJECT.tuxedo.toml" ]; then
+  CONFIG_ARGS=(--config "$ROOT/scripts/configs/$PROJECT.tuxedo.toml")
+fi
+"$TUXEDO_BIN" format --quiet "${CONFIG_ARGS[@]}" "$BASE/tuxedo" >/dev/null
 rm -f "$BASE/tuxedo/.ignore"
 
 # Parses `rubocop --format offenses` output into "<count>\t<CopName>" lines,
@@ -118,8 +125,10 @@ if [ -f "$SRC/.rubocop.yml" ]; then
   echo "Running rubocop with the project's own .rubocop.yml on the tuxedo-formatted copy..." >&2
   BUNDLE_GEMFILE=/dev/null rubocop --no-color --parallel --format offenses "$BASE/tuxedo" \
     >"$PROJECT_TSV.raw" 2>"$PROJECT_CFG_ERR" || true
-  if grep -qE '^ *[0-9]+ +[A-Za-z]+/[A-Za-z0-9]+' "$PROJECT_TSV.raw"; then
-    grep -E '^ *[0-9]+ +[A-Za-z]+/[A-Za-z0-9]+' "$PROJECT_TSV.raw" \
+  # The run worked if it listed a cop or, for a project with no offenses at
+  # all, printed its `0  Total` line.
+  if grep -qE '^ *[0-9]+ +([A-Za-z]+/[A-Za-z0-9]+|Total )' "$PROJECT_TSV.raw"; then
+    { grep -E '^ *[0-9]+ +[A-Za-z]+/[A-Za-z0-9]+' "$PROJECT_TSV.raw" || true; } \
       | sed -E 's/^ *([0-9]+) +([A-Za-z]+\/[A-Za-z0-9]+).*/\1\t\2/' >"$PROJECT_TSV"
   elif [ -s "$PROJECT_CFG_ERR" ]; then
     project_cfg_available=0
