@@ -234,14 +234,14 @@ impl Formatter {
         self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
     }
 
-    /// Adjacent string literals (`"foo" "bar"`). A newline between parts
-    /// without a trailing `\` is a new statement, so overflow wraps with
-    /// `\` and the continuation at one indent — a `group` whose separator
-    /// is a `line` preceded by an `if_break` that contributes the `\` only
-    /// in the broken shape. Parts that fit stay on one line with a single
-    /// space. A run being held to one line (`single_line`) never
-    /// introduces those breaks, and neither does a single part, which has
-    /// no separator to break at.
+    /// Adjacent string literals (`"foo" "bar"`), one part per line with a
+    /// trailing `\` and the continuation at one indent, however short the
+    /// parts are. On one line the construct reads as a missing comma, so
+    /// the break is the author's statement that it is deliberate. A newline
+    /// between parts without the `\` is a new statement, hence the
+    /// backslash. A run being held to one line (`single_line`) has no line
+    /// to break onto and keeps the parts joined by a space, and a single
+    /// part has no separator at all.
     fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
         let leaves: Vec<Doc> = parts
             .iter()
@@ -255,10 +255,8 @@ impl Formatter {
             return Doc::join(leaves, Doc::text(" "));
         }
 
-        let separator = Doc::if_break(Doc::text(" \\"), Doc::nil()).append(Doc::line());
-        Doc::join(leaves, separator)
-            .indent(self.indent_str.len())
-            .group()
+        let separator = Doc::text(" \\").append(Doc::hardline());
+        Doc::join(leaves, separator).indent(self.indent_str.len())
     }
 
     /// An interpolated literal (`"a#{b}c"`, `:"a#{b}"`, `/a#{b}/`,

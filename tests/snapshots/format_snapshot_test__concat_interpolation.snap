@@ -3,5 +3,8 @@ source: tests/format_snapshot_test.rs
 assertion_line: 58
 expression: output
 ---
-name = "#{config.table_name_prefix}" "#{fixture_set_name.tr('/', '_')}"
-plain = "a" "b#{x}" 'c'
+name = "#{config.table_name_prefix}" \
+  "#{fixture_set_name.tr('/', '_')}"
+plain = "a" \
+  "b#{x}" \
+  'c'
