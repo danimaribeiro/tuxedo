@@ -326,6 +326,11 @@ struct Formatter {
     /// `case` right before it visits each clause, which has no other way
     /// to learn it; taken (and so cleared) by the clause.
     clause_closer: Option<usize>,
+    /// Start of a bare keyword hash that is an element of the array being
+    /// built. Its pairs are elements of that array, so when it expands each
+    /// sits at the element indent, where any other bare keyword hash
+    /// indents its continuation pairs from the line it began on.
+    array_keyword_hash: Option<usize>,
 }
 
 /// A heredoc body waiting to be spliced in.
@@ -408,6 +413,7 @@ impl Formatter {
             source: source.to_string(),
             pending_heredocs: Vec::new(),
             heredoc_end_line: None,
+            array_keyword_hash: None,
             comment_limit: None,
             condition_spine: false,
             clause_closer: None,
