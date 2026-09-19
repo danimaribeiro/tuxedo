@@ -842,8 +842,21 @@ impl Formatter {
         (opening_end, closing_start): (usize, usize),
     ) -> Doc {
         let nest_width = self.indent_str.len();
-        // `foo( # why`: nothing to attach it to but the list itself.
-        let opening_comment = self.trailing_comment_doc(self.line_of(opening_end));
+        // `foo( # why`: nothing to attach it to but the list itself. A
+        // comment further along that line, after the first item
+        // (`[:a, # about a`), is that item's.
+        let first_start = items
+            .first()
+            .map_or(closing_start, |i| i.location().start_offset());
+        let opening_comment = if self
+            .comments
+            .get(self.comment_cursor)
+            .is_some_and(|c| c.start < first_start)
+        {
+            self.trailing_comment_doc(self.line_of(opening_end))
+        } else {
+            None
+        };
 
         self.indent += 1;
         let mut body = Doc::nil();
@@ -883,6 +896,48 @@ impl Formatter {
             .append(body.indent(nest_width))
             .append(Doc::hardline())
             .append(Doc::text(close))
+    }
+
+    /// A bare command argument list with a comment between its arguments:
+    /// no flat form, so the expanded shape, with each comment kept next to
+    /// the argument it was written against -- above it on its own line, or
+    /// after it on the line it ends.
+    fn commented_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+        self.indent += 1;
+        let mut first = Doc::nil();
+        let mut rest = Doc::nil();
+        let last = items.len().saturating_sub(1);
+        for (i, item) in items.iter().enumerate() {
+            let mut piece = Doc::nil();
+            if i > 0 {
+                if let Some(leading) =
+                    self.leading_comments_doc(item.location().start_offset(), true)
+                {
+                    piece = piece.append(leading);
+                }
+                piece = piece.append(Doc::hardline());
+            }
+            piece = piece.append(self.node_doc(item));
+            if i != last {
+                piece = piece.append(Doc::text(","));
+            }
+            let item_end_line = self.line_of(item.location().end_offset().saturating_sub(1));
+            if let Some(trailing) = self.trailing_comment_doc(item_end_line) {
+                piece = piece.append(trailing);
+            }
+            if i == 0 {
+                first = piece;
+            } else {
+                rest = rest.append(piece);
+            }
+        }
+        self.indent -= 1;
+        // The first argument continues the call line and stays outside the
+        // indent, so a collection of its own that wraps keeps the
+        // statement's indent.
+        Doc::text(" ")
+            .append(first)
+            .append(rest.indent(self.indent_str.len()))
     }
 
     /// `items` one per line, comma-separated.
@@ -1022,6 +1077,16 @@ impl Formatter {
     /// argument is still an opaque text leaf that the printer would
     /// measure as one long line.
     fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+        // Only a comment *between* arguments needs this shape; one inside
+        // an argument belongs to that argument, which lays it out itself.
+        if items.windows(2).any(|pair| {
+            self.has_pending_comment_in(
+                pair[0].location().end_offset(),
+                pair[1].location().start_offset(),
+            )
+        }) {
+            return self.commented_bare_args_doc(items);
+        }
         let snap = self.render_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {

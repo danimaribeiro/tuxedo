@@ -23,17 +23,17 @@ Running tuxedo format...
   DISPLACED: activerecord/lib/active_record/scoping/named.rb:224 leading of `generate_relation_method`: # only on the module (ex. Module#name)
   DISPLACED: activerecord/lib/active_record/statement_cache.rb:31 trailing of `end`: # :nodoc:
   DISPLACED: activerecord/lib/active_record/tasks/database_tasks.rb:7 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/test/cases/associations/join_model_test.rb:25 leading of `:`: # Reload edges table from fixtures as otherwise repeated tes
   DISPLACED: activerecord/test/cases/finder_test.rb:1765 leading of `Account`: # ensure this test can run independently of order
   DISPLACED: activerecord/test/cases/migration/columns_test.rb:137 leading of `skip`: # MariaDB starting with 10.2.8
   DISPLACED: activerecord/test/cases/migration/columns_test.rb:138 leading of `skip`: # Dropping a column that is part of a multi-column UNIQUE co
-  DISPLACED: activerecord/test/cases/reflection_test.rb:180 trailing of `account_invalid`: # has_one, without :class_name
   DISPLACED: activestorage/test/models/attachment_test.rb:234 leading of `ActiveStorage`: # Restore the original method
   DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:102 leading of `transliterated`: # Restore the string encoding of the input if it was n
   DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:103 leading of `transliterated`: # Apply invalid/undef :replace as tidy_bytes does
   DISPLACED: activesupport/lib/active_support/message_pack/extensions.rb:18 trailing of `end`: # :nodoc:
   DISPLACED: activesupport/test/current_attributes_test.rb:285 trailing of `end`: # Sets the cache because of a `method_added` hook
-  DISPLACED: railties/lib/rails/code_statistics.rb:33 trailing of `"`: # rubocop:disable Style/MutableConstant
+  DISPLACED: railties/lib/rails/generators/rails/app/app_generator.rb:322 trailing of `=`: # :nodoc:
+  DISPLACED: railties/test/application/rake/multi_dbs_test.rb:403 leading of `FileUtils`: # move the dogs migration if it unless it already lives ther
+  DISPLACED: railties/test/application/rake/multi_dbs_test.rb:405 leading of `FileUtils`: # delete the dogs migration if it's still present in the
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
@@ -57,7 +57,7 @@ Running tuxedo format...
   meaning     0 files refused: formatting would have changed the AST
   parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    75088 total, 30 displaced
+  comments    75088 total, 27 displaced
   layout      2282 offenses across 13 distinct cops
 ======================================================================
 
