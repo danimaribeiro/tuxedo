@@ -61,14 +61,19 @@
 #   construct Tuxedo does not break yet, and is a bug.
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
+# `a, b = x, {` ... `}` expands only its last value, which stays on the
+# line the assignment started on: one value per line reads wrong for two
+# values. `AllowMultilineFinalElement` accepts exactly that shape.
 Layout/FirstArrayElementLineBreak:
   Enabled: true
+  AllowMultilineFinalElement: true
 Layout/FirstHashElementLineBreak:
   Enabled: true
 Layout/FirstMethodArgumentLineBreak:
   Enabled: true
 Layout/MultilineArrayLineBreaks:
   Enabled: true
+  AllowMultilineFinalElement: true
 Layout/MultilineHashKeyLineBreaks:
   Enabled: true
 Layout/MultilineMethodArgumentLineBreaks:

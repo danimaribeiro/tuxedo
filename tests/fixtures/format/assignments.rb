@@ -43,3 +43,9 @@ def tally
   total += 1
   puts total
 end
+
+# A multiple assignment whose right side ends in a collection expands only
+# that last value, which stays on the line the assignment began on.
+prev_configs, ActiveRecord::Base.configurations = ActiveRecord::Base.configurations, {
+  "arunit" => { "primary" => { "adapter" => "sqlite3" } }
+}

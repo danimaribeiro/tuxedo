@@ -42,9 +42,7 @@ Running tuxedo format...
   31    Layout/ClosingHeredocIndentation [Safe Correctable]
   18    Layout/SpaceInsidePercentLiteralDelimiters [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
-  6     Layout/FirstArrayElementLineBreak [Safe Correctable]
   6     Layout/IndentationWidth [Safe Correctable]
-  6     Layout/MultilineArrayLineBreaks [Safe Correctable]
   5     Layout/EndAlignment [Safe Correctable]
   4     Layout/ElseAlignment [Safe Correctable]
   4     Layout/MultilineMethodCallIndentation [Safe Correctable]
@@ -60,7 +58,7 @@ Running tuxedo format...
   parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    75088 total, 30 displaced
-  layout      2294 offenses across 15 distinct cops
+  layout      2282 offenses across 13 distinct cops
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.
