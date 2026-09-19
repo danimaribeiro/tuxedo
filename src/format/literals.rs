@@ -245,7 +245,10 @@ impl Formatter {
     fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
         let leaves: Vec<Doc> = parts
             .iter()
-            .map(|part| bytes_doc(part.location().as_slice()))
+            .map(|part| match part.as_interpolated_string_node() {
+                Some(_) => self.node_doc(&part),
+                None => bytes_doc(part.location().as_slice()),
+            })
             .collect();
 
         if self.single_line || leaves.len() <= 1 {

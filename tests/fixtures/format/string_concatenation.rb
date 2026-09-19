@@ -23,3 +23,5 @@ warn(
       "application's log file."
   ]
 )
+
+name = "#{config.table_name_prefix}" "#{fixture_set_name.tr('/', '_')}"
