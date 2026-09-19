@@ -1,11 +1,10 @@
+use super::Formatter;
 use super::doc::Doc;
-use super::{Formatter, has_real_block};
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
 /// `!`-style unary) with no real block of its own. A link with a block
-/// changes where the chain visually has to break, so `collect_chain` stops
-/// peeling there rather than trying to fold it in.
+/// joins a chain only through `block_can_join`.
 fn is_plain_method_call(call: &ruby_prism::CallNode<'_>) -> bool {
     let name = call.name();
     let name_str = std::str::from_utf8(name.as_slice()).unwrap_or("");
@@ -14,10 +13,43 @@ fn is_plain_method_call(call: &ruby_prism::CallNode<'_>) -> bool {
         .chars()
         .next()
         .is_some_and(|c| c.is_alphanumeric() || c == '_');
-    is_identifier_call
-        && !is_index
-        && !call.is_attribute_write()
-        && !has_real_block(&call.as_node())
+    is_identifier_call && !is_index && !call.is_attribute_write()
+}
+
+/// True if `call`'s block can sit inside a chain link: a `{ }` block whose
+/// body is at most one statement and holds nothing that lays out its own
+/// lines, so it stays on its link's line. A `do...end` block, a body of
+/// several statements, or a comment inside it ends the chain there: those
+/// blocks are multi-line however much room there is, and a chain link that
+/// is multi-line would force every link around it onto its own line.
+fn block_can_join(
+    call: &ruby_prism::CallNode<'_>,
+    has_comment: &dyn Fn(usize, usize) -> bool,
+) -> bool {
+    let Some(block) = real_block(call) else {
+        return true;
+    };
+    let Some(block) = block.as_block_node() else {
+        return false;
+    };
+    if block.opening_loc().as_slice() != b"{" {
+        return false;
+    }
+    if has_comment(
+        block.opening_loc().end_offset(),
+        block.closing_loc().start_offset(),
+    ) {
+        return false;
+    }
+    match block.body() {
+        None => true,
+        Some(body) => {
+            let single = body
+                .as_statements_node()
+                .is_none_or(|s| s.body().iter().count() <= 1);
+            single && !super::defs::holds_block_construct(&body)
+        }
+    }
 }
 
 /// Walks a call's receiver chain (`a.b.c.d` -> `d` is `node`) as far back as
@@ -29,12 +61,13 @@ fn is_plain_method_call(call: &ruby_prism::CallNode<'_>) -> bool {
 /// caller should fall back to its normal single-call rendering.
 fn collect_chain<'a>(
     node: &ruby_prism::CallNode<'a>,
+    has_comment: &dyn Fn(usize, usize) -> bool,
 ) -> Option<(ruby_prism::Node<'a>, Vec<ruby_prism::CallNode<'a>>)> {
     let mut links = Vec::new();
     let mut base = node.receiver()?;
 
     while let Some(call) = base.as_call_node() {
-        if !is_plain_method_call(&call) {
+        if !is_plain_method_call(&call) || !block_can_join(&call, has_comment) {
             break;
         }
         match call.receiver() {
@@ -115,7 +148,10 @@ impl Formatter {
     /// header shares the line that link's arguments end on, so it has to
     /// be measured as part of it rather than after the whole chain.
     fn try_build_chain_doc(&mut self, node: &ruby_prism::CallNode<'_>, tail: Doc) -> Option<Doc> {
-        let (base, links) = collect_chain(node)?;
+        let (base, links) = {
+            let this = &*self;
+            collect_chain(node, &|start, end| this.has_pending_comment_in(start, end))?
+        };
 
         // A chain of bare reads has nothing to break between but the dots,
         // and breaking there wrecks a line that is only long because of
@@ -124,10 +160,18 @@ impl Formatter {
         // to sit on a line of its own, so it still breaks them.
         let carries_work =
             |call: &ruby_prism::CallNode<'_>| call.arguments().is_some() || call.block().is_some();
-        let span = base.location().end_offset()..node.location().end_offset();
-        let commented = self.comments[self.comment_cursor..]
-            .iter()
-            .any(|c| span.contains(&c.start));
+        let commented = links.iter().chain(std::iter::once(node)).any(|link| {
+            link.receiver().is_some_and(|receiver| {
+                link.call_operator_loc()
+                    .or_else(|| link.message_loc())
+                    .is_some_and(|next| {
+                        self.has_pending_comment_in(
+                            receiver.location().end_offset(),
+                            next.start_offset(),
+                        )
+                    })
+            })
+        });
         let working = links
             .iter()
             .chain(std::iter::once(node))
@@ -152,12 +196,22 @@ impl Formatter {
         // are claimed after the first link's arguments and before the
         // second's.
         let mut segments: Vec<(Option<Doc>, Doc)> = Vec::new();
-        for link in links.iter().chain(std::iter::once(node)) {
+        for (at, link) in links.iter().chain(std::iter::once(node)).enumerate() {
             let gap = self.link_gap_comments_doc(link);
             let args = self.call_args_doc(link, link.opening_loc().is_some());
-            let segment = Doc::text(call_operator(link))
+            let mut segment = Doc::text(call_operator(link))
                 .append(super::bytes_doc(link.name().as_slice()))
                 .append(args);
+            // The last link's block is the caller's: its header is `tail`
+            // and its body follows the chain. Any other link carries its
+            // block along.
+            if at < links.len()
+                && let Some(block) = real_block(link).and_then(|b| b.as_block_node())
+            {
+                let header = self.block_header_doc(&block);
+                let body = self.block_body_doc(&block);
+                segment = segment.append(header).append(body);
+            }
             segments.push((gap, segment));
         }
         self.indent -= 1;

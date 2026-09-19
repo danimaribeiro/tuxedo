@@ -74,3 +74,17 @@ end
 secret = request
   .key_generator(salt_for_the_generated_key_that_is_quite_long)
   .generate_key(request.authenticated_encrypted_cookie_salt, key_length)
+
+# A chain with `{ }` block links breaks one link per line, each block
+# staying on its link's line.
+visible = records
+  .select { |r| r.active? && r.visible_to_the_current_user_in_this_context? }
+  .map { |r| r.identifier }
+  .uniq
+  .first(10)
+
+# A block that is multi-line however much room there is ends the chain.
+grouped = list.map { |a|
+  b = a.foo
+  b.bar
+}.compact.first(1)

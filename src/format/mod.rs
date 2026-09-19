@@ -103,16 +103,6 @@ mod statements;
 mod variables;
 mod verify;
 
-/// True if `node` is a call with a real `{ }`/`do...end` block (as opposed to
-/// a `&block` pass) -- of either shape. Used where a block of any kind, not
-/// just a hard-breaking one, needs to be singled out (e.g. a `.method` chain
-/// stops at a link that has one; an assignment's RHS with one keeps its own
-/// fixed indent rather than aligning under the `=`).
-fn has_real_block(node: &ruby_prism::Node<'_>) -> bool {
-    node.as_call_node()
-        .is_some_and(|call| matches!(call.block(), Some(ruby_prism::Node::BlockNode { .. })))
-}
-
 /// A block's or lambda's parameter list, if it has one written in the
 /// source. Prism also fills the `parameters` slot for a block that only
 /// *uses* implicit parameters (`it`, `_1`) -- a marker node with no text of
