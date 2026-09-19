@@ -68,7 +68,16 @@ cp -r "$SRC" "$BASE/rubocop"
 TIMEFORMAT='%R'
 
 echo "Running tuxedo format..."
-tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null; } 2>&1 )
+# tuxedo exits 2 when a file cannot be formatted, and a project can carry .rb
+# files that were never Ruby (ERB templates under a .rb name — thor has two).
+# Those stay as source in the working copy, which is the honest thing to
+# compare; without `|| true` the whole comparison would abort over them.
+# tuxedo's stderr goes to a file rather than into the `time` capture, which
+# would otherwise fold its error lines into $tuxedo_time.
+tuxedo_err="$(mktemp)"
+tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null 2>"$tuxedo_err" || true; } 2>&1 )
+unformattable="$(grep -c '^error: ' "$tuxedo_err" || true)"
+rm -f "$tuxedo_err"
 
 echo "Running rubocop -A (Layout cops only, default config)..."
 rubocop_log="$(mktemp)"
@@ -102,6 +111,9 @@ echo "Comparing output..."
 
   echo
   echo "$mismatches / $total files differ between tuxedo and rubocop output."
+  if [ "$unformattable" -gt 0 ]; then
+    echo "$unformattable files tuxedo could not format, left as source."
+  fi
   echo
   echo "tuxedo:  ${tuxedo_time}s"
   echo "rubocop: ${rubocop_time}s"
