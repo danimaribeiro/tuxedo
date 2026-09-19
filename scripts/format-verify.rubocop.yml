@@ -59,6 +59,8 @@
 #   inventing a split. Tuxedo does not invent splits. A `#{}` hole is held
 #   on one line for the same reason. Every other LineLength hit is a
 #   construct Tuxedo does not break yet, and is a bug.
+#   `scripts/classify-linelength.rb` separates the two, and
+#   `format-verify.sh` prints the split under the layout line.
 
 # --- 1. All-or-nothing expansion: no bin-packing ---
 # `a, b = x, {` ... `}` expands only its last value, which stays on the
@@ -112,6 +114,20 @@ Layout/CaseIndentation:
   EnforcedStyle: end
 Layout/BeginEndAlignment:
   EnforcedStyleAlignWith: start_of_line
+
+# --- Outside the formatter's remit ---
+# Asks for `<<-` to be rewritten as `<<~`. That is a change of literal
+# syntax, not of layout: for a `<<-` the body's leading whitespace is part
+# of the string, so converting one is a change of value that the AST check
+# would refuse. Tuxedo reindents a `<<~` body and terminator with the code
+# around them and leaves the `<<-` form alone, which is the whole of what a
+# formatter can do here. The cop is off rather than tolerated, because a
+# number nobody can ever drive to zero is not a ratchet.
+#
+# Layout/ClosingHeredocIndentation stays on: a `<<-` terminator's own
+# indentation is not part of the string, so that one is Tuxedo's to fix.
+Layout/HeredocIndentation:
+  Enabled: false
 
 # --- Hand-aligned columns ---
 # Tuxedo collapses a run of spaces to one, by design: a column aligned by

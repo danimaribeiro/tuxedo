@@ -28,10 +28,14 @@
 # delimiter to its end. Otherwise a `%{...}` carrying a block of SQL would
 # read as breakable code on every line of it.
 #
+# A call written without parentheses counts as one atom with its single
+# argument, because there is no comma to break at and tuxedo does not add
+# parentheses the author did not write. With several arguments it is
+# breakable: Ruby takes a line break after a comma without them.
+#
 # The split is a triage aid, not a verdict. A BREAKABLE line can still turn
-# out to need a policy decision rather than a fix (adding parentheses to a
-# call the author wrote without them, breaking after a hash key), and those
-# belong in an issue, not in this script.
+# out to need a layout decision rather than a fix -- breaking after a hash
+# key is the open one -- and those belong in an issue, not in this script.
 #
 # Reads a directory tree, not a file list, and mirrors the matcher in
 # src/walk.rs so a Rakefile or .gemspec is measured like everything else.
@@ -100,6 +104,23 @@ def literal_body_lines(node, lines = [])
   lines
 end
 
+# The sole argument of a call written without parentheses cannot be moved to
+# a line of its own: there is no comma to break at, and tuxedo does not add
+# parentheses the author did not write. So the whole call is as immovable as
+# the literal inside it -- `raise "huge message"`, the example in
+# scripts/format-verify.rubocop.yml. A bare call with *several* arguments is
+# breakable, because Ruby takes a line break after a comma without them.
+def bare_call_pinning_an_atom?(node, lineno)
+  return false unless node.is_a?(Prism::CallNode) && node.opening_loc.nil?
+  return false unless node.location.start_line == lineno
+
+  arguments = node.arguments&.arguments
+  return false unless arguments&.size == 1
+
+  only = arguments.first
+  ATOMS.any? { |k| only.is_a?(k) } && only.location.start_line == lineno
+end
+
 def widest_atom(node, lineno, line_length, best)
   return best unless node.is_a?(Prism::Node)
 
@@ -110,6 +131,12 @@ def widest_atom(node, lineno, line_length, best)
     width = loc.end_line == lineno ? loc.end_column - loc.start_column : line_length - loc.start_column
     best = [width, node.class.name.split("::").last] if width > best[0]
   end
+
+  if bare_call_pinning_an_atom?(node, lineno)
+    width = line_length - loc.start_column
+    best = [width, "BareCallArgument"] if width > best[0]
+  end
+
   node.compact_child_nodes.each { |child| best = widest_atom(child, lineno, line_length, best) }
   best
 end
@@ -180,6 +207,12 @@ end
 
 unsplittable, breakable = offenses.partition { |o| o.best > limit }
 
+# In --sites mode the caller already knows the total and is relying on this
+# split to account for it, so a site that produced no verdict -- a file
+# Prism rejects though rubocop read it, a line number past the end -- is
+# reported rather than quietly dropped.
+unclassified = wanted ? wanted.values.sum(&:size) - offenses.size : 0
+
 if list.positive?
   [["UNSPLITTABLE", unsplittable], ["BREAKABLE", breakable]].each do |label, group|
     next if group.empty?
@@ -193,5 +226,7 @@ if list.positive?
   end
 end
 
-puts "linelength: #{offenses.size} over #{limit}, " \
-     "#{unsplittable.size} unsplittable, #{breakable.size} breakable"
+summary = "linelength: #{offenses.size + unclassified} over #{limit}, " \
+          "#{unsplittable.size} unsplittable, #{breakable.size} breakable"
+summary += ", #{unclassified} unclassified" if unclassified.positive?
+puts summary

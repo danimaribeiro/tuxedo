@@ -207,18 +207,39 @@ if command -v rubocop >/dev/null 2>&1; then
   done < <(ruby_files "$OUT")
 
   rubocop_out="$(mktemp)"
+  # The same run twice over, in two shapes: `offenses` for the per-cop
+  # counts below, `emacs` for the one file:line per offense that the
+  # LineLength split needs. Two formatters beat a second rubocop pass over
+  # the same three and a half thousand files.
+  emacs_out="$(mktemp)"
   if [ -s "$parsing_files" ]; then
     # shellcheck disable=SC2046
     BUNDLE_GEMFILE=/dev/null rubocop --only Layout \
       -c "$ROOT/scripts/format-verify.rubocop.yml" \
       --no-color --format offenses \
+      --format emacs --out "$emacs_out" \
       $(cat "$parsing_files") >"$rubocop_out" 2>&1 || true
     echo
     grep -E '^ *[0-9]+ +Layout/' "$rubocop_out" | head -25 | sed 's/^/  /' || true
     layout_offenses="$(grep -cE '^ *[0-9]+ +Layout/' "$rubocop_out" || true)"
     layout_total="$(awk '/^ *[0-9]+ +Layout\//{ s += $1 } END { print s + 0 }' "$rubocop_out")"
+
+    # Most of LineLength is a literal nobody can place under the limit, so
+    # the raw count says little about how much work is left. Hand the exact
+    # offense list to the classifier rather than letting it find the lines
+    # itself, so the split adds up to the number printed above.
+    # Match the message, not `: <cop>:`: rubocop prefixes an offense it can
+    # autocorrect with `[Correctable]`, which sits between the two colons.
+    linelength_sites="$(mktemp)"
+    grep -F 'Layout/LineLength: Line is too long' "$emacs_out" |
+      cut -d: -f1,2 | sed "s#^$OUT/##" >"$linelength_sites" || true
+    if [ -s "$linelength_sites" ]; then
+      linelength_summary="$(ruby "$ROOT/scripts/classify-linelength.rb" "$OUT" \
+        --sites "$linelength_sites")"
+    fi
+    rm -f "$linelength_sites"
   fi
-  rm -f "$parsing_files" "$rubocop_out"
+  rm -f "$parsing_files" "$rubocop_out" "$emacs_out"
 else
   echo "  skipped: rubocop not found on PATH (gem install rubocop)"
   layout_total="n/a"
@@ -237,6 +258,9 @@ printf "  idempotent  %s files change on a second format\n" "$unstable"
 printf "  comments    %s\n" "$comments_summary"
 printf "  layout      %s offenses across %s distinct cops\n" \
   "${layout_total:-n/a}" "${layout_offenses:-n/a}"
+if [ -n "${linelength_summary:-}" ]; then
+  printf "  %s\n" "$linelength_summary"
+fi
 echo "======================================================================"
 echo
 echo "Output kept at test-projects/$PROJECT/verify for inspection."

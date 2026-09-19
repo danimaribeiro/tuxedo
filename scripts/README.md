@@ -124,11 +124,14 @@ them.
 A line is **unsplittable** when its widest atom — a string, regex, symbol or
 backtick literal, or a comment — is wide enough that the line stays over the
 limit with that atom alone at the statement's own indent. A formatter can
-nest deeper but never dedent, so nothing is left to try. Everything else is
+nest deeper but never dedent, so nothing is left to try. A call written
+without parentheses counts as one atom together with its single argument,
+because there is no comma to break at and tuxedo does not add parentheses
+the author did not write; with several arguments it is breakable, since Ruby
+takes a line break after a comma without them. Everything else is
 **breakable**: a construct tuxedo does not break yet. That split is triage,
-not a verdict — a breakable line can still turn out to need a policy
-decision (parenthesising a call the author wrote bare, breaking after a hash
-key) rather than a fix.
+not a verdict — a breakable line can still turn out to need a layout
+decision rather than a fix.
 
 Scan mode finds the over-long lines itself and needs no rubocop, at the cost
 of reimplementing `Layout/LineLength`'s `AllowURI`, `AllowHeredoc` and
