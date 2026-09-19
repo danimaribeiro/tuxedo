@@ -102,7 +102,8 @@ impl Formatter {
     /// the statement -- the same all-or-nothing, block-indented shape as an
     /// overlong array/call-args list, just applied to `.method` calls
     /// instead of comma-separated elements. Returns `None` when there's no
-    /// real chain to break, so the caller should fall back to its normal
+    /// real chain to break (fewer than two links carry arguments or a
+    /// block), so the caller should fall back to its normal
     /// single-call path.
     ///
     /// Each link is a composed `Doc`, so an argument list of its own that
@@ -115,6 +116,26 @@ impl Formatter {
     /// be measured as part of it rather than after the whole chain.
     fn try_build_chain_doc(&mut self, node: &ruby_prism::CallNode<'_>, tail: Doc) -> Option<Doc> {
         let (base, links) = collect_chain(node)?;
+
+        // A chain of bare reads has nothing to break between but the dots,
+        // and breaking there wrecks a line that is only long because of
+        // what surrounds it. It stays one leaf, and the enclosing operator
+        // or argument list takes the break. A comment between links has
+        // to sit on a line of its own, so it still breaks them.
+        let carries_work =
+            |call: &ruby_prism::CallNode<'_>| call.arguments().is_some() || call.block().is_some();
+        let span = base.location().end_offset()..node.location().end_offset();
+        let commented = self.comments[self.comment_cursor..]
+            .iter()
+            .any(|c| span.contains(&c.start));
+        let working = links
+            .iter()
+            .chain(std::iter::once(node))
+            .filter(|c| carries_work(c))
+            .count();
+        if working < 2 && !commented {
+            return None;
+        }
 
         // The base stays in `output` while the links are built, so a link's
         // arguments measure the column the base leaves the line at rather

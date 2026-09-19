@@ -46,12 +46,31 @@ module ActionDispatch
   class Cookies
     def prepare_upgrade_legacy_hmac_aes_cbc_cookies
       future_cipher = encrypted_cookie_cipher
-      secret = request
-        .key_generator
-        .generate_key(
-          request.authenticated_encrypted_cookie_salt,
-          ActiveSupport::MessageEncryptor.key_len(future_cipher)
-        )
+      secret = request.key_generator.generate_key(
+        request.authenticated_encrypted_cookie_salt,
+        ActiveSupport::MessageEncryptor.key_len(future_cipher)
+      )
     end
   end
 end
+
+# A chain of bare reads is one leaf: the enclosing `||` and argument list
+# take the break, never the dots.
+module ActiveStorage
+  class Engine
+    initializer "active_storage.configs" do
+      config.after_initialize do |app|
+        ActiveStorage.base_controller_parent = app.config.active_storage.base_controller_parent || if app.config.api_only
+          "ActionController::API"
+        else
+          "ActionController::Base"
+        end
+      end
+    end
+  end
+end
+
+# Two links that carry arguments still break one link per line.
+secret = request
+  .key_generator(salt_for_the_generated_key_that_is_quite_long)
+  .generate_key(request.authenticated_encrypted_cookie_salt, key_length)

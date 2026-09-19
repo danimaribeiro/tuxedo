@@ -57,25 +57,23 @@ configure(
   third_long_option: 1
 )
 
-VALID_UNSCOPING_VALUES = Set
-  .new(
-    [
-      :where,
-      :select,
-      :group,
-      :order,
-      :lock,
-      :readonly,
-      :having,
-      :offset,
-      :joins,
-      :left_outer_joins,
-      :annotate,
-      :optimizer_hints,
-      :from
-    ]
-  )
-  .freeze
+VALID_UNSCOPING_VALUES = Set.new(
+  [
+    :where,
+    :select,
+    :group,
+    :order,
+    :lock,
+    :readonly,
+    :having,
+    :offset,
+    :joins,
+    :left_outer_joins,
+    :annotate,
+    :optimizer_hints,
+    :from
+  ]
+).freeze
 
 # A nested collection is measured at the column it is laid out at, not as
 # if it started the line: this hash is 119 columns wide, so it fits a line
