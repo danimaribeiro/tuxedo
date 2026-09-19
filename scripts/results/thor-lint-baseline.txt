@@ -1,5 +1,5 @@
 RuboCop offenses: thor
-generated: 2026-09-19T08:22:53Z
+generated: 2026-09-19T20:27:47Z
 baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)
 project-cfg column: rubocop with thor's own .rubocop.yml, run on the tuxedo-formatted copy
 
@@ -142,3 +142,5 @@ project-cfg column: rubocop with thor's own .rubocop.yml, run on the tuxedo-form
     Style/BlockDelimiters: keeps the block delimiters the author wrote; `a b { }` and `a b do end` bind differently, so a rewrite is not layout
     Style/MultilineTernaryOperator: breaks an over-long ternary after `?` and `:` rather than rewriting it as if/else, a change of construct
     Layout/HeredocIndentation: leaves `<<-` alone: its body whitespace is part of the string, so `<<~` is a change of value
+
+introduced by tuxedo (delta above 0): 8 cops (+25) not decided, 3 cops (+4) deliberate

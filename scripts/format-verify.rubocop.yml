@@ -7,6 +7,9 @@
 # offense it reports is either a formatter bug or one of the two
 # disagreements listed at the end of this comment.
 #
+# Cops tuxedo departs from on purpose are indexed, with a reason, in
+# scripts/lint-baseline.deliberate.tsv; the Layout ones are decided here.
+#
 # Two properties, both deliberate (CLAUDE.md, "The goal"):
 #
 #   1. All-or-nothing expansion. A collection either fits on one line or
