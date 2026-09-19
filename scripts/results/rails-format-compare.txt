@@ -1,6 +1,7 @@
 format-compare: rails
-generated: 2026-09-17T21:01:12Z
+generated: 2026-09-19T05:08:37Z
 
+MISMATCH: actioncable/actioncable.gemspec
 MISMATCH: actioncable/lib/action_cable.rb
 MISMATCH: actioncable/lib/action_cable/channel/base.rb
 MISMATCH: actioncable/lib/action_cable/channel/callbacks.rb
@@ -9,8 +10,6 @@ MISMATCH: actioncable/lib/action_cable/channel/streams.rb
 MISMATCH: actioncable/lib/action_cable/channel/test_case.rb
 MISMATCH: actioncable/lib/action_cable/configuration.rb
 MISMATCH: actioncable/lib/action_cable/connection/authorization.rb
-MISMATCH: actioncable/lib/action_cable/connection/base.rb
-MISMATCH: actioncable/lib/action_cable/connection/identification.rb
 MISMATCH: actioncable/lib/action_cable/connection/internal_channel.rb
 MISMATCH: actioncable/lib/action_cable/connection/subscriptions.rb
 MISMATCH: actioncable/lib/action_cable/connection/test_case.rb
@@ -54,14 +53,14 @@ MISMATCH: actioncable/test/subscription_adapter/common.rb
 MISMATCH: actioncable/test/subscription_adapter/postgresql_test.rb
 MISMATCH: actioncable/test/subscription_adapter/redis_test.rb
 MISMATCH: actioncable/test/test_helper.rb
-MISMATCH: actionmailbox/app/controllers/action_mailbox/ingresses/mailgun/inbound_emails_controller.rb
-MISMATCH: actionmailbox/app/controllers/action_mailbox/ingresses/mandrill/inbound_emails_controller.rb
+MISMATCH: actionmailbox/actionmailbox.gemspec
 MISMATCH: actionmailbox/app/controllers/action_mailbox/ingresses/sendgrid/inbound_emails_controller.rb
 MISMATCH: actionmailbox/app/models/action_mailbox/inbound_email.rb
 MISMATCH: actionmailbox/app/models/action_mailbox/inbound_email/incineratable.rb
 MISMATCH: actionmailbox/app/models/action_mailbox/inbound_email/message_id.rb
 MISMATCH: actionmailbox/lib/action_mailbox/base.rb
 MISMATCH: actionmailbox/lib/action_mailbox/engine.rb
+MISMATCH: actionmailbox/lib/action_mailbox/mail_ext/recipients.rb
 MISMATCH: actionmailbox/lib/action_mailbox/relayer.rb
 MISMATCH: actionmailbox/lib/action_mailbox/router.rb
 MISMATCH: actionmailbox/test/controllers/ingresses/mailgun/inbound_emails_controller_test.rb
@@ -89,6 +88,7 @@ MISMATCH: actionmailbox/test/unit/mailbox/notifications_test.rb
 MISMATCH: actionmailbox/test/unit/mailbox/state_test.rb
 MISMATCH: actionmailbox/test/unit/relayer_test.rb
 MISMATCH: actionmailbox/test/unit/router_test.rb
+MISMATCH: actionmailer/actionmailer.gemspec
 MISMATCH: actionmailer/lib/action_mailer.rb
 MISMATCH: actionmailer/lib/action_mailer/base.rb
 MISMATCH: actionmailer/lib/action_mailer/collector.rb
@@ -120,6 +120,7 @@ MISMATCH: actionmailer/test/parameterized_test.rb
 MISMATCH: actionmailer/test/structured_event_subscriber_test.rb
 MISMATCH: actionmailer/test/test_helper_test.rb
 MISMATCH: actionmailer/test/url_test.rb
+MISMATCH: actionpack/actionpack.gemspec
 MISMATCH: actionpack/lib/abstract_controller/asset_paths.rb
 MISMATCH: actionpack/lib/abstract_controller/base.rb
 MISMATCH: actionpack/lib/abstract_controller/caching.rb
@@ -156,7 +157,6 @@ MISMATCH: actionpack/lib/action_controller/template_assertions.rb
 MISMATCH: actionpack/lib/action_controller/test_case.rb
 MISMATCH: actionpack/lib/action_dispatch.rb
 MISMATCH: actionpack/lib/action_dispatch/http/cache.rb
-MISMATCH: actionpack/lib/action_dispatch/http/content_security_policy.rb
 MISMATCH: actionpack/lib/action_dispatch/http/filter_parameters.rb
 MISMATCH: actionpack/lib/action_dispatch/http/headers.rb
 MISMATCH: actionpack/lib/action_dispatch/http/mime_negotiation.rb
@@ -170,6 +170,7 @@ MISMATCH: actionpack/lib/action_dispatch/http/request.rb
 MISMATCH: actionpack/lib/action_dispatch/http/response.rb
 MISMATCH: actionpack/lib/action_dispatch/http/session.rb
 MISMATCH: actionpack/lib/action_dispatch/http/url.rb
+MISMATCH: actionpack/lib/action_dispatch/http/utils.rb
 MISMATCH: actionpack/lib/action_dispatch/journey/formatter.rb
 MISMATCH: actionpack/lib/action_dispatch/journey/gtg/transition_table.rb
 MISMATCH: actionpack/lib/action_dispatch/journey/nfa/dot.rb
@@ -358,6 +359,7 @@ MISMATCH: actionpack/test/lib/controller/fake_models.rb
 MISMATCH: actionpack/test/routing/helper_test.rb
 MISMATCH: actionpack/test/support/path_helper.rb
 MISMATCH: actionpack/test/support/rack_parsing_override.rb
+MISMATCH: actiontext/actiontext.gemspec
 MISMATCH: actiontext/app/helpers/action_text/content_helper.rb
 MISMATCH: actiontext/app/helpers/action_text/tag_helper.rb
 MISMATCH: actiontext/app/models/action_text/rich_text.rb
@@ -402,6 +404,7 @@ MISMATCH: actiontext/test/unit/markdown_conversion_test.rb
 MISMATCH: actiontext/test/unit/model_test.rb
 MISMATCH: actiontext/test/unit/plain_text_conversion_test.rb
 MISMATCH: actiontext/test/unit/trix_attachment_test.rb
+MISMATCH: actionview/actionview.gemspec
 MISMATCH: actionview/lib/action_view.rb
 MISMATCH: actionview/lib/action_view/base.rb
 MISMATCH: actionview/lib/action_view/buffers.rb
@@ -415,6 +418,7 @@ MISMATCH: actionview/lib/action_view/helpers/asset_url_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/atom_feed_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/cache_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/capture_helper.rb
+MISMATCH: actionview/lib/action_view/helpers/content_exfiltration_prevention_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/controller_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/date_helper.rb
 MISMATCH: actionview/lib/action_view/helpers/form_helper.rb
@@ -453,16 +457,14 @@ MISMATCH: actionview/lib/action_view/render_parser.rb
 MISMATCH: actionview/lib/action_view/renderer/abstract_renderer.rb
 MISMATCH: actionview/lib/action_view/renderer/collection_renderer.rb
 MISMATCH: actionview/lib/action_view/renderer/template_renderer.rb
-MISMATCH: actionview/lib/action_view/rendering.rb
 MISMATCH: actionview/lib/action_view/routing_url_for.rb
 MISMATCH: actionview/lib/action_view/structured_event_subscriber.rb
+MISMATCH: actionview/lib/action_view/tasks/cache_digests.rake
 MISMATCH: actionview/lib/action_view/template.rb
 MISMATCH: actionview/lib/action_view/template/error.rb
-MISMATCH: actionview/lib/action_view/template/handlers/builder.rb
 MISMATCH: actionview/lib/action_view/template/handlers/erb.rb
 MISMATCH: actionview/lib/action_view/template/resolver.rb
 MISMATCH: actionview/lib/action_view/template/types.rb
-MISMATCH: actionview/lib/action_view/template_details.rb
 MISMATCH: actionview/lib/action_view/template_path.rb
 MISMATCH: actionview/lib/action_view/test_case.rb
 MISMATCH: actionview/lib/action_view/testing/resolvers.rb
@@ -527,6 +529,8 @@ MISMATCH: actionview/test/template/testing/fixture_resolver_test.rb
 MISMATCH: actionview/test/template/text_helper_test.rb
 MISMATCH: actionview/test/template/translation_helper_test.rb
 MISMATCH: actionview/test/template/url_helper_test.rb
+MISMATCH: activejob/Rakefile
+MISMATCH: activejob/activejob.gemspec
 MISMATCH: activejob/lib/active_job.rb
 MISMATCH: activejob/lib/active_job/arguments.rb
 MISMATCH: activejob/lib/active_job/continuation.rb
@@ -571,18 +575,19 @@ MISMATCH: activejob/test/models/person.rb
 MISMATCH: activejob/test/support/backburner/inline.rb
 MISMATCH: activejob/test/support/delayed_job/delayed/backend/test.rb
 MISMATCH: activejob/test/support/delayed_job/delayed/serialization/test.rb
+MISMATCH: activejob/test/support/integration/adapters/backburner.rb
 MISMATCH: activejob/test/support/integration/adapters/resque.rb
 MISMATCH: activejob/test/support/integration/adapters/sneakers.rb
 MISMATCH: activejob/test/support/integration/dummy_app_template.rb
 MISMATCH: activejob/test/support/integration/helper.rb
 MISMATCH: activejob/test/support/integration/jobs_manager.rb
 MISMATCH: activejob/test/support/integration/test_case_helpers.rb
+MISMATCH: activemodel/activemodel.gemspec
 MISMATCH: activemodel/lib/active_model.rb
 MISMATCH: activemodel/lib/active_model/attribute.rb
 MISMATCH: activemodel/lib/active_model/attribute/user_provided_default.rb
 MISMATCH: activemodel/lib/active_model/attribute_assignment.rb
 MISMATCH: activemodel/lib/active_model/attribute_methods.rb
-MISMATCH: activemodel/lib/active_model/attribute_mutation_tracker.rb
 MISMATCH: activemodel/lib/active_model/attribute_set.rb
 MISMATCH: activemodel/lib/active_model/attribute_set/builder.rb
 MISMATCH: activemodel/lib/active_model/attributes.rb
@@ -599,7 +604,6 @@ MISMATCH: activemodel/lib/active_model/naming.rb
 MISMATCH: activemodel/lib/active_model/secure_password.rb
 MISMATCH: activemodel/lib/active_model/serialization.rb
 MISMATCH: activemodel/lib/active_model/serializers/json.rb
-MISMATCH: activemodel/lib/active_model/translation.rb
 MISMATCH: activemodel/lib/active_model/type/binary.rb
 MISMATCH: activemodel/lib/active_model/type/boolean.rb
 MISMATCH: activemodel/lib/active_model/type/date.rb
@@ -607,7 +611,6 @@ MISMATCH: activemodel/lib/active_model/type/date_time.rb
 MISMATCH: activemodel/lib/active_model/type/decimal.rb
 MISMATCH: activemodel/lib/active_model/type/float.rb
 MISMATCH: activemodel/lib/active_model/type/helpers/numeric.rb
-MISMATCH: activemodel/lib/active_model/type/helpers/time_value.rb
 MISMATCH: activemodel/lib/active_model/type/immutable_string.rb
 MISMATCH: activemodel/lib/active_model/type/serialize_cast_value.rb
 MISMATCH: activemodel/lib/active_model/type/string.rb
@@ -659,6 +662,8 @@ MISMATCH: activemodel/test/cases/validations/numericality_validation_test.rb
 MISMATCH: activemodel/test/cases/validations/validations_context_test.rb
 MISMATCH: activemodel/test/cases/validations/with_validation_test.rb
 MISMATCH: activemodel/test/cases/validations_test.rb
+MISMATCH: activerecord/Rakefile
+MISMATCH: activerecord/activerecord.gemspec
 MISMATCH: activerecord/examples/performance.rb
 MISMATCH: activerecord/lib/active_record.rb
 MISMATCH: activerecord/lib/active_record/aggregations.rb
@@ -682,14 +687,12 @@ MISMATCH: activerecord/lib/active_record/associations/has_one_association.rb
 MISMATCH: activerecord/lib/active_record/associations/join_dependency.rb
 MISMATCH: activerecord/lib/active_record/associations/nested_error.rb
 MISMATCH: activerecord/lib/active_record/associations/preloader/association.rb
-MISMATCH: activerecord/lib/active_record/associations/preloader/batch.rb
 MISMATCH: activerecord/lib/active_record/associations/preloader/branch.rb
 MISMATCH: activerecord/lib/active_record/associations/preloader/through_association.rb
 MISMATCH: activerecord/lib/active_record/attribute_assignment.rb
 MISMATCH: activerecord/lib/active_record/attribute_methods.rb
 MISMATCH: activerecord/lib/active_record/attribute_methods/composite_primary_key.rb
 MISMATCH: activerecord/lib/active_record/attribute_methods/query.rb
-MISMATCH: activerecord/lib/active_record/attribute_methods/read.rb
 MISMATCH: activerecord/lib/active_record/attribute_methods/time_zone_conversion.rb
 MISMATCH: activerecord/lib/active_record/attribute_methods/write.rb
 MISMATCH: activerecord/lib/active_record/attributes.rb
@@ -736,7 +739,6 @@ MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/oid/well
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/oid/well_known_values.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/quoting.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/referential_integrity.rb
-MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/schema_creation.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/schema_definitions.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/schema_dumper.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/postgresql/schema_statements.rb
@@ -750,7 +752,6 @@ MISMATCH: activerecord/lib/active_record/connection_adapters/sql_type_metadata.r
 MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3/column.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3/database_statements.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3/schema_definitions.rb
-MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3/schema_dumper.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3/schema_statements.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/sqlite3_adapter.rb
 MISMATCH: activerecord/lib/active_record/connection_adapters/trilogy/database_statements.rb
@@ -811,6 +812,7 @@ MISMATCH: activerecord/lib/active_record/query_logs.rb
 MISMATCH: activerecord/lib/active_record/querying.rb
 MISMATCH: activerecord/lib/active_record/railtie.rb
 MISMATCH: activerecord/lib/active_record/railties/controller_runtime.rb
+MISMATCH: activerecord/lib/active_record/railties/databases.rake
 MISMATCH: activerecord/lib/active_record/reflection.rb
 MISMATCH: activerecord/lib/active_record/relation.rb
 MISMATCH: activerecord/lib/active_record/relation/batches.rb
@@ -950,7 +952,6 @@ MISMATCH: activerecord/test/cases/adapters/postgresql/postgresql_adapter_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/postgresql_rake_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/range_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/referential_integrity_test.rb
-MISMATCH: activerecord/test/cases/adapters/postgresql/rename_table_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/schema_authorization_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/schema_test.rb
 MISMATCH: activerecord/test/cases/adapters/postgresql/serial_test.rb
@@ -963,7 +964,6 @@ MISMATCH: activerecord/test/cases/adapters/sqlite3/copy_table_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/explain_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/json_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/quoting_test.rb
-MISMATCH: activerecord/test/cases/adapters/sqlite3/sqlite3_adapter_prevent_writes_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/sqlite3_adapter_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/sqlite3_create_folder_test.rb
 MISMATCH: activerecord/test/cases/adapters/sqlite3/sqlite_rake_test.rb
@@ -1056,7 +1056,6 @@ MISMATCH: activerecord/test/cases/date_time_precision_test.rb
 MISMATCH: activerecord/test/cases/defaults_test.rb
 MISMATCH: activerecord/test/cases/delegated_type_test.rb
 MISMATCH: activerecord/test/cases/dirty_test.rb
-MISMATCH: activerecord/test/cases/encryption/cipher/aes256_gcm_test.rb
 MISMATCH: activerecord/test/cases/encryption/cipher_test.rb
 MISMATCH: activerecord/test/cases/encryption/configurable_test.rb
 MISMATCH: activerecord/test/cases/encryption/contexts_test.rb
@@ -1204,7 +1203,6 @@ MISMATCH: activerecord/test/models/cpk/book_destroy_async.rb
 MISMATCH: activerecord/test/models/cpk/order.rb
 MISMATCH: activerecord/test/models/cpk/post.rb
 MISMATCH: activerecord/test/models/customer.rb
-MISMATCH: activerecord/test/models/customer_carrier.rb
 MISMATCH: activerecord/test/models/dats.rb
 MISMATCH: activerecord/test/models/dats/author.rb
 MISMATCH: activerecord/test/models/dats/bulb.rb
@@ -1219,7 +1217,6 @@ MISMATCH: activerecord/test/models/eye.rb
 MISMATCH: activerecord/test/models/human.rb
 MISMATCH: activerecord/test/models/interest.rb
 MISMATCH: activerecord/test/models/member.rb
-MISMATCH: activerecord/test/models/membership.rb
 MISMATCH: activerecord/test/models/owner.rb
 MISMATCH: activerecord/test/models/parrot.rb
 MISMATCH: activerecord/test/models/person.rb
@@ -1253,6 +1250,7 @@ MISMATCH: activerecord/test/support/encryption_config.rb
 MISMATCH: activerecord/test/support/fake_adapter.rb
 MISMATCH: activerecord/test/support/stubs/strong_parameters.rb
 MISMATCH: activerecord/test/support/tools.rb
+MISMATCH: activestorage/activestorage.gemspec
 MISMATCH: activestorage/app/controllers/active_storage/direct_uploads_controller.rb
 MISMATCH: activestorage/app/controllers/active_storage/disk_controller.rb
 MISMATCH: activestorage/app/controllers/concerns/active_storage/streaming.rb
@@ -1284,7 +1282,6 @@ MISMATCH: activestorage/lib/active_storage/service/mirror_service.rb
 MISMATCH: activestorage/lib/active_storage/service/registry.rb
 MISMATCH: activestorage/lib/active_storage/service/s3_service.rb
 MISMATCH: activestorage/lib/active_storage/structured_event_subscriber.rb
-MISMATCH: activestorage/lib/active_storage/transformers/image_magick.rb
 MISMATCH: activestorage/lib/active_storage/transformers/image_processing_transformer.rb
 MISMATCH: activestorage/test/controllers/blobs/proxy_controller_test.rb
 MISMATCH: activestorage/test/controllers/direct_uploads_controller_test.rb
@@ -1297,7 +1294,6 @@ MISMATCH: activestorage/test/dummy/config/initializers/assets.rb
 MISMATCH: activestorage/test/dummy/config/initializers/content_security_policy.rb
 MISMATCH: activestorage/test/dummy/config/initializers/filter_parameter_logging.rb
 MISMATCH: activestorage/test/dummy/config/initializers/inflections.rb
-MISMATCH: activestorage/test/javascript_package_test.rb
 MISMATCH: activestorage/test/log_subscriber_test.rb
 MISMATCH: activestorage/test/models/attached/many_test.rb
 MISMATCH: activestorage/test/models/attached/one_test.rb
@@ -1323,6 +1319,7 @@ MISMATCH: activestorage/test/structured_event_subscriber_test.rb
 MISMATCH: activestorage/test/test_helper.rb
 MISMATCH: activestorage/test/urls/rails_storage_proxy_url_test.rb
 MISMATCH: activestorage/test/urls/rails_storage_redirect_url_test.rb
+MISMATCH: activesupport/activesupport.gemspec
 MISMATCH: activesupport/lib/active_support.rb
 MISMATCH: activesupport/lib/active_support/actionable_error.rb
 MISMATCH: activesupport/lib/active_support/backtrace_cleaner.rb
@@ -1411,7 +1408,6 @@ MISMATCH: activesupport/lib/active_support/inflector/transliterate.rb
 MISMATCH: activesupport/lib/active_support/isolated_execution_state.rb
 MISMATCH: activesupport/lib/active_support/json/decoding.rb
 MISMATCH: activesupport/lib/active_support/json/encoding.rb
-MISMATCH: activesupport/lib/active_support/key_generator.rb
 MISMATCH: activesupport/lib/active_support/locale/en.rb
 MISMATCH: activesupport/lib/active_support/log_subscriber.rb
 MISMATCH: activesupport/lib/active_support/logger.rb
@@ -1445,13 +1441,11 @@ MISMATCH: activesupport/lib/active_support/railtie.rb
 MISMATCH: activesupport/lib/active_support/rescuable.rb
 MISMATCH: activesupport/lib/active_support/security_utils.rb
 MISMATCH: activesupport/lib/active_support/structured_event_subscriber.rb
-MISMATCH: activesupport/lib/active_support/syntax_error_proxy.rb
 MISMATCH: activesupport/lib/active_support/test_case.rb
 MISMATCH: activesupport/lib/active_support/testing/assertions.rb
 MISMATCH: activesupport/lib/active_support/testing/constant_lookup.rb
 MISMATCH: activesupport/lib/active_support/testing/deprecation.rb
 MISMATCH: activesupport/lib/active_support/testing/error_reporter_assertions.rb
-MISMATCH: activesupport/lib/active_support/testing/event_reporter_assertions.rb
 MISMATCH: activesupport/lib/active_support/testing/isolation.rb
 MISMATCH: activesupport/lib/active_support/testing/method_call_assertions.rb
 MISMATCH: activesupport/lib/active_support/testing/notification_assertions.rb
@@ -1502,6 +1496,7 @@ MISMATCH: activesupport/test/core_ext/array/grouping_test.rb
 MISMATCH: activesupport/test/core_ext/array/wrap_test.rb
 MISMATCH: activesupport/test/core_ext/class_test.rb
 MISMATCH: activesupport/test/core_ext/date_and_time_behavior.rb
+MISMATCH: activesupport/test/core_ext/date_ext_test.rb
 MISMATCH: activesupport/test/core_ext/date_time_ext_test.rb
 MISMATCH: activesupport/test/core_ext/digest/uuid_test.rb
 MISMATCH: activesupport/test/core_ext/duration_test.rb
@@ -1529,8 +1524,10 @@ MISMATCH: activesupport/test/dependencies_test.rb
 MISMATCH: activesupport/test/deprecation/method_wrappers_test.rb
 MISMATCH: activesupport/test/deprecation_test.rb
 MISMATCH: activesupport/test/digest_test.rb
+MISMATCH: activesupport/test/dot_env_configuration_test.rb
 MISMATCH: activesupport/test/encrypted_configuration_test.rb
 MISMATCH: activesupport/test/encrypted_file_test.rb
+MISMATCH: activesupport/test/env_configuration_test.rb
 MISMATCH: activesupport/test/error_reporter_test.rb
 MISMATCH: activesupport/test/event_reporter/log_subscriber_test.rb
 MISMATCH: activesupport/test/event_reporter_test.rb
@@ -1591,8 +1588,8 @@ MISMATCH: activesupport/test/testing/test_without_assertions_test.rb
 MISMATCH: activesupport/test/time_travel_test.rb
 MISMATCH: activesupport/test/time_zone_test.rb
 MISMATCH: activesupport/test/transliterate_test.rb
-MISMATCH: activesupport/test/xml_mini/libxml_engine_test.rb
 MISMATCH: activesupport/test/xml_mini_test.rb
+MISMATCH: guides/Rakefile
 MISMATCH: guides/bug_report_templates/action_controller.rb
 MISMATCH: guides/bug_report_templates/action_mailbox.rb
 MISMATCH: guides/bug_report_templates/action_mailer.rb
@@ -1611,6 +1608,8 @@ MISMATCH: guides/rails_guides/markdown/renderer.rb
 MISMATCH: guides/test/bug_report_template_test.rb
 MISMATCH: guides/test/generator_test.rb
 MISMATCH: guides/test/markdown/renderer_test.rb
+MISMATCH: rails.gemspec
+MISMATCH: railties/Rakefile
 MISMATCH: railties/lib/minitest/rails_plugin.rb
 MISMATCH: railties/lib/rails.rb
 MISMATCH: railties/lib/rails/api/generator.rb
@@ -1627,7 +1626,6 @@ MISMATCH: railties/lib/rails/cli.rb
 MISMATCH: railties/lib/rails/code_statistics.rb
 MISMATCH: railties/lib/rails/code_statistics_calculator.rb
 MISMATCH: railties/lib/rails/command/base.rb
-MISMATCH: railties/lib/rails/command/behavior.rb
 MISMATCH: railties/lib/rails/command/environment_argument.rb
 MISMATCH: railties/lib/rails/commands/about/about_command.rb
 MISMATCH: railties/lib/rails/commands/app/update_command.rb
@@ -1636,7 +1634,6 @@ MISMATCH: railties/lib/rails/commands/boot/boot_command.rb
 MISMATCH: railties/lib/rails/commands/console/console_command.rb
 MISMATCH: railties/lib/rails/commands/console/irb_console.rb
 MISMATCH: railties/lib/rails/commands/credentials/credentials_command.rb
-MISMATCH: railties/lib/rails/commands/credentials/credentials_command/diffing.rb
 MISMATCH: railties/lib/rails/commands/db/system/change/change_command.rb
 MISMATCH: railties/lib/rails/commands/dbconsole/dbconsole_command.rb
 MISMATCH: railties/lib/rails/commands/destroy/destroy_command.rb
@@ -1682,7 +1679,6 @@ MISMATCH: railties/lib/rails/generators/rails/controller/controller_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/db/system/change/change_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/devcontainer/devcontainer_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/encrypted_file/encrypted_file_generator.rb
-MISMATCH: railties/lib/rails/generators/rails/encryption_key_file/encryption_key_file_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/generator/generator_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/plugin/plugin_generator.rb
 MISMATCH: railties/lib/rails/generators/rails/resource/resource_generator.rb
@@ -1702,10 +1698,16 @@ MISMATCH: railties/lib/rails/rack/logger.rb
 MISMATCH: railties/lib/rails/railtie.rb
 MISMATCH: railties/lib/rails/structured_event_subscriber.rb
 MISMATCH: railties/lib/rails/tasks.rb
+MISMATCH: railties/lib/rails/tasks/framework.rake
+MISMATCH: railties/lib/rails/tasks/log.rake
+MISMATCH: railties/lib/rails/tasks/misc.rake
+MISMATCH: railties/lib/rails/tasks/tmp.rake
 MISMATCH: railties/lib/rails/test_unit/line_filtering.rb
 MISMATCH: railties/lib/rails/test_unit/railtie.rb
 MISMATCH: railties/lib/rails/test_unit/reporter.rb
 MISMATCH: railties/lib/rails/test_unit/test_parser.rb
+MISMATCH: railties/lib/rails/test_unit/testing.rake
+MISMATCH: railties/railties.gemspec
 MISMATCH: railties/test/app_loader_test.rb
 MISMATCH: railties/test/application/action_view_test_integration_case_test.rb
 MISMATCH: railties/test/application/active_job_adapter_test.rb
@@ -1731,6 +1733,8 @@ MISMATCH: railties/test/application/multiple_applications_test.rb
 MISMATCH: railties/test/application/paths_test.rb
 MISMATCH: railties/test/application/query_logs_test.rb
 MISMATCH: railties/test/application/rack/logger_test.rb
+MISMATCH: railties/test/application/ractors_test.rb
+MISMATCH: railties/test/application/rake/dbs_postgresql_test.rb
 MISMATCH: railties/test/application/rake/dbs_schema_test.rb
 MISMATCH: railties/test/application/rake/dbs_setup_test.rb
 MISMATCH: railties/test/application/rake/dbs_test.rb
@@ -1756,7 +1760,6 @@ MISMATCH: railties/test/commands/middleware_test.rb
 MISMATCH: railties/test/commands/routes_test.rb
 MISMATCH: railties/test/commands/runner_test.rb
 MISMATCH: railties/test/commands/server_test.rb
-MISMATCH: railties/test/commands/test_test.rb
 MISMATCH: railties/test/credentials_helpers.rb
 MISMATCH: railties/test/engine/lazy_route_set_test.rb
 MISMATCH: railties/test/generators/actions_test.rb
@@ -1816,15 +1819,16 @@ MISMATCH: tools/rail_inspector/test/rail_inspector/visitor/framework_default_tes
 MISMATCH: tools/rail_inspector/test/rail_inspector/visitor/hash_to_string_test.rb
 MISMATCH: tools/rail_inspector/test/rail_inspector/visitor/load_test.rb
 MISMATCH: tools/releaser/lib/releaser.rb
+MISMATCH: tools/releaser/releaser.gemspec
 MISMATCH: tools/strict_warnings.rb
 MISMATCH: tools/support/leak_checker.rb
 MISMATCH: tools/test_common.rb
 
-1818 / 3464 files differ between tuxedo and rubocop output.
+1822 / 3520 files differ between tuxedo and rubocop output.
 
-tuxedo:  1.059s
-rubocop: 102.986s
-tuxedo is 97.2x faster
+tuxedo:  2.077s
+rubocop: 121.433s
+tuxedo is 58.5x faster
 
 To see a diff for one file:
   scripts/format-diff.sh rails <relative/path.rb>

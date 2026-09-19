@@ -1,5 +1,5 @@
 format-compare: thor
-generated: 2026-09-06T05:26:57Z
+generated: 2026-09-19T05:03:01Z
 
 MISMATCH: lib/thor.rb
 MISMATCH: lib/thor/actions.rb
@@ -10,7 +10,6 @@ MISMATCH: lib/thor/actions/file_manipulation.rb
 MISMATCH: lib/thor/actions/inject_into_file.rb
 MISMATCH: lib/thor/base.rb
 MISMATCH: lib/thor/command.rb
-MISMATCH: lib/thor/core_ext/hash_with_indifferent_access.rb
 MISMATCH: lib/thor/error.rb
 MISMATCH: lib/thor/group.rb
 MISMATCH: lib/thor/invocation.rb
@@ -20,7 +19,6 @@ MISMATCH: lib/thor/parser/argument.rb
 MISMATCH: lib/thor/parser/arguments.rb
 MISMATCH: lib/thor/parser/option.rb
 MISMATCH: lib/thor/parser/options.rb
-MISMATCH: lib/thor/rake_compat.rb
 MISMATCH: lib/thor/runner.rb
 MISMATCH: lib/thor/shell.rb
 MISMATCH: lib/thor/shell/basic.rb
@@ -28,39 +26,39 @@ MISMATCH: lib/thor/shell/lcs_diff.rb
 MISMATCH: lib/thor/shell/table_printer.rb
 MISMATCH: lib/thor/shell/terminal.rb
 MISMATCH: lib/thor/util.rb
-MISMATCH: spec/actions_spec.rb
 MISMATCH: spec/actions/create_file_spec.rb
 MISMATCH: spec/actions/empty_directory_spec.rb
 MISMATCH: spec/actions/file_manipulation_spec.rb
 MISMATCH: spec/actions/inject_into_file_spec.rb
+MISMATCH: spec/actions_spec.rb
 MISMATCH: spec/base_spec.rb
 MISMATCH: spec/command_spec.rb
-MISMATCH: spec/fixtures/doc/block_helper.rb
-MISMATCH: spec/fixtures/doc/config.rb
 MISMATCH: spec/group_spec.rb
 MISMATCH: spec/line_editor_spec.rb
-MISMATCH: spec/line_editor/readline_spec.rb
 MISMATCH: spec/parser/argument_spec.rb
 MISMATCH: spec/parser/arguments_spec.rb
 MISMATCH: spec/parser/option_spec.rb
 MISMATCH: spec/parser/options_spec.rb
+MISMATCH: spec/rake_compat_spec.rb
 MISMATCH: spec/register_spec.rb
 MISMATCH: spec/runner_spec.rb
 MISMATCH: spec/script_exit_status_spec.rb
-MISMATCH: spec/shell_spec.rb
 MISMATCH: spec/shell/basic_spec.rb
 MISMATCH: spec/shell/color_spec.rb
 MISMATCH: spec/shell/html_spec.rb
+MISMATCH: spec/shell_spec.rb
 MISMATCH: spec/sort_spec.rb
 MISMATCH: spec/subcommand_spec.rb
 MISMATCH: spec/thor_spec.rb
 MISMATCH: spec/util_spec.rb
+MISMATCH: thor.gemspec
 
-54 / 78 files differ between tuxedo and rubocop output.
+51 / 80 files differ between tuxedo and rubocop output.
+2 files tuxedo could not format, left as source.
 
-tuxedo:  0.384s
-rubocop: 2.270s
-tuxedo is 5.9x faster
+tuxedo:  0.040s
+rubocop: 5.860s
+tuxedo is 146.5x faster
 
 To see a diff for one file:
   scripts/format-diff.sh thor <relative/path.rb>

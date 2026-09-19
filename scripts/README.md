@@ -1,7 +1,7 @@
 # scripts/
 
-Tooling for checking tuxedo's formatter against real-world Ruby projects. All
-four scripts here expect a project's pristine source at
+Tooling for checking tuxedo's formatter against real-world Ruby projects. The
+four project scripts here expect a project's pristine source at
 `test-projects/<project>/source`. To add one, clone it there:
 
 ```bash
@@ -102,3 +102,40 @@ was probably already present in the source either way.
 
 Output: `scripts/results/<project>-lint-baseline.txt` (committed — see
 above).
+
+## classify-linelength.rb \<dir\> [--limit N] [--list N] [--sites FILE]
+
+Takes a formatted tree rather than a project name, the way
+`comment-anchors.rb` does, and splits its over-long lines into the ones a
+formatter could still fix and the ones it could not:
+
+```
+linelength: 22 over 120, 18 unsplittable, 4 breakable
+```
+
+`Layout/LineLength` dominates every layout report tuxedo produces — 2121 of
+rails' 2272 offenses, 22 of thor's 51 — and most of it is a line holding one
+string, regex or comment that is wider than the limit by itself. No
+placement fixes those, because the only move left is splitting a literal,
+which tuxedo does not do. Reporting them next to the lines tuxedo genuinely
+fails to break hides the second number behind the first; this separates
+them.
+
+A line is **unsplittable** when its widest atom — a string, regex, symbol or
+backtick literal, or a comment — is wide enough that the line stays over the
+limit with that atom alone at the statement's own indent. A formatter can
+nest deeper but never dedent, so nothing is left to try. A call written
+without parentheses counts as one atom together with its single argument,
+because there is no comma to break at and tuxedo does not add parentheses
+the author did not write; with several arguments it is breakable, since Ruby
+takes a line break after a comma without them. Everything else is
+**breakable**: a construct tuxedo does not break yet. That split is triage,
+not a verdict — a breakable line can still turn out to need a layout
+decision rather than a fix.
+
+Scan mode finds the over-long lines itself and needs no rubocop, at the cost
+of reimplementing `Layout/LineLength`'s `AllowURI`, `AllowHeredoc` and
+`IgnoreCopDirectives` defaults — close to rubocop's count but not identical.
+`--sites` takes rubocop's own offence list (`path:line` per line, relative
+to `<dir>`) and classifies exactly those, so the two numbers add up to the
+one in the layout report.
