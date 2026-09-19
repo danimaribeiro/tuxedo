@@ -311,7 +311,7 @@ struct Formatter {
     /// Verbatim heredoc bodies, indexed by the marker written into
     /// `output` after each opening tag. See `heredoc_doc` and
     /// `splice_heredoc_bodies`.
-    pending_heredocs: Vec<String>,
+    pending_heredocs: Vec<PendingHeredoc>,
     /// Source line of the last heredoc terminator emitted. Prism ends a
     /// heredoc node at its opening tag, not its terminator, so a statement
     /// containing one looks far shorter than it is — which made the
@@ -336,6 +336,59 @@ struct Formatter {
     /// `case` right before it visits each clause, which has no other way
     /// to learn it; taken (and so cleared) by the clause.
     clause_closer: Option<usize>,
+}
+
+/// A heredoc body waiting to be spliced in.
+struct PendingHeredoc {
+    body: String,
+    /// For a `<<~` heredoc, the indent of the source line its tag sat on:
+    /// the body moves by the difference between this and the indent that
+    /// line has once rendered. `None` for `<<-` and plain `<<`, whose
+    /// leading whitespace is data.
+    source_indent: Option<usize>,
+}
+
+/// A `<<~` body and terminator moved to sit with the code around them.
+/// `indent` is the width of the rendered line the tag landed on.
+///
+/// Every body line moves by the same amount, so the margin Ruby strips
+/// moves with it and the string is unchanged; the terminator goes to
+/// `indent`. Bodies that cannot move by that amount exactly are left as
+/// written: a tab in the leading whitespace (its width depends on the
+/// column), or a line indented less than a leftward shift removes.
+fn reindent_heredoc(heredoc: &PendingHeredoc, indent: usize) -> String {
+    let Some(source_indent) = heredoc.source_indent else {
+        return heredoc.body.clone();
+    };
+    let body = &heredoc.body;
+    let mut lines: Vec<&str> = body.split_inclusive('\n').collect();
+    let Some(terminator) = lines.pop() else {
+        return body.clone();
+    };
+    let leading = |line: &str| line.len() - line.trim_start_matches([' ', '\t']).len();
+    let shrink = source_indent.saturating_sub(indent);
+    let movable = lines.iter().all(|line| {
+        !line[..leading(line)].contains('\t') && (line.trim().is_empty() || leading(line) >= shrink)
+    });
+    if !movable || terminator[..leading(terminator)].contains('\t') {
+        return body.clone();
+    }
+    let mut out = String::with_capacity(body.len() + lines.len() * indent);
+    for line in lines {
+        let text = line.trim_end_matches(['\n', '\r']);
+        if text.is_empty() {
+            out.push_str(line);
+        } else if indent >= source_indent {
+            out.push_str(&" ".repeat(indent - source_indent));
+            out.push_str(line);
+        } else {
+            let strip = shrink.min(leading(line));
+            out.push_str(&line[strip..]);
+        }
+    }
+    out.push_str(&" ".repeat(indent));
+    out.push_str(&terminator[leading(terminator)..]);
+    out
 }
 
 /// Delimiters of the placeholder that stands in for a heredoc body between
@@ -1016,16 +1069,33 @@ impl Formatter {
     /// `body` is copied verbatim, byte for byte. A heredoc body is opaque
     /// text, not code: its leading whitespace is data (re-indenting inside
     /// a `<<-SQL` changes the SQL), so it is never reformatted, and never
-    /// re-indented — not even for `<<~`, where Ruby itself strips the
-    /// margin at runtime.
-    fn heredoc_doc(&mut self, opening: &[u8], body: String, body_end: usize) -> Doc {
+    /// re-indented while it is queued. Only a `<<~` body moves later, in
+    /// `splice_heredoc_bodies`, because Ruby strips its common margin: a
+    /// uniform shift is layout, not content.
+    fn heredoc_doc(
+        &mut self,
+        opening: &[u8],
+        opening_start: usize,
+        body: String,
+        body_end: usize,
+    ) -> Doc {
+        let source_indent = opening.starts_with(b"<<~").then(|| {
+            let line_start = self.line_starts[self.line_of(opening_start)];
+            self.source[line_start..]
+                .bytes()
+                .take_while(|&b| b == b' ' || b == b'\t')
+                .count()
+        });
         let terminator_line = self.line_of(body_end.saturating_sub(1));
         self.heredoc_end_line = Some(
             self.heredoc_end_line
                 .map_or(terminator_line, |seen| seen.max(terminator_line)),
         );
         let index = self.pending_heredocs.len();
-        self.pending_heredocs.push(body);
+        self.pending_heredocs.push(PendingHeredoc {
+            body,
+            source_indent,
+        });
         // A marker rather than an offset into `output`: a speculative
         // render can be thrown away and the text written again somewhere
         // else, so an offset taken while it is built points at the wrong
@@ -1051,7 +1121,8 @@ impl Formatter {
         let bodies = std::mem::take(&mut self.pending_heredocs);
 
         let mut out = String::with_capacity(rendered.len());
-        let mut queued: Vec<usize> = Vec::new();
+        let mut queued: Vec<(usize, usize)> = Vec::new();
+        let mut line_start = 0;
         let mut chars = rendered.chars().peekable();
         while let Some(c) = chars.next() {
             match c {
@@ -1064,7 +1135,9 @@ impl Formatter {
                         digits.push(d);
                     }
                     if let Ok(index) = digits.parse::<usize>() {
-                        queued.push(index);
+                        let line = &out[line_start..];
+                        let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+                        queued.push((index, indent));
                     }
                 }
                 '\n' => {
@@ -1072,17 +1145,18 @@ impl Formatter {
                     // Bodies land after the line their tag closed, in the
                     // order the tags appeared on it: `foo(<<~A, <<~B)`
                     // emits A's body then B's.
-                    for index in queued.drain(..) {
-                        out.push_str(&bodies[index]);
+                    for (index, indent) in queued.drain(..) {
+                        out.push_str(&reindent_heredoc(&bodies[index], indent));
                     }
+                    line_start = out.len();
                 }
                 _ => out.push(c),
             }
         }
         if !queued.is_empty() {
             out.push('\n');
-            for index in queued.drain(..) {
-                out.push_str(&bodies[index]);
+            for (index, indent) in queued.drain(..) {
+                out.push_str(&reindent_heredoc(&bodies[index], indent));
             }
         }
         out

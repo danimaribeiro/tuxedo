@@ -1,0 +1,25 @@
+class Mapper
+      def deprecated
+            warn(<<~MSG.squish)
+                  Something is deprecated
+                    and this line is deeper
+
+                  #{name} is a hole
+            MSG
+      end
+
+  def shallow
+        text = <<~TEXT
+        flush with the tag
+          deeper
+      TEXT
+    text
+  end
+
+  def dash
+          sql = <<-SQL
+      keeps its whitespace
+          SQL
+    sql
+  end
+end

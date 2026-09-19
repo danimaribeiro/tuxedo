@@ -29,3 +29,21 @@ klass.class_eval <<-METHOD, __FILE__, __LINE__ + 1
     invoke(*args, &block)
   end
 METHOD
+
+class Mapper
+  def deprecated
+    warn(<<~MSG.squish)
+      Something is deprecated
+        and this line is deeper
+
+      #{name} is a hole
+    MSG
+  end
+
+  def dash
+    sql = <<-SQL
+      keeps its whitespace
+    SQL
+    sql
+  end
+end
