@@ -1,0 +1,7 @@
+---
+source: tests/format_config_test.rs
+expression: output
+---
+h = {a: 1, "b" => 2}
+empty = {}
+block = list.map { |x| x }

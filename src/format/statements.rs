@@ -178,7 +178,10 @@ impl Formatter {
     /// author left one (`wants_forced_blank_line`).
     fn block_statements_doc(&mut self, node: &ruby_prism::StatementsNode<'_>) -> Doc {
         // `(blank line before it, the leaf)`.
-        let mut items: Vec<(bool, Doc)> = Vec::new();
+        let mut items: Vec<(bool, Doc, bool)> = Vec::new();
+        // The body of a class, module or `class <<` puts a bare access
+        // modifier, and the comments written above it, one level out.
+        let outdent = self.class_body == Some(node.location().start_offset());
 
         let mut prev_end_line: Option<usize> = None;
         let mut prev_stmt: Option<ruby_prism::Node<'_>> = None;
@@ -190,6 +193,7 @@ impl Formatter {
         let mut pending_blank_after_magic = false;
 
         for stmt in node.body().iter() {
+            let first_item = items.len();
             let start_line = self.line_of(stmt.location().start_offset());
             // Computed once per statement and consulted at whichever point
             // actually ends up first -- the leading comment block if there
@@ -215,7 +219,7 @@ impl Formatter {
 
                 let text =
                     Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
-                items.push((blank, Doc::text(text)));
+                items.push((blank, Doc::text(text), false));
                 prev_end_line = Some(comment_line);
                 self.comment_cursor += 1;
             }
@@ -238,21 +242,39 @@ impl Formatter {
                 leaf = leaf.append(comment);
             }
 
-            items.push((blank, leaf));
+            items.push((blank, leaf, false));
+            if outdent && is_access_modifier_call(&stmt) {
+                for item in &mut items[first_item..] {
+                    item.2 = true;
+                }
+            }
             prev_end_line = Some(end_line);
             prev_stmt = Some(stmt);
         }
 
         let mut doc = Doc::nil();
-        for (i, (blank, leaf)) in items.into_iter().enumerate() {
-            if i > 0 {
-                doc = doc.append(if blank {
-                    Doc::blank_line()
-                } else {
+        let nest = self.indent_str.len();
+        // A list opening with an outdented item draws the break before it
+        // itself, so the break can sit under the dedent too.
+        let owns_first_break = outdent && items.first().is_some_and(|item| item.2);
+        self.body_owns_first_break = owns_first_break;
+        for (i, (blank, leaf, out)) in items.into_iter().enumerate() {
+            let separator = if i == 0 {
+                if owns_first_break {
                     Doc::hardline()
-                });
-            }
-            doc = doc.append(leaf);
+                } else {
+                    Doc::nil()
+                }
+            } else if blank {
+                Doc::blank_line()
+            } else {
+                Doc::hardline()
+            };
+            // The printer takes a line's indent from what follows the
+            // break, so the leaf goes under the dedent with its separator.
+            // A modifier or a comment is one line: nothing in it breaks.
+            let piece = separator.append(leaf);
+            doc = doc.append(if out { piece.dedent(nest) } else { piece });
         }
         doc
     }

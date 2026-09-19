@@ -1,0 +1,21 @@
+---
+source: tests/format_config_test.rs
+expression: output
+---
+class Foo
+  def a
+  end
+
+  # about the rest
+  private
+
+  def b
+  end
+
+  class Inner
+    protected
+
+    def c
+    end
+  end
+end

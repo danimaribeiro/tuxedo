@@ -100,6 +100,14 @@ regardless of any RuboCop-compatibility goal, independent of the
 project-cfg column entirely. A cop with similar baseline and tuxedo counts
 was probably already present in the source either way.
 
+**Per-project options**: if `scripts/configs/<project>.tuxedo.toml` exists,
+the working copy is formatted with it, so the project-cfg column measures
+what the formatter can do with the options it has. Thor's picks
+`hash_brace_space = "no_space"` and `access_modifier_style = "outdent"`, which
+is what brings its project-cfg column to 0. The baseline and tuxedo columns
+run RuboCop's stock defaults, so those two cops rise there under that config;
+read them from the project-cfg column.
+
 **Deliberate divergences**: a row marked `*` is a cop tuxedo departs from on
 purpose, with its reason in the legend under the table. The list is
 `scripts/lint-baseline.deliberate.tsv` (`<cop><TAB><reason>`); it is also the

@@ -1,5 +1,6 @@
 use super::doc::Doc;
 use super::{Formatter, bytes_doc};
+use crate::config::HashBraceSpace;
 
 impl Formatter {
     pub(super) fn fmt_splat_node(&mut self, node: &ruby_prism::SplatNode<'_>) -> Doc {
@@ -181,7 +182,11 @@ impl Formatter {
         }
 
         if braced {
-            return self.bracketed_items_doc("{", Doc::line(), elements, Doc::line(), "}", braces);
+            let inner = match self.hash_brace_space {
+                HashBraceSpace::Space => Doc::line,
+                HashBraceSpace::NoSpace => Doc::softline,
+            };
+            return self.bracketed_items_doc("{", inner(), elements, inner(), "}", braces);
         }
 
         // Bare keyword args at a call site with no braces of their own.
