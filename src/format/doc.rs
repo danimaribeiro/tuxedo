@@ -24,6 +24,14 @@
 //! express is listed here.
 
 use pretty::RcDoc;
+use std::cell::Cell;
+use unicode_width::UnicodeWidthStr;
+
+thread_local! {
+    /// The width the document being rendered is laid out against, for
+    /// [`Doc::fits_or`], which has to ask the question while it renders.
+    static RENDER_WIDTH: Cell<usize> = const { Cell::new(UNBOUNDED_WIDTH) };
+}
 
 /// The width a document is laid out against when nothing in it is allowed
 /// to break (see [`Doc::flat`]). Not `usize::MAX`: the printer adds the
@@ -143,6 +151,30 @@ impl Doc {
         Doc::new(broken.doc.flat_alt(flat.doc), broken.breaks && flat.breaks)
     }
 
+    /// `fits` if `head` -- the text that would follow on the line this
+    /// document starts at -- still ends within the width, `otherwise` if
+    /// not.
+    ///
+    /// For a choice between two different documents that a group cannot
+    /// make, because the part of the document that differs contains a
+    /// hardline and a group holding one never fits: `head` is the
+    /// hardline-free prefix, and the question asked is the one the group
+    /// would have asked of it.
+    pub(super) fn fits_or(head: &str, fits: Doc, otherwise: Doc) -> Self {
+        let head_width = head.width();
+        let breaks = fits.breaks || otherwise.breaks;
+        Doc::new(
+            RcDoc::column(move |pos| {
+                if pos + head_width <= RENDER_WIDTH.with(Cell::get) {
+                    fits.doc.clone()
+                } else {
+                    otherwise.doc.clone()
+                }
+            }),
+            breaks,
+        )
+    }
+
     /// The documents one after another.
     pub(super) fn concat(docs: impl IntoIterator<Item = Doc>) -> Self {
         docs.into_iter().fold(Doc::nil(), Doc::append)
@@ -191,7 +223,9 @@ impl Doc {
 
     /// Lays the document out for a line `width` columns wide.
     pub(super) fn render(&self, width: usize) -> String {
+        let outer = RENDER_WIDTH.with(|w| w.replace(width));
         let rendered = self.doc.pretty(width).to_string();
+        RENDER_WIDTH.with(|w| w.set(outer));
         if !rendered.contains(BLANK_MARK) {
             return rendered;
         }

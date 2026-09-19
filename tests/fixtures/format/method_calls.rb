@@ -60,11 +60,12 @@ module ActiveStorage
   class Engine
     initializer "active_storage.configs" do
       config.after_initialize do |app|
-        ActiveStorage.base_controller_parent = app.config.active_storage.base_controller_parent || if app.config.api_only
-          "ActionController::API"
-        else
-          "ActionController::Base"
-        end
+        ActiveStorage.base_controller_parent = app.config.active_storage.base_controller_parent ||
+          if app.config.api_only
+            "ActionController::API"
+          else
+            "ActionController::Base"
+          end
       end
     end
   end

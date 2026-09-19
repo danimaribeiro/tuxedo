@@ -50,11 +50,7 @@ foo {
 }
 foo { value ? 1 : 2 }
 foo { value if ready? }
-included.class_methods {
-  def foo
-    @foo << :included
-  end
-} # rubocop:disable Lint/NestedMethodDefinition
+included.class_methods { def foo; @foo << :included; end } # rubocop:disable Lint/NestedMethodDefinition
 foo {
   a
   b

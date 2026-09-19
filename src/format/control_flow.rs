@@ -596,13 +596,26 @@ impl Formatter {
 
     pub(super) fn fmt_when_node(&mut self, node: &ruby_prism::WhenNode<'_>) -> Doc {
         let closer = self.clause_closer.take();
-        let mut header = Doc::text("when ");
+        // The values are one collection: all on the `when` line, or one per
+        // line at the body's indent. Held to one line, there is no line
+        // point to take.
+        let separator = if self.single_line {
+            Doc::text(", ")
+        } else {
+            Doc::text(",").append(Doc::line())
+        };
+        let mut values = Doc::nil();
         for (i, condition) in node.conditions().iter().enumerate() {
             if i > 0 {
-                header = header.append(Doc::text(", "));
+                values = values.append(separator.clone());
             }
-            header = header.append(self.node_doc(&condition));
+            values = values.append(self.node_doc(&condition));
         }
+        let header = Doc::text("when ").append(if self.single_line {
+            values
+        } else {
+            values.indent(self.indent_str.len()).group()
+        });
         let header_end = node
             .conditions()
             .iter()
@@ -709,8 +722,17 @@ impl Formatter {
         Self::bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
+        let block_tail = operands.last().is_some_and(|last| {
+            last.as_begin_node().is_some()
+                || last
+                    .as_if_node()
+                    .is_some_and(|n| n.if_keyword_loc().is_some())
+                || last.as_unless_node().is_some()
+                || last.as_case_node().is_some()
+                || last.as_case_match_node().is_some()
+        });
         let (leaves, gaps) = self.operand_docs(&operands);
-        self.infix_doc(leaves, gaps, op_str, condition)
+        self.infix_doc(leaves, gaps, op_str, condition, block_tail)
     }
 
     /// Collects the operands of a run of the same boolean operator, so

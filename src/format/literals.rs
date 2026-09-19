@@ -5,9 +5,17 @@ use super::doc::Doc;
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
         // Held to one line, unless a comment sits inside: a `#` comment runs
-        // to the end of its line, so there is no one-line shape for it.
+        // to the end of its line, so there is no one-line shape for it. A
+        // single expression holding a `{ }` block that has to expand is
+        // laid out like any other, since flattening it would join the
+        // block's body with semicolons at whatever width.
         let (start, end) = (node.location().start_offset(), node.location().end_offset());
-        let commented = !self.single_line && self.has_pending_comment_in(start, end);
+        let expands = node.body().is_some_and(|body| {
+            body.as_statements_node()
+                .is_some_and(|s| s.body().iter().count() == 1)
+                && super::defs::holds_expanding_brace_block(&body)
+        });
+        let commented = !self.single_line && (expands || self.has_pending_comment_in(start, end));
         // Anything written after the last statement -- a trailing comment,
         // or comments on lines of their own -- ends a line `)` cannot share.
         let body_end = node.body().map_or(node.opening_loc().end_offset(), |b| {
