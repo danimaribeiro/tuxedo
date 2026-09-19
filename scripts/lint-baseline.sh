@@ -169,7 +169,13 @@ fi
         }
         {
           name = $1
-          if ($1 in reason) { name = $1 " *"; seen[$1] = 1; order[++n] = $1 }
+          if ($1 in reason) {
+            name = $1 " *"
+            order[++n] = $1
+            if ($4 > 0) { marked_up++; marked_delta += $4 }
+          } else if ($4 > 0) {
+            open_up++; open_delta += $4
+          }
           printf "%-4d %-45s %10d %10d %+10d %12s\n", NR, name, $2, $3, $4, $5
           b+=$2; t+=$3; d+=$4; if (have_proj && $5 != "n/a") p+=$5
         }
@@ -181,6 +187,9 @@ fi
             print "* deliberate: decided, still counted"
             for (i = 1; i <= n; i++) printf "    %s: %s\n", order[i], reason[order[i]]
           }
+          print ""
+          printf "introduced by tuxedo (delta above 0): %d cops (%+d) not decided, %d cops (%+d) deliberate\n", \
+            open_up, open_delta, marked_up, marked_delta
         }
       '
 } | tee "$REPORT"

@@ -101,11 +101,14 @@ project-cfg column entirely. A cop with similar baseline and tuxedo counts
 was probably already present in the source either way.
 
 **Deliberate divergences**: a row marked `*` is a cop tuxedo departs from on
-purpose, with its reason in the legend under the table. The list lives in
-`scripts/lint-baseline.deliberate.tsv` (`<cop><TAB><reason>`). A mark says the
-position has been decided, not that the row may be ignored: the numbers stay,
-so a marked cop that starts climbing is still visible. The Layout half of the
-same idea is `format-verify.rubocop.yml`.
+purpose, with its reason in the legend under the table. The list is
+`scripts/lint-baseline.deliberate.tsv` (`<cop><TAB><reason>`); it is also the
+index for the Layout decisions that `format-verify.rubocop.yml` carries, so
+there is one list to read. A mark says the position has been decided, not
+that the row may be ignored: the row and its numbers stay, so a marked cop
+that starts climbing is still visible. The last line of the report counts
+cops tuxedo made worse (delta above 0), split into those nobody has decided
+on and the marked ones.
 
 Output: `scripts/results/<project>-lint-baseline.txt` (committed — see
 above).

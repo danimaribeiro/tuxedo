@@ -1,5 +1,5 @@
 RuboCop offenses: rails
-generated: 2026-09-19T08:25:25Z
+generated: 2026-09-19T20:28:13Z
 baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)
 project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-formatted copy
 
@@ -281,3 +281,5 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
     Style/BlockDelimiters: keeps the block delimiters the author wrote; `a b { }` and `a b do end` bind differently, so a rewrite is not layout
     Style/MultilineTernaryOperator: breaks an over-long ternary after `?` and `:` rather than rewriting it as if/else, a change of construct
     Layout/HeredocIndentation: leaves `<<-` alone: its body whitespace is part of the string, so `<<~` is a change of value
+
+introduced by tuxedo (delta above 0): 56 cops (+5801) not decided, 3 cops (+289) deliberate
