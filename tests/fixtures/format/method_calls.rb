@@ -88,3 +88,19 @@ grouped = list.map { |a|
   b = a.foo
   b.bar
 }.compact.first(1)
+
+# A chain that is a block condition nests its links two levels, so the
+# condition cannot be mistaken for the body one level in.
+def maintain
+  synchronize do
+    unless self.discarded?
+      if connection_to_maintain = @connections
+          .select { |conn| !conn.in_use? }
+          .select(&candidate_selector)
+          .sort_by(&:seconds_idle)
+          .find { |conn| !connections_visited[conn] }
+        checkout_for_maintenance connection_to_maintain
+      end
+    end
+  end
+end

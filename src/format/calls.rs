@@ -181,6 +181,17 @@ impl Formatter {
             return None;
         }
 
+        // A chain that is the condition of a block `if`/`while` nests its
+        // links two levels, so the condition cannot be mistaken for the
+        // body that sits one level in (see `condition_doc`). Taken here,
+        // after the chain is known to be one, so an argument list inside a
+        // link never sees it.
+        let levels = if std::mem::take(&mut self.condition_spine) {
+            2
+        } else {
+            1
+        };
+
         // The base stays in `output` while the links are built, so a link's
         // arguments measure the column the base leaves the line at rather
         // than column zero.
@@ -191,7 +202,7 @@ impl Formatter {
         // so the printer handles the layout -- but a comment that has to be
         // put back one level (see `comments_doc`) reads `self.indent`, so
         // the counter is kept in step with the nesting.
-        self.indent += 1;
+        self.indent += levels;
         // Built link by link: the comments between one link and the next
         // are claimed after the first link's arguments and before the
         // second's.
@@ -214,7 +225,7 @@ impl Formatter {
             }
             segments.push((gap, segment));
         }
-        self.indent -= 1;
+        self.indent -= levels;
         if let Some((_, last)) = segments.last_mut() {
             *last = last.clone().append(tail);
         }
@@ -223,7 +234,7 @@ impl Formatter {
         // A comment between two links has no flat shape: every link goes on
         // its own line, as if the chain were too long.
         let commented = segments.iter().any(|(gap, _)| gap.is_some());
-        let nest_width = self.indent_str.len();
+        let nest_width = self.indent_str.len() * levels;
         let links_doc = Doc::concat(segments.into_iter().map(|(gap, segment)| {
             let line = if commented {
                 Doc::hardline()
