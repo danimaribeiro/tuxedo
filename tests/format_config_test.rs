@@ -4,7 +4,7 @@
 //! the expected output. Uses insta snapshots since each config
 //! variation produces different output from the same input.
 
-use tuxedo::config::{AccessModifierStyle, FormatConfig, HashBraceSpace};
+use tuxedo::config::{AccessModifierStyle, FormatConfig, HashBraceSpace, QuoteStyle};
 
 const CLASS_INPUT: &str = "\
 class Dog
@@ -99,5 +99,55 @@ fn access_modifier_outdent() {
 #[test]
 fn access_modifier_indent_is_the_default() {
     let output = tuxedo::format_with_config(MODIFIER_INPUT, &FormatConfig::default()).unwrap();
+    insta::assert_snapshot!(output);
+}
+
+const QUOTE_INPUT: &str = "\
+a = 'plain'
+b = 'has \"dq\"'
+c = 'back\\slash'
+d = 'hash #{x}'
+f = \"simple\"
+g = \"it's\"
+h = \"esc \\\\ and \\\" ok\"
+i = \"tab\\t\"
+j = \"interp #{a}\"
+k = :'a b'
+l = :\"a b\"
+m = { 'k': 1, \"j\": 2, \"it's\": 3 }
+n = 'a' 'b'
+o = 'a' \"b#{c}\"
+q = %q(x) + %w[a b].join + ?a
+r = <<~EOS
+  'heredoc'
+EOS
+";
+
+/// A literal changes quote only when its value survives: the ones that
+/// cannot (an escape, an interpolation, a quote of the other kind) keep
+/// what was written, and so do `%q`, `?a` and heredocs.
+#[test]
+fn quote_style_double_is_the_default() {
+    let output = tuxedo::format_with_config(QUOTE_INPUT, &FormatConfig::default()).unwrap();
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn quote_style_single() {
+    let config = FormatConfig {
+        quote_style: QuoteStyle::Single,
+        ..Default::default()
+    };
+    let output = tuxedo::format_with_config(QUOTE_INPUT, &config).unwrap();
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn quote_style_preserve() {
+    let config = FormatConfig {
+        quote_style: QuoteStyle::Preserve,
+        ..Default::default()
+    };
+    let output = tuxedo::format_with_config(QUOTE_INPUT, &config).unwrap();
     insta::assert_snapshot!(output);
 }

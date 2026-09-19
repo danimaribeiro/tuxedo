@@ -3,8 +3,8 @@ source: tests/format_snapshot_test.rs
 expression: output
 ---
 foo a,
-  'hello
-world',
+  "hello
+world",
   extra
 
 foo bar(

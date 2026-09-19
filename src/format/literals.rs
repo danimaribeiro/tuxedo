@@ -1,6 +1,7 @@
 use super::Formatter;
 use super::bytes_doc;
 use super::doc::Doc;
+use crate::config::QuoteStyle;
 
 impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
@@ -87,19 +88,113 @@ impl Formatter {
             // corrupts anything containing `\"` or `\n` — e.g. `"a\"b\nc"`
             // would come back out as `"a"b` followed by a real newline and
             // `c"`, which isn't even valid Ruby.
-            bytes_doc(node.location().as_slice())
+            let requoted = node.closing_loc().and_then(|closing| {
+                self.requote(
+                    node.opening_loc()?.as_slice(),
+                    node.content_loc().as_slice(),
+                    closing.as_slice(),
+                )
+            });
+            match requoted {
+                Some(bytes) => bytes_doc(&bytes),
+                None => bytes_doc(node.location().as_slice()),
+            }
         } else {
             // A %w()/%i() word-list element has no quote delimiters of its
             // own in source (the location is just the bare word) — verbatim
             // copying would drop the quotes it needs as a standalone string.
-            Doc::text("\"")
-                .append(bytes_doc(node.unescaped()))
-                .append(Doc::text("\""))
+            // Single quotes hold the word only if it has no `'` or `\`.
+            let word = node.unescaped();
+            let quote = if self.quote_style == QuoteStyle::Single
+                && !word.iter().any(|b| matches!(b, b'\'' | b'\\'))
+            {
+                "'"
+            } else {
+                "\""
+            };
+            Doc::text(quote)
+                .append(bytes_doc(word))
+                .append(Doc::text(quote))
         }
     }
 
     pub(super) fn fmt_symbol_node(&mut self, node: &ruby_prism::SymbolNode<'_>) -> Doc {
-        bytes_doc(node.location().as_slice())
+        let requoted = node
+            .opening_loc()
+            .zip(node.closing_loc())
+            .and_then(|(opening, closing)| {
+                self.requote(
+                    opening.as_slice(),
+                    node.value_loc()?.as_slice(),
+                    closing.as_slice(),
+                )
+            });
+        match requoted {
+            Some(bytes) => bytes_doc(&bytes),
+            None => bytes_doc(node.location().as_slice()),
+        }
+    }
+
+    /// The literal written with the configured quote, or `None` when it is
+    /// already written that way, is not a plain `'`/`"` literal (`%q`,
+    /// `?a`, a heredoc), or cannot change quotes without changing its
+    /// value. Covers `'a'`, `:'a'` and the hash key `'a': 1`, whose closing
+    /// is `':`.
+    ///
+    /// `'` -> `"` needs content with no `"`, no `\` and no `#{`, `#@` or
+    /// `#$`, which double quotes would read as escapes or interpolation.
+    /// `"` -> `'` needs no `'`, and only `\\` and `\"` as escapes, both of
+    /// which single quotes spell differently.
+    fn requote(&self, opening: &[u8], content: &[u8], closing: &[u8]) -> Option<Vec<u8>> {
+        let to = match self.quote_style {
+            QuoteStyle::Double => b'"',
+            QuoteStyle::Single => b'\'',
+            QuoteStyle::Preserve => return None,
+        };
+        let (lead, from) = match opening {
+            [q @ (b'\'' | b'"')] => (&opening[..0], *q),
+            [b':', q @ (b'\'' | b'"')] => (&opening[..1], *q),
+            _ => return None,
+        };
+        let tail = match closing {
+            [q, tail @ ..] if *q == from && matches!(tail, [] | [b':']) => tail,
+            _ => return None,
+        };
+        if from == to {
+            return None;
+        }
+
+        let mut body = Vec::with_capacity(content.len());
+        if to == b'"' {
+            for (i, &b) in content.iter().enumerate() {
+                let interpolates =
+                    b == b'#' && matches!(content.get(i + 1), Some(b'{' | b'@' | b'$'));
+                if b == b'"' || b == b'\\' || interpolates {
+                    return None;
+                }
+                body.push(b);
+            }
+        } else {
+            let mut bytes = content.iter();
+            while let Some(&b) = bytes.next() {
+                match b {
+                    b'\'' => return None,
+                    b'\\' => match bytes.next() {
+                        Some(b'\\') => body.extend_from_slice(b"\\\\"),
+                        Some(b'"') => body.push(b'"'),
+                        _ => return None,
+                    },
+                    _ => body.push(b),
+                }
+            }
+        }
+
+        let mut out = lead.to_vec();
+        out.push(to);
+        out.extend(body);
+        out.push(to);
+        out.extend_from_slice(tail);
+        Some(out)
     }
 
     pub(super) fn fmt_float_node(&mut self, node: &ruby_prism::FloatNode<'_>) -> Doc {
@@ -251,11 +346,16 @@ impl Formatter {
     /// to break onto and keeps the parts joined by a space, and a single
     /// part has no separator at all.
     fn implicit_string_concat_doc(&mut self, parts: &ruby_prism::NodeList<'_>) -> Doc {
+        let requoted = self.requote_concat(parts);
         let leaves: Vec<Doc> = parts
             .iter()
-            .map(|part| match part.as_interpolated_string_node() {
+            .enumerate()
+            .map(|(i, part)| match part.as_interpolated_string_node() {
                 Some(_) => self.node_doc(&part),
-                None => bytes_doc(part.location().as_slice()),
+                None => match &requoted[i] {
+                    Some(bytes) => bytes_doc(bytes),
+                    None => bytes_doc(part.location().as_slice()),
+                },
             })
             .collect();
 
@@ -265,6 +365,45 @@ impl Formatter {
 
         let separator = Doc::text(" \\").append(Doc::hardline());
         Doc::join(leaves, separator).indent(self.indent_str.len())
+    }
+
+    /// Each part of an implicit concatenation written with the configured
+    /// quote, or all `None` unless every part would then carry the same
+    /// quote: `"a" 'b'` is left alone when `'b'` cannot change, rather than
+    /// changing `'a'` to match a neighbour that stays as it is.
+    fn requote_concat(&self, parts: &ruby_prism::NodeList<'_>) -> Vec<Option<Vec<u8>>> {
+        let none = || parts.iter().map(|_| None).collect();
+        let mut result = Vec::new();
+        let mut quotes = Vec::new();
+        for part in parts.iter() {
+            let (bytes, quote) = if let Some(string) = part.as_string_node() {
+                let (Some(opening), Some(closing)) = (string.opening_loc(), string.closing_loc())
+                else {
+                    return none();
+                };
+                let requoted = self.requote(
+                    opening.as_slice(),
+                    string.content_loc().as_slice(),
+                    closing.as_slice(),
+                );
+                let quote = requoted.as_ref().map_or(opening.as_slice()[0], |b| b[0]);
+                (requoted, quote)
+            } else if let Some(interpolated) = part.as_interpolated_string_node() {
+                match interpolated.opening_loc() {
+                    Some(opening) => (None, opening.as_slice()[0]),
+                    None => return none(),
+                }
+            } else {
+                return none();
+            };
+            result.push(bytes);
+            quotes.push(quote);
+        }
+        if quotes.windows(2).all(|pair| pair[0] == pair[1]) {
+            result
+        } else {
+            none()
+        }
     }
 
     /// An interpolated literal (`"a#{b}c"`, `:"a#{b}"`, `/a#{b}/`,
@@ -304,8 +443,16 @@ impl Formatter {
                     // whose own line structure is fixed, so the
                     // continuation sits at a column belonging to the
                     // string rather than to the expression.
+                    //
+                    // Literals inside the hole keep their quotes: a `"` in
+                    // one would nest a double-quoted string in a
+                    // double-quoted one, legal but harder to read than the
+                    // `'` the author used.
                     let was_single_line = std::mem::replace(&mut self.single_line, true);
+                    let was_quote_style =
+                        std::mem::replace(&mut self.quote_style, QuoteStyle::Preserve);
                     let inner = self.fmt_statements_node(&statements);
+                    self.quote_style = was_quote_style;
                     self.single_line = was_single_line;
                     doc = doc.append(inner.flat());
                 }

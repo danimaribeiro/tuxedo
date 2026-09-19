@@ -87,7 +87,7 @@
 // names is private on purpose.
 #![allow(rustdoc::private_intra_doc_links)]
 
-use crate::config::{AccessModifierStyle, FormatConfig, HashBraceSpace};
+use crate::config::{AccessModifierStyle, FormatConfig, HashBraceSpace, QuoteStyle};
 use doc::Doc;
 mod assignment;
 mod calls;
@@ -296,6 +296,7 @@ struct Formatter {
     line_length: usize,
     hash_brace_space: HashBraceSpace,
     access_modifier_style: AccessModifierStyle,
+    quote_style: QuoteStyle,
     /// The start of the statement list that is the body of the class,
     /// module or `class <<` being laid out, so that list (and not one
     /// nested in it) places its access modifiers by `access_modifier_style`.
@@ -431,6 +432,7 @@ impl Formatter {
             line_length: config.line_length,
             hash_brace_space: config.hash_brace_space,
             access_modifier_style: config.access_modifier_style,
+            quote_style: config.quote_style,
             class_body: None,
             body_owns_first_break: false,
             comments,

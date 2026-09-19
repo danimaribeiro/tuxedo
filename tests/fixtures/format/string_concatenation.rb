@@ -5,8 +5,8 @@ y = "a#{b}c" \
 message = "one " \
   "two " \
   "three"
-single = 'raw ' \
-  'parts'
+single = "raw " \
+  "parts"
 escaped = "quote \" here " \
   "and more"
 puts "warning: " \
