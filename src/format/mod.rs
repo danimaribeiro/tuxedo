@@ -341,6 +341,10 @@ struct PendingHeredoc {
     /// line has once rendered. `None` for `<<-` and plain `<<`, whose
     /// leading whitespace is data.
     source_indent: Option<usize>,
+    /// True for `<<-`: the body is data and stays as written, but the
+    /// terminator's indentation is not part of the string, so it moves
+    /// to the indent of the line the tag landed on.
+    dash: bool,
 }
 
 /// A `<<~` body and terminator moved to sit with the code around them.
@@ -352,10 +356,19 @@ struct PendingHeredoc {
 /// written: a tab in the leading whitespace (its width depends on the
 /// column), or a line indented less than a leftward shift removes.
 fn reindent_heredoc(heredoc: &PendingHeredoc, indent: usize) -> String {
+    let body = &heredoc.body;
+    if heredoc.dash {
+        let split = body.trim_end_matches('\n').rfind('\n').map_or(0, |i| i + 1);
+        let (text, terminator) = body.split_at(split);
+        let leading = terminator.len() - terminator.trim_start_matches([' ', '\t']).len();
+        if terminator[..leading].contains('\t') {
+            return body.clone();
+        }
+        return format!("{text}{}{}", " ".repeat(indent), &terminator[leading..]);
+    }
     let Some(source_indent) = heredoc.source_indent else {
         return heredoc.body.clone();
     };
-    let body = &heredoc.body;
     let mut lines: Vec<&str> = body.split_inclusive('\n').collect();
     let Some(terminator) = lines.pop() else {
         return body.clone();
@@ -418,6 +431,54 @@ impl Formatter {
             condition_spine: false,
             clause_closer: None,
         }
+    }
+
+    /// The `Doc` for `node`.
+    ///
+    /// A directive comment (`# rubocop:disable`) governs the physical line
+    /// it sits on. A node written wholly on such a line is held to that
+    /// line, since breaking it would leave the directive on a fragment
+    /// that no longer holds the code it was written for: it is laid out
+    /// the way a `( )` body is, joined with semicolons where it would
+    /// otherwise need lines.
+    pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        // A statement list is never the unit: it lays out its own lines and
+        // is what attaches the comment, so each statement in it is.
+        if !self.single_line
+            && node.as_statements_node().is_none()
+            && node.as_program_node().is_none()
+            && self.line_has_directive_after(node.location())
+        {
+            let was_single_line = std::mem::replace(&mut self.single_line, true);
+            let doc = self.node_doc_unpinned(node);
+            self.single_line = was_single_line;
+            return doc.flat();
+        }
+        self.node_doc_unpinned(node)
+    }
+
+    /// True if `location` starts and ends on one line that then carries a
+    /// line-scoped directive comment.
+    fn line_has_directive_after(&self, location: ruby_prism::Location<'_>) -> bool {
+        let (start, end) = (location.start_offset(), location.end_offset());
+        let line = self.line_of(start);
+        if line != self.line_of(end.saturating_sub(1)) {
+            return false;
+        }
+        let first = self.comments.partition_point(|c| c.start < end);
+        self.comments
+            .get(first)
+            .is_some_and(|c| self.line_of(c.start) == line && Self::is_line_directive(&c.text))
+    }
+
+    /// True for a comment that switches a tool on or off for the line it
+    /// is written on.
+    fn is_line_directive(comment: &str) -> bool {
+        let body = comment.trim_start_matches('#').trim_start();
+        ["rubocop:", "standard:", "steep:ignore", ":nocov:", "reek:"]
+            .iter()
+            .any(|tool| body.starts_with(tool))
+            || body.starts_with("rubocop :")
     }
 
     fn line_of(&self, offset: usize) -> usize {
@@ -1156,6 +1217,7 @@ impl Formatter {
         self.pending_heredocs.push(PendingHeredoc {
             body,
             source_indent,
+            dash: opening.starts_with(b"<<-"),
         });
         // A marker rather than an offset into `output`: a speculative
         // render can be thrown away and the text written again somewhere
@@ -1366,6 +1428,7 @@ impl Formatter {
         gaps: Vec<Option<Doc>>,
         op: &str,
         condition: bool,
+        block_tail: bool,
     ) -> Doc {
         if gaps.iter().any(Option::is_some) {
             let levels = if condition { 2 } else { 1 };
@@ -1381,6 +1444,13 @@ impl Formatter {
         }
         if !leaves.iter().any(Doc::breaks) {
             return self.chain_doc(leaves, op, condition);
+        }
+        if block_tail
+            && leaves.len() > 1
+            && leaves.last().is_some_and(Doc::breaks)
+            && !leaves[..leaves.len() - 1].iter().any(Doc::breaks)
+        {
+            return self.block_operand_doc(leaves, op, condition);
         }
 
         // An operand that is already multi-line ends the group it is in.
@@ -1423,6 +1493,42 @@ impl Formatter {
         first.append(Doc::concat(
             parts.map(|part| Doc::text(format!(" {op} ")).append(part)),
         ))
+    }
+
+    /// A spine whose last operand is a block (`a && b && begin ... end`).
+    ///
+    /// While the line up to the block's keyword fits, the keyword stays on
+    /// it and the body is one level in from the statement. When it does
+    /// not, the spine expands like any other and the block takes its own
+    /// continuation line with its body a level in from *that*: kept on the
+    /// last operand's line, the body would sit in the column of the
+    /// operands above it and nothing would show where the condition ends.
+    fn block_operand_doc(&self, mut leaves: Vec<Doc>, op: &str, condition: bool) -> Doc {
+        let Some(tail) = leaves.pop() else {
+            return Doc::nil();
+        };
+        let mut head = leaves
+            .iter()
+            .map(|leaf| leaf.clone().flat().render(usize::MAX / 2))
+            .collect::<Vec<_>>()
+            .join(&format!(" {op} "));
+        head.push_str(&format!(" {op} "));
+        head.push_str(tail.render(usize::MAX / 2).lines().next().unwrap_or(""));
+
+        let levels = if condition { 2 } else { 1 };
+        let indent = levels * self.indent_str.len();
+        let joined = Doc::text(format!(" {op} ")).append(tail.clone());
+        let fits = self.chain_doc(leaves.clone(), op, condition).append(joined);
+
+        let mut leaves = leaves.into_iter();
+        let first = leaves.next().unwrap_or_else(Doc::nil);
+        let rest = Doc::concat(leaves.chain(std::iter::once(tail)).map(|leaf| {
+            Doc::text(format!(" {op}"))
+                .append(Doc::hardline())
+                .append(leaf)
+        }));
+        let expanded = first.append(rest.indent(indent));
+        Doc::fits_or(&head, fits, expanded)
     }
 
     /// The whole spine as one group: flat, or one operand per line.

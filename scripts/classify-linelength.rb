@@ -33,9 +33,13 @@
 # parentheses the author did not write. With several arguments it is
 # breakable: Ruby takes a line break after a comma without them.
 #
+# A hash pair whose value is a literal counts as one atom with it, for the
+# same reason: tuxedo does not break after the key, since a value left
+# dangling under its key reads worse than a long line.
+#
 # The split is a triage aid, not a verdict. A BREAKABLE line can still turn
-# out to need a layout decision rather than a fix -- breaking after a hash
-# key is the open one -- and those belong in an issue, not in this script.
+# out to need a layout decision rather than a fix, and those belong in an
+# issue, not in this script.
 #
 # Reads a directory tree, not a file list, and mirrors the matcher in
 # src/walk.rs so a Rakefile or .gemspec is measured like everything else.
@@ -130,6 +134,14 @@ def widest_atom(node, lineno, line_length, best)
     # from its opening delimiter to the end of this line.
     width = loc.end_line == lineno ? loc.end_column - loc.start_column : line_length - loc.start_column
     best = [width, node.class.name.split("::").last] if width > best[0]
+  end
+
+  # A hash pair is as immovable as its value: tuxedo does not break after
+  # the key, so the key and the literal after it are one atom.
+  if node.is_a?(Prism::AssocNode) && loc.start_line == lineno &&
+     ATOMS.any? { |k| node.value.is_a?(k) } && node.value.location.end_line == lineno
+    width = node.value.location.end_column - loc.start_column
+    best = [width, "HashPair"] if width > best[0]
   end
 
   if bare_call_pinning_an_atom?(node, lineno)

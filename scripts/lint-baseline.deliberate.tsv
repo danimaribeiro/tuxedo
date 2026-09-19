@@ -1,0 +1,8 @@
+# Cops tuxedo diverges from on purpose, one per line: <cop><TAB><reason>.
+# lint-baseline.sh marks these rows and prints the reason under the table.
+# A mark says the position has been decided, not that the row may be
+# ignored: the numbers stay in the table so a climbing count is still seen.
+Style/BlockDelimiters	keeps the block delimiters the author wrote; `a b { }` and `a b do end` bind differently, so a rewrite is not layout
+Style/MultilineTernaryOperator	breaks an over-long ternary after `?` and `:` rather than rewriting it as if/else, a change of construct
+Layout/MultilineMethodCallIndentation	chains indent one level from the statement, not aligned to the receiver (see format-verify.rubocop.yml)
+Layout/HeredocIndentation	leaves `<<-` alone: its body whitespace is part of the string, so `<<~` is a change of value

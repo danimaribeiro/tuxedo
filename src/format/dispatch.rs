@@ -40,8 +40,9 @@ macro_rules! dispatch {
         verbatim { $($raw:ident,)* }
     ) => {
         impl Formatter {
-            /// The `Doc` for `node`.
-            pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+            /// The `Doc` for `node`, as `node_doc` lays it out before the
+            /// line it sits on is taken into account.
+            pub(super) fn node_doc_unpinned(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
                 match node {
                     $(
                         ruby_prism::Node::$variant { .. } => {

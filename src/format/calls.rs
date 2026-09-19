@@ -518,7 +518,7 @@ impl Formatter {
 
         let condition = std::mem::take(&mut self.condition_spine);
         let (leaves, gaps) = self.operand_docs(&operands);
-        self.infix_doc(leaves, gaps, name_str, condition)
+        self.infix_doc(leaves, gaps, name_str, condition, false)
     }
 
     /// The operands of `node`'s receiver spine, in source order, as long as

@@ -1,6 +1,5 @@
 ---
 source: tests/format_snapshot_test.rs
-assertion_line: 58
 expression: output
 ---
 class Mapper
@@ -24,7 +23,7 @@ class Mapper
   def dash
     sql = <<-SQL
       keeps its whitespace
-          SQL
+    SQL
     sql
   end
 end

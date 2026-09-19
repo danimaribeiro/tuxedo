@@ -75,6 +75,25 @@ pub(super) fn holds_block_construct(node: &ruby_prism::Node<'_>) -> bool {
     finder.0
 }
 
+/// True if a `{ }` block inside `node` holds a block construct, and so
+/// expands (see [`holds_block_construct`]) instead of joining its body
+/// with semicolons.
+pub(super) fn holds_expanding_brace_block(node: &ruby_prism::Node<'_>) -> bool {
+    struct Finder(bool);
+
+    impl<'pr> Visit<'pr> for Finder {
+        fn visit_block_node(&mut self, node: &ruby_prism::BlockNode<'pr>) {
+            self.0 |= node.opening_loc().as_slice() == b"{"
+                && node.body().is_some_and(|b| holds_block_construct(&b));
+            ruby_prism::visit_block_node(self, node);
+        }
+    }
+
+    let mut finder = Finder(false);
+    finder.visit(node);
+    finder.0
+}
+
 impl Formatter {
     /// `def name(params)`, the body one level in, `end` back at the
     /// `def`'s level.

@@ -67,6 +67,7 @@ mkdir -p "$RESULTS_DIR"
 echo "Building tuxedo (release)..." >&2
 (cd "$ROOT" && cargo build --release --quiet)
 TUXEDO_BIN="$ROOT/target/release/tuxedo"
+DELIBERATE="$ROOT/scripts/lint-baseline.deliberate.tsv"
 
 echo "Formatting a working copy with tuxedo..." >&2
 rm -rf "$BASE/tuxedo"
@@ -158,11 +159,28 @@ fi
     }
   ' "$BASELINE_TSV" "$TUXEDO_TSV" "$PROJECT_TSV" \
     | sort -t$'\t' -k4,4nr -k3,3nr \
-    | awk -F'\t' -v have_proj="$project_cfg_available" '
-        { printf "%-4d %-45s %10d %10d %+10d %12s\n", NR, $1, $2, $3, $4, $5; b+=$2; t+=$3; d+=$4; if (have_proj && $5 != "n/a") p+=$5 }
+    | awk -F'\t' -v have_proj="$project_cfg_available" -v deliberate="$DELIBERATE" '
+        BEGIN {
+          while ((getline line < deliberate) > 0) {
+            if (line ~ /^#/ || line == "") continue
+            split(line, f, "\t")
+            reason[f[1]] = f[2]
+          }
+        }
+        {
+          name = $1
+          if ($1 in reason) { name = $1 " *"; seen[$1] = 1; order[++n] = $1 }
+          printf "%-4d %-45s %10d %10d %+10d %12s\n", NR, name, $2, $3, $4, $5
+          b+=$2; t+=$3; d+=$4; if (have_proj && $5 != "n/a") p+=$5
+        }
         END {
           proj_total = have_proj ? p : "n/a"
           printf "\n%-4s %-45s %10d %10d %+10d %12s\n", "", "TOTAL", b, t, d, proj_total
+          if (n > 0) {
+            print ""
+            print "* deliberate: decided, still counted"
+            for (i = 1; i <= n; i++) printf "    %s: %s\n", order[i], reason[order[i]]
+          }
         }
       '
 } | tee "$REPORT"
