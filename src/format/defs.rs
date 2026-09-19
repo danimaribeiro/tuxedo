@@ -12,7 +12,7 @@ use ruby_prism::Visit;
 /// Modifier forms (`a if b`) and ternaries are one-line spellings already
 /// and do not count. An endless `def` does: it is always written out with
 /// its `end`.
-fn holds_block_construct(node: &ruby_prism::Node<'_>) -> bool {
+pub(super) fn holds_block_construct(node: &ruby_prism::Node<'_>) -> bool {
     struct Finder(bool);
 
     impl<'pr> Visit<'pr> for Finder {

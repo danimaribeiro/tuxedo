@@ -20,3 +20,13 @@ x = [1, 2, 3]
   element_number_8,
   element_number_9
 ]
+
+# A bare keyword hash in an array is one element: when the array expands,
+# every pair sits at the element indent.
+trace = [
+  1,
+  exception_object_id: exception.object_id,
+  id: 0,
+  trace: wrapper.source_extracts.first[:trace],
+  more: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+]

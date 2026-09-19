@@ -46,12 +46,61 @@ module ActionDispatch
   class Cookies
     def prepare_upgrade_legacy_hmac_aes_cbc_cookies
       future_cipher = encrypted_cookie_cipher
-      secret = request
-        .key_generator
-        .generate_key(
-          request.authenticated_encrypted_cookie_salt,
-          ActiveSupport::MessageEncryptor.key_len(future_cipher)
-        )
+      secret = request.key_generator.generate_key(
+        request.authenticated_encrypted_cookie_salt,
+        ActiveSupport::MessageEncryptor.key_len(future_cipher)
+      )
+    end
+  end
+end
+
+# A chain of bare reads is one leaf: the enclosing `||` and argument list
+# take the break, never the dots.
+module ActiveStorage
+  class Engine
+    initializer "active_storage.configs" do
+      config.after_initialize do |app|
+        ActiveStorage.base_controller_parent = app.config.active_storage.base_controller_parent || if app.config.api_only
+          "ActionController::API"
+        else
+          "ActionController::Base"
+        end
+      end
+    end
+  end
+end
+
+# Two links that carry arguments still break one link per line.
+secret = request
+  .key_generator(salt_for_the_generated_key_that_is_quite_long)
+  .generate_key(request.authenticated_encrypted_cookie_salt, key_length)
+
+# A chain with `{ }` block links breaks one link per line, each block
+# staying on its link's line.
+visible = records
+  .select { |r| r.active? && r.visible_to_the_current_user_in_this_context? }
+  .map { |r| r.identifier }
+  .uniq
+  .first(10)
+
+# A block that is multi-line however much room there is ends the chain.
+grouped = list.map { |a|
+  b = a.foo
+  b.bar
+}.compact.first(1)
+
+# A chain that is a block condition nests its links two levels, so the
+# condition cannot be mistaken for the body one level in.
+def maintain
+  synchronize do
+    unless self.discarded?
+      if connection_to_maintain = @connections
+          .select { |conn| !conn.in_use? }
+          .select(&candidate_selector)
+          .sort_by(&:seconds_idle)
+          .find { |conn| !connections_visited[conn] }
+        checkout_for_maintenance connection_to_maintain
+      end
     end
   end
 end

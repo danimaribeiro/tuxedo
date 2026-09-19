@@ -1,9 +1,16 @@
-x = "foo" "bar"
-y = "a#{b}c" "d"
-message = "one " "two " "three"
-single = 'raw ' 'parts'
-escaped = "quote \" here " "and more"
-puts "warning: " "details follow"
+x = "foo" \
+  "bar"
+y = "a#{b}c" \
+  "d"
+message = "one " \
+  "two " \
+  "three"
+single = 'raw ' \
+  'parts'
+escaped = "quote \" here " \
+  "and more"
+puts "warning: " \
+  "details follow"
 error = "Failed to execute 'close' on WebSocket: " \
   "The code must be either 1000, or between 3000 and 4999. " \
   "#{code} is neither."
@@ -23,3 +30,12 @@ warn(
       "application's log file."
   ]
 )
+
+name = "#{config.table_name_prefix}" \
+  "#{fixture_set_name.tr('/', '_')}"
+
+# A concatenation is one deliberate construct, so it breaks even when it
+# would fit, and its parts are all-or-nothing in an argument list too.
+raise ArgumentError,
+  "Cannot specify :compressor option when using" \
+    " default serializer and cache format version is < 7.1"

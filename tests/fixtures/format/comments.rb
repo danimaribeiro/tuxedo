@@ -22,3 +22,22 @@ class User
     end
   end
 end
+
+# A comment between the arguments of a paren-less call stays above the
+# argument it was written against.
+fixtures :posts,
+  :authors,
+  # Reload edges table from fixtures as otherwise repeated test was failing
+  :edges
+
+# A comment after the first item of a list is that item's, not the
+# opening bracket's.
+RELATIONS = [
+  :account_invalid, # has_one, without :class_name
+  :account_class_name # has_one, with :class_name
+]
+
+TEST_TYPES = [
+  "Controller tests", # rubocop:disable Style/MutableConstant
+  "Helper tests"
+]

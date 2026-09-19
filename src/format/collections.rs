@@ -58,7 +58,15 @@ impl Formatter {
             .opening_loc()
             .zip(node.closing_loc())
             .map(|(open, close)| (open.end_offset(), close.start_offset()));
-        self.bracketed_items_doc("[", Doc::softline(), &elements, Doc::softline(), "]", span)
+        let was = self.array_keyword_hash;
+        self.array_keyword_hash = elements
+            .last()
+            .filter(|last| last.as_keyword_hash_node().is_some())
+            .map(|last| last.location().start_offset());
+        let doc =
+            self.bracketed_items_doc("[", Doc::softline(), &elements, Doc::softline(), "]", span);
+        self.array_keyword_hash = was;
+        doc
     }
 
     /// Renders a `%w()`/`%i()`/`%W()`/`%I()` word/symbol list, preserving
@@ -136,7 +144,24 @@ impl Formatter {
     /// the same comma-joined pairs but carry no braces of their own.
     pub(super) fn fmt_keyword_hash_node(&mut self, node: &ruby_prism::KeywordHashNode<'_>) -> Doc {
         let elements: Vec<_> = node.elements().iter().collect();
+        if self.array_keyword_hash == Some(node.location().start_offset()) {
+            return self.array_element_pairs_doc(&elements);
+        }
         self.fmt_hash_elements(&elements, None)
+    }
+
+    /// The pairs of a bare keyword hash written inside `[ ]`: one array
+    /// element made of several pairs, laid out with no indent of its own so
+    /// that when the array expands they all sit at the element indent
+    /// instead of the first one alone.
+    fn array_element_pairs_doc(&mut self, elements: &[ruby_prism::Node<'_>]) -> Doc {
+        let snap = self.render_snapshot();
+        let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
+        if leaves.iter().any(Doc::breaks) {
+            self.restore_render_snapshot(snap);
+            return self.expanded_items_doc(elements);
+        }
+        Doc::join(leaves, Doc::text(",").append(Doc::line())).group()
     }
 
     /// Renders a run of `key => value` / `key: value` pairs, optionally
