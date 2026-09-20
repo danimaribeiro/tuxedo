@@ -237,10 +237,18 @@ impl Formatter {
                 force_blank_pending = false;
                 pending_blank_after_magic = is_magic;
 
-                let text =
-                    Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+                let text = Self::own_line_comment(&self.comments[self.comment_cursor].text);
                 items.push((blank, Doc::text(text), false));
-                prev_end_line = Some(comment_line);
+                // An embedded document spans lines; the code after it is
+                // adjacent to its `=end`, not to its `=begin`.
+                prev_end_line = Some(
+                    comment_line
+                        + self.comments[self.comment_cursor]
+                            .text
+                            .trim_end()
+                            .matches('\n')
+                            .count(),
+                );
                 self.comment_cursor += 1;
             }
 

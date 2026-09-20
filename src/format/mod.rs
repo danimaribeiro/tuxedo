@@ -237,6 +237,7 @@ pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, 
         doc = doc.append(trailing);
     }
     let rendered = formatter.splice_heredoc_bodies(doc.render(formatter.line_length));
+    let rendered = outdent_embdocs(&rendered);
     let trimmed = rendered.trim_end_matches('\n');
     let mut result = trimmed.to_string();
     if !result.is_empty() {
@@ -423,6 +424,29 @@ fn reindent_heredoc(heredoc: &PendingHeredoc, indent: usize) -> String {
 const HEREDOC_MARK_START: char = '\u{E000}';
 const HEREDOC_MARK_END: char = '\u{E001}';
 
+/// Leads the text of an `=begin`/`=end` block. Ruby only accepts one at
+/// column 0, wherever the code around it is indented, and a `Doc` cannot
+/// say "column 0": `outdent_embdocs` strips the indent the printer put
+/// before the mark once the document is rendered.
+const EMBDOC_MARK: char = '\u{E002}';
+
+fn outdent_embdocs(rendered: &str) -> String {
+    if !rendered.contains(EMBDOC_MARK) {
+        return rendered.to_string();
+    }
+    let mut out = String::with_capacity(rendered.len());
+    for (i, line) in rendered.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        match line.trim_start_matches(' ').strip_prefix(EMBDOC_MARK) {
+            Some(rest) => out.push_str(rest),
+            None => out.push_str(line),
+        }
+    }
+    out
+}
+
 impl Formatter {
     fn new(source: &str, parsed: &ruby_prism::ParseResult<'_>, config: &FormatConfig) -> Self {
         let comments = parsed
@@ -604,6 +628,15 @@ impl Formatter {
         self.bracketed_group_doc(open, open_sep, body, close_sep, close)
     }
 
+    /// A comment that sits on a line of its own. An embedded document
+    /// carries its own final newline, which the break after it would double.
+    fn own_line_comment(text: &str) -> String {
+        if text.starts_with("=begin") {
+            return format!("{EMBDOC_MARK}{}", text.trim_end_matches(['\n', '\r']));
+        }
+        Self::format_comment(text).into_owned()
+    }
+
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
         if text.starts_with('#')
             && text.len() > 1
@@ -727,7 +760,7 @@ impl Formatter {
             let blank =
                 (after_statements || any) && self.source_line_is_blank(line.wrapping_sub(1));
 
-            let text = Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+            let text = Self::own_line_comment(&self.comments[self.comment_cursor].text);
             let mut entry = if blank {
                 Doc::blank_line()
             } else {
@@ -831,9 +864,9 @@ impl Formatter {
             if any {
                 doc = doc.append(Doc::hardline());
             }
-            doc = doc.append(Doc::text(
-                Self::format_comment(&self.comments[self.comment_cursor].text).into_owned(),
-            ));
+            doc = doc.append(Doc::text(Self::own_line_comment(
+                &self.comments[self.comment_cursor].text,
+            )));
             self.comment_cursor += 1;
             any = true;
         }
