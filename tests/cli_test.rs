@@ -259,7 +259,7 @@ fn exclude_skips_the_matching_files_in_format() {
 }
 
 #[test]
-fn exclude_skips_the_matching_files_in_check() {
+fn exclude_skips_the_matching_files_when_only_reporting() {
     let dir = tree_with_excludes("exclude-check");
     let output = Command::new(TUXEDO)
         .current_dir(&dir.0)
@@ -268,13 +268,28 @@ fn exclude_skips_the_matching_files_in_check() {
         .unwrap();
     let out = stdout_of(&output) + &stderr_of(&output);
     assert!(out.contains("2 would be reformatted"), "{out}");
+}
 
+#[test]
+fn the_summary_says_one_file_not_one_files() {
+    let dir = TempDir::new("singular");
+    let path = dir.write("a.rb", "x = 1\n");
     let output = Command::new(TUXEDO)
-        .current_dir(&dir.0)
-        .args(["check", "vendor", "app/c_generated.rb"])
+        .args(["format", "--check"])
+        .arg(&path)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert!(
+        stderr_of(&output).contains("1 file checked"),
+        "{}",
+        stderr_of(&output)
+    );
+}
+
+#[test]
+fn the_check_subcommand_and_the_lint_config_are_gone() {
+    let output = Command::new(TUXEDO).args(["check", "."]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
 }
 
 /// The match is against the path from the config's directory, so it does

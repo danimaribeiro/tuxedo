@@ -151,3 +151,21 @@ fn quote_style_preserve() {
     let output = tuxedo::format_with_config(QUOTE_INPUT, &config).unwrap();
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn the_lint_table_is_an_unknown_key() {
+    let dir = std::env::temp_dir().join(format!("tuxedo-lint-key-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = dir.join(".tuxedo.toml");
+    std::fs::write(&config, "[lint]\nenabled = [\"Style/Foo\"]\n").unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_tuxedo"))
+        .args(["format", "--config"])
+        .arg(&config)
+        .arg("--check")
+        .arg(&config)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("lint"));
+}

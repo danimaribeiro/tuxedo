@@ -1,8 +1,9 @@
 # Tuxedo
 
-A fast Ruby code formatter and linter, written in Rust — aiming to be a
-drop-in replacement for [RuboCop](https://github.com/rubocop/rubocop), the
-way [`ruff`](https://github.com/astral-sh/ruff) is for Python.
+A fast Ruby code formatter, written in Rust. A linter is planned; the
+long-term aim is a drop-in replacement for
+[RuboCop](https://github.com/rubocop/rubocop), the way
+[`ruff`](https://github.com/astral-sh/ruff) is for Python.
 
 ## Status
 
@@ -12,8 +13,8 @@ use.
 ## Why
 
 RuboCop is thorough but, being written in Ruby, can be slow on large
-codebases. Tuxedo aims to provide the same clean, opinionated formatting and
-linting experience at a fraction of the runtime cost, by leveraging Rust.
+codebases. Tuxedo aims to provide the same clean, opinionated formatting at
+a fraction of the runtime cost, by leveraging Rust.
 
 ## The goal: formatting optimized for diff quality
 
@@ -64,7 +65,7 @@ byte-for-byte is not a goal.
 all the keys the formatter and the file walk read:
 
 ```toml
-exclude = ["vendor/", "/db/schema.rb"]  # skipped by format and check, on top of .gitignore
+exclude = ["vendor/", "/db/schema.rb"]  # skipped by format, on top of .gitignore
 
 [format]
 line_length = 120                  # column a line is broken to fit

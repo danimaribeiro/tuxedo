@@ -1,7 +1,7 @@
 //! `.tuxedo.toml`: found by walking up from the current directory unless
 //! `--config` names a path, and [`Config::default`] when there is none.
 //!
-//! Every key here is one the formatter or linter reads, and
+//! Every key here is one the formatter or the file walk reads, and
 //! `deny_unknown_fields` makes anything else a hard error rather than a
 //! silently ignored setting: a knob nothing consults is a promise to the
 //! user that nothing keeps.
@@ -16,12 +16,9 @@ pub struct Config {
     #[serde(default)]
     pub format: FormatConfig,
 
-    #[serde(default)]
-    pub lint: LintConfig,
-
     /// Gitignore-style globs, relative to [`Config::root`], that a walk
     /// skips on top of `.gitignore`. Top level rather than under `[format]`
-    /// because `check` honours it as well.
+    /// because it is not a formatting option: it is about which files are visited.
     #[serde(default)]
     pub exclude: Vec<String>,
 
@@ -86,16 +83,6 @@ pub enum QuoteStyle {
     Double,
     Single,
     Preserve,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LintConfig {
-    #[serde(default)]
-    pub enabled: Vec<String>,
-
-    #[serde(default)]
-    pub disabled: Vec<String>,
 }
 
 impl Config {

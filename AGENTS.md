@@ -7,9 +7,9 @@ that fixes a bug or lands a feature does not touch this file.
 
 ## What this is
 
-Tuxedo is a fast Ruby formatter and linter written in Rust, aiming to be a drop-in
+Tuxedo is a fast Ruby formatter written in Rust, aiming to become a drop-in
 replacement for RuboCop the way `ruff` is for Python. It is early-stage: the
-formatter is being finished first; the linter (`src/lint.rs`) is a stub.
+formatter is being finished first; there is no linter yet (milestone 8).
 
 - **Rust crate at the root** (`Cargo.toml`, `src/`): the `tuxedo` binary.
 - **`ruby/`**: the `tuxedo-r` gem that wraps and distributes precompiled binaries
