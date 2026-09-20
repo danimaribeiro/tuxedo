@@ -356,6 +356,19 @@ impl Formatter {
         self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
     }
 
+    /// An interpolated regex used directly as a condition (`if /#{x}/`),
+    /// which matches against `$_`. Prism gives it its own node type; its
+    /// holes are formatted like any other regex's.
+    pub(super) fn fmt_interpolated_match_last_line_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedMatchLastLineNode<'_>,
+    ) -> Doc {
+        let opening = node.opening_loc().as_slice();
+        let closing = node.closing_loc().as_slice();
+        let parts = node.parts();
+        self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
+    }
+
     /// Adjacent string literals (`"foo" "bar"`), one part per line with a
     /// trailing `\` and the continuation at one indent, however short the
     /// parts are. On one line the construct reads as a missing comma, so
