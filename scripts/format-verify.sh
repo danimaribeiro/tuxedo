@@ -195,6 +195,7 @@ rm -f "$comments_out"
 echo
 echo "[4/4] Layout conformance (rubocop --only Layout)..."
 layout_offenses="n/a"
+unparsed_by_rubocop=0
 if command -v rubocop >/dev/null 2>&1; then
   # Syntax errors would be reported as Lint/Syntax and drown out the Layout
   # signal, so only lint the files that actually parse.
@@ -214,7 +215,7 @@ if command -v rubocop >/dev/null 2>&1; then
   emacs_out="$(mktemp)"
   if [ -s "$parsing_files" ]; then
     # shellcheck disable=SC2046
-    BUNDLE_GEMFILE=/dev/null rubocop --only Layout \
+    BUNDLE_GEMFILE=/dev/null rubocop --only Layout,Lint/Syntax \
       -c "$ROOT/scripts/format-verify.rubocop.yml" \
       --no-color --format offenses \
       --format emacs --out "$emacs_out" \
@@ -223,6 +224,14 @@ if command -v rubocop >/dev/null 2>&1; then
     grep -E '^ *[0-9]+ +Layout/' "$rubocop_out" | head -25 | sed 's/^/  /' || true
     layout_offenses="$(grep -cE '^ *[0-9]+ +Layout/' "$rubocop_out" || true)"
     layout_total="$(awk '/^ *[0-9]+ +Layout\//{ s += $1 } END { print s + 0 }' "$rubocop_out")"
+    # A file rubocop cannot parse contributes no Layout offenses at all,
+    # which reads as a clean file. Count them so it cannot.
+    unparsed_by_rubocop="$(awk '/^ *[0-9]+ +Lint\/Syntax/{ s += $1 } END { print s + 0 }' "$rubocop_out")"
+    if [ "$unparsed_by_rubocop" -gt 0 ]; then
+      echo
+      echo "  WARNING: rubocop could not parse $unparsed_by_rubocop of the files above; they count as zero offenses."
+      grep -E ': (E|F): Lint/Syntax' "$emacs_out" | sed "s#^$OUT/##" | head -10 | sed 's/^/    /' || true
+    fi
 
     # Most of LineLength is a literal nobody can place under the limit, so
     # the raw count says little about how much work is left. Hand the exact
@@ -258,6 +267,10 @@ printf "  idempotent  %s files change on a second format\n" "$unstable"
 printf "  comments    %s\n" "$comments_summary"
 printf "  layout      %s offenses across %s distinct cops\n" \
   "${layout_total:-n/a}" "${layout_offenses:-n/a}"
+if [ "$unparsed_by_rubocop" -gt 0 ]; then
+  printf "  layout      NOT MEASURED for %s files rubocop cannot parse (Lint/Syntax)\n" \
+    "$unparsed_by_rubocop"
+fi
 if [ -n "${linelength_summary:-}" ]; then
   printf "  %s\n" "$linelength_summary"
 fi

@@ -65,6 +65,17 @@
 #   `scripts/classify-linelength.rb` separates the two, and
 #   `format-verify.sh` prints the split under the layout line.
 
+# Without a target, RuboCop analyses as Ruby 2.7, and a file using anything
+# newer (`it`, endless methods, hash shorthand, `=>` patterns, anonymous
+# arguments) does not parse: under `--only Layout` it is dropped from the
+# measurement without a word, and the files that go missing are the ones
+# with the newest syntax. 3.4 is the newest version the RuboCop parser
+# reads. Tuxedo itself parses at Prism's latest, so the two still differ at
+# the top; `format-verify.sh` reports any file RuboCop still cannot parse,
+# so that difference shows up as a number rather than as missing offenses.
+AllCops:
+  TargetRubyVersion: 3.4
+
 # --- 1. All-or-nothing expansion: no bin-packing ---
 # `a, b = x, {` ... `}` expands only its last value, which stays on the
 # line the assignment started on: one value per line reads wrong for two
