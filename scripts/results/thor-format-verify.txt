@@ -9,10 +9,14 @@ Running tuxedo format...
 [2/4] Idempotence check (format twice)...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
+  1974 total, 0 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
   22  Layout/LineLength [Safe Correctable]
+
+Accepted (scripts/verify-accepted.tsv) and unexplained:
+offenses: 0 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
 
 ======================================================================
   thor
@@ -23,6 +27,8 @@ Running tuxedo format...
   comments    1974 total, 0 displaced
   layout      22 offenses across 1 distinct cops
   linelength: 22 over 120, 22 unsplittable, 0 breakable
+----------------------------------------------------------------------
+  UNEXPLAINED 0 layout (LineLength breakable included), 0 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/thor/verify for inspection.
