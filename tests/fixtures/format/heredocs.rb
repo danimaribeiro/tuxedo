@@ -80,3 +80,22 @@ execute <<~SQL if DB.query_single(<<~SQL).length > 0
 SQL
   SELECT 1
 SQL
+
+it "warns" do
+  -> { eval <<~RUBY }.should complain(/warning/, verbose: true)
+    $. = 0
+    10.times { |i| ScratchPad << i if 4..5 }
+  RUBY
+  ScratchPad.recorded.should == []
+end
+
+it "collapses" do
+  bar { eval <<~RUBY }
+    2
+  RUBY
+  z
+  lambda { eval <<~RUBY }.call
+    $. = 0
+  RUBY
+  w
+end

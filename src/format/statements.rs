@@ -185,6 +185,10 @@ impl Formatter {
 
         let mut prev_end_line: Option<usize> = None;
         let mut prev_stmt: Option<ruby_prism::Node<'_>> = None;
+        // Where the heredocs in here end, handed to the statement this list
+        // belongs to: when it collapses onto one line (`-> { eval <<~X }`)
+        // its terminator still ends the statement.
+        let mut heredocs_end = self.heredoc_end_line.take();
         // Set once a magic comment has been emitted and cleared as soon as
         // whatever follows isn't another one -- a run of magic comments
         // (`# encoding: ...` immediately followed by
@@ -270,6 +274,7 @@ impl Formatter {
             let mut end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
             if let Some(heredoc_line) = self.heredoc_end_line.take() {
                 end_line = end_line.max(heredoc_line);
+                heredocs_end = heredocs_end.max(Some(heredoc_line));
             }
             if let Some(comment) = self.trailing_comment_doc(end_line) {
                 leaf = leaf.append(comment);
@@ -284,6 +289,8 @@ impl Formatter {
             prev_end_line = Some(end_line);
             prev_stmt = Some(stmt);
         }
+
+        self.heredoc_end_line = heredocs_end;
 
         let mut doc = Doc::nil();
         let nest = self.indent_str.len();
