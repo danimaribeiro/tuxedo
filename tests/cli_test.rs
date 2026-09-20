@@ -354,3 +354,23 @@ fn a_negated_exclude_glob_is_refused() {
     );
     assert_eq!(dir.read("a.rb"), UGLY);
 }
+
+#[test]
+fn a_file_nested_too_deep_is_reported_and_the_rest_are_still_formatted() {
+    let dir = TempDir::new("too-deep");
+    dir.write(
+        "deep.rb",
+        &format!("x = {}1{}\n", "(".repeat(5000), ")".repeat(5000)),
+    );
+    dir.write("ok.rb", "x  =  1\n");
+
+    let output = Command::new(TUXEDO)
+        .arg("format")
+        .arg(&dir.0)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("deep.rb"));
+    assert_eq!(dir.read("ok.rb"), "x = 1\n");
+}

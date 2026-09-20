@@ -172,3 +172,18 @@ fn a_region_written_with_crlf_comes_out_with_lf() {
     let output = format("a   =   1\r\n# tuxedo:off\r\nb   =   2\r\nc   =   3\r\n# tuxedo:on\r\n");
     assert!(!output.contains("=   2\r"), "{output:?}");
 }
+
+#[test]
+fn nesting_past_the_limit_is_an_error_not_an_abort() {
+    let source = format!("x = {}1{}\n", "(".repeat(5000), ")".repeat(5000));
+    assert!(matches!(
+        tuxedo::format(&source),
+        Err(FormatError::TooDeep { .. })
+    ));
+}
+
+#[test]
+fn long_operator_chains_do_not_overflow_the_stack() {
+    let source = format!("x = a{}\n", " + a".repeat(20000));
+    assert!(tuxedo::format(&source).is_ok());
+}

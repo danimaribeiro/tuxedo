@@ -151,6 +151,9 @@ pub enum FormatError {
     /// a bug in Tuxedo, caught before it could reach the file. See
     /// `verify`.
     AstMismatch { detail: String },
+    /// The source nests deeper than the formatter recurses. Reported
+    /// instead of overflowing the stack, which aborts the whole process.
+    TooDeep { limit: usize },
 }
 
 impl std::fmt::Display for FormatError {
@@ -166,17 +169,49 @@ impl std::fmt::Display for FormatError {
                 "formatting would change what this code does, so it was left untouched \
                  (this is a bug in tuxedo, please report it)\n  {detail}"
             ),
+            FormatError::TooDeep { limit } => {
+                write!(
+                    f,
+                    "nested more than {limit} levels deep, too deep to format"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for FormatError {}
 
+/// How many nodes deep `node_doc` recurses before the file is refused.
+/// Real code stays far under it; generated code that does not would
+/// otherwise take the stack with it.
+const MAX_DEPTH: usize = 1000;
+
+/// Stack for the thread a file is formatted on. The walk's worker threads
+/// get 2 MB and the main thread 8 MB, and the depth a file can reach must
+/// not depend on which one it landed on. Address space only: the pages are
+/// touched when the recursion reaches them.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
+
+fn on_big_stack<T: Send>(work: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(STACK_SIZE)
+            .spawn_scoped(scope, work)
+            .expect("could not spawn the formatting thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
 pub fn format(source: &str) -> Result<String, FormatError> {
     format_with_config(source, &FormatConfig::default())
 }
 
 pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
+    on_big_stack(|| format_checked(source, config))
+}
+
+fn format_checked(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
     let result = format_unverified(source, config)?;
     if result != source {
         let before = verify::fingerprint(source);
@@ -202,6 +237,10 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String,
 /// Formats without the AST-equivalence check. Only for measuring what the
 /// check costs and what it catches; never for writing files.
 pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
+    on_big_stack(|| format_unchecked(source, config))
+}
+
+fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
     let parsed = ruby_prism::parse(source.as_bytes());
     if let Some(error) = parsed.errors().next() {
         let offset = error.location().start_offset();
@@ -227,6 +266,9 @@ pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, 
     let mut formatter = Formatter::new(source, &parsed, config);
     let markers = regions::check_markers(source, &formatter.comments)?;
     let mut doc = formatter.node_doc(&node);
+    if formatter.too_deep {
+        return Err(FormatError::TooDeep { limit: MAX_DEPTH });
+    }
     if let Some(&stray) = markers.iter().find(|m| !formatter.honored_off.contains(m)) {
         return Err(regions::stray_marker(source, stray));
     }
@@ -310,6 +352,10 @@ struct Formatter {
     /// Set by a statement list that has drawn the break in front of its
     /// first item itself; see `clause_body_doc`.
     body_owns_first_break: bool,
+    /// How many `node_doc` calls are open, and whether one was refused for
+    /// going past `MAX_DEPTH`.
+    depth: usize,
+    too_deep: bool,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     /// The offsets of the `# tuxedo:off` markers that opened a region, to
@@ -467,6 +513,8 @@ impl Formatter {
             quote_style: config.quote_style,
             class_body: None,
             body_owns_first_break: false,
+            depth: 0,
+            too_deep: false,
             comments,
             comment_cursor: 0,
             honored_off: Vec::new(),
@@ -490,6 +538,17 @@ impl Formatter {
     /// the way a `( )` body is, joined with semicolons where it would
     /// otherwise need lines.
     pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        if self.depth >= MAX_DEPTH {
+            self.too_deep = true;
+            return Doc::nil();
+        }
+        self.depth += 1;
+        let doc = self.node_doc_at_depth(node);
+        self.depth -= 1;
+        doc
+    }
+
+    fn node_doc_at_depth(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
         // A statement list is never the unit: it lays out its own lines and
         // is what attaches the comment, so each statement in it is.
         if !self.single_line
