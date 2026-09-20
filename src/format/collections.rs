@@ -309,10 +309,13 @@ impl Formatter {
             .unwrap_or_else(|| b"]".to_vec());
         self.run_bytes(&mut run, &opening);
 
+        let bare_comma = node
+            .rest()
+            .is_some_and(|rest| rest.as_implicit_rest_node().is_some());
         let items: Vec<_> = node
             .requireds()
             .iter()
-            .chain(node.rest())
+            .chain(node.rest().filter(|_| !bare_comma))
             .chain(node.posts().iter())
             .collect();
         for (i, item) in items.iter().enumerate() {
@@ -320,6 +323,10 @@ impl Formatter {
                 self.run_text(&mut run, ", ");
             }
             self.run_node(&mut run, item);
+        }
+        // `in [0, 1,]` discards the rest with a comma and nothing after it.
+        if bare_comma {
+            self.run_text(&mut run, ",");
         }
 
         self.run_bytes(&mut run, &closing);

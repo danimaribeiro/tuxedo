@@ -177,11 +177,14 @@ impl Formatter {
         Self::sigil_parameter_doc("*", node.name())
     }
 
+    /// The bare trailing comma of `|k,|` and `in [0, 1,]`: "discard the
+    /// rest" with nothing to write for it. The list that owns it puts the
+    /// comma after its last element, where a `", "` join could not.
     pub(super) fn fmt_implicit_rest_node(
         &mut self,
         _node: &ruby_prism::ImplicitRestNode<'_>,
     ) -> Doc {
-        Doc::text("*")
+        Doc::nil()
     }
 
     pub(super) fn fmt_required_keyword_parameter_node(
@@ -268,7 +271,13 @@ impl Formatter {
             leaves.push(self.node_doc(&param));
         }
         if let Some(rest) = node.rest() {
-            leaves.push(self.node_doc(&rest));
+            if rest.as_implicit_rest_node().is_some() {
+                if let Some(last) = leaves.pop() {
+                    leaves.push(last.append(Doc::text(",")));
+                }
+            } else {
+                leaves.push(self.node_doc(&rest));
+            }
         }
         for param in node.posts().iter() {
             leaves.push(self.node_doc(&param));

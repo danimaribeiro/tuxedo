@@ -25,3 +25,10 @@ in Integer => some_rather_long_capture_name if some_rather_long_capture_name > 3
 in String => s unless s.empty?
   s
 end
+
+case value
+in [0, 1,]
+  1
+in Foo[a,]
+  2
+end

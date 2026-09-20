@@ -147,3 +147,7 @@ included.class_methods {
     @foo << :included
   end
 } # rubocop:disable Lint/NestedMethodDefinition
+
+foo { |k,| bar }
+foo { |a, b,| bar }
+proc { |a, (b, c),| 1 }
