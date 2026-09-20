@@ -101,3 +101,74 @@ fn not_keyword_keeps_its_precedence() {
     assert_unchanged("puts \"x\" if not foo\n");
     assert_unchanged("w = !a\n");
 }
+
+/// `# tuxedo:off` copies the statements up to `# tuxedo:on` through as
+/// written, heredoc included, and formats everything around them.
+#[test]
+fn a_region_between_the_markers_is_left_as_written() {
+    let source = "\
+def rows
+  a   = 1
+  # tuxedo:off
+  m = [
+    [1,   0],
+    [0,   1],
+  ]
+  t   =   <<~EOS
+    keep   this
+  EOS
+  # tuxedo:on
+  b   = 2
+end
+";
+    let expected = source
+        .replace("a   = 1", "a = 1")
+        .replace("b   = 2", "b = 2");
+    assert_eq!(format(source), expected);
+    assert_unchanged(&expected);
+}
+
+/// With no `on`, the region runs to the end of the body it opened in, and
+/// a `# tuxedo:off` before the first statement holds the whole file.
+#[test]
+fn a_region_without_an_end_runs_to_the_end_of_its_body() {
+    assert_eq!(
+        format("def a\n  p   1\n  # tuxedo:off\n  q   =   2\nend\nz   =   1\n"),
+        "def a\n  p 1\n  # tuxedo:off\n  q   =   2\nend\n\nz = 1\n"
+    );
+    assert_unchanged("# tuxedo:off\nx   =   1\n\ny   =   2\n");
+}
+
+/// A marker that is not on a line of its own is an ordinary comment.
+#[test]
+fn a_trailing_marker_comment_is_not_a_marker() {
+    assert_eq!(
+        format("x   =   1 # tuxedo:off\ny   =   2\n"),
+        "x = 1 # tuxedo:off\ny = 2\n"
+    );
+}
+
+#[test]
+fn markers_that_do_not_pair_up_are_refused() {
+    for (source, line) in [
+        ("x = 1\n# tuxedo:on\n", 2),
+        ("# tuxedo:off\nx = 1\n# tuxedo:off\ny = 2\n", 3),
+        // Inside a literal, where a region cannot be honoured.
+        ("h = {\n  # tuxedo:off\n  a:   1\n}\n", 2),
+        // Nothing after it to protect.
+        ("def a\n  x\n  # tuxedo:off\nend\n", 3),
+    ] {
+        match tuxedo::format(source) {
+            Err(FormatError::Syntax { line: at, .. }) => assert_eq!(at, line, "{source:?}"),
+            other => panic!("{source:?}: expected a marker error, got {other:?}"),
+        }
+    }
+}
+
+/// A region keeps its own text but not its line endings: the rest of the
+/// file is written with `\n`.
+#[test]
+fn a_region_written_with_crlf_comes_out_with_lf() {
+    let output = format("a   =   1\r\n# tuxedo:off\r\nb   =   2\r\nc   =   3\r\n# tuxedo:on\r\n");
+    assert!(!output.contains("=   2\r"), "{output:?}");
+}

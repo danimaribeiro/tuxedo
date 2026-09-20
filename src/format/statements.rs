@@ -192,7 +192,15 @@ impl Formatter {
         // own members, only after the run ends.
         let mut pending_blank_after_magic = false;
 
+        // Where the last `# tuxedo:off` region ended: a statement that
+        // starts before it was copied through with the rest.
+        let mut region_end = 0;
+
         for stmt in node.body().iter() {
+            if stmt.location().start_offset() < region_end {
+                prev_stmt = Some(stmt);
+                continue;
+            }
             let first_item = items.len();
             let start_line = self.line_of(stmt.location().start_offset());
             // Computed once per statement and consulted at whichever point
@@ -210,6 +218,18 @@ impl Formatter {
                 if comment_line >= start_line {
                     break;
                 }
+                if self.at_off_marker() {
+                    let blank = prev_end_line.is_some_and(|prev| comment_line > prev + 1)
+                        || force_blank_pending
+                        || pending_blank_after_magic;
+                    force_blank_pending = false;
+                    pending_blank_after_magic = false;
+                    let (text, end) = self.verbatim_region(node);
+                    items.push((blank, Doc::text(text), false));
+                    prev_end_line = Some(self.line_of(end));
+                    region_end = end;
+                    continue;
+                }
                 let is_magic = is_magic_comment(&self.comments[self.comment_cursor].text);
                 let blank = prev_end_line.is_some_and(|prev| comment_line > prev + 1)
                     || force_blank_pending
@@ -222,6 +242,11 @@ impl Formatter {
                 items.push((blank, Doc::text(text), false));
                 prev_end_line = Some(comment_line);
                 self.comment_cursor += 1;
+            }
+
+            if stmt.location().start_offset() < region_end {
+                prev_stmt = Some(stmt);
+                continue;
             }
 
             let blank = prev_end_line.is_some_and(|prev| start_line > prev + 1)
