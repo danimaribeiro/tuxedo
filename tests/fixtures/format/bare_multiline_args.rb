@@ -2,16 +2,16 @@
 # The first argument stays on the call line: command style is kept
 # (Tuxedo does not add parens).
 foo a,
-  'hello
-world'
+  "hello
+world"
 
-foo 'hello
-world',
+foo "hello
+world",
   extra
 
 foo a,
-  'hello
-world',
+  "hello
+world",
   b
 
 arity_asserter.call %w(zero_args one),
@@ -19,17 +19,17 @@ arity_asserter.call %w(zero_args one),
 Usage: "thor scripts:arities:zero_args"'
 
 obj.call a,
-  'hello
-world'
+  "hello
+world"
 
 super a,
-  'hello
-world'
+  "hello
+world"
 
 def each
   yield a,
-    'hello
-world'
+    "hello
+world"
 end
 
 # Nested call that wrapped: the outer command's sibling breaks off.
@@ -45,8 +45,8 @@ foo bar(
   extra
 
 # A single multiline argument is already one-per-line; leave it.
-foo 'hello
-world'
+foo "hello
+world"
 
 # Short commands stay flat.
 foo a, b, c

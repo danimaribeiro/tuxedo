@@ -29,6 +29,8 @@ pub struct FormatConfig {
     pub hash_brace_space: HashBraceSpace,
     /// Where `private`, `protected` and `public` sit in a class body.
     pub access_modifier_style: AccessModifierStyle,
+    /// Which quote a plain string or quoted symbol is written with.
+    pub quote_style: QuoteStyle,
 }
 
 impl Default for FormatConfig {
@@ -38,6 +40,7 @@ impl Default for FormatConfig {
             indent_size: 2,
             hash_brace_space: HashBraceSpace::default(),
             access_modifier_style: AccessModifierStyle::default(),
+            quote_style: QuoteStyle::default(),
         }
     }
 }
@@ -60,6 +63,18 @@ pub enum AccessModifierStyle {
     #[default]
     Indent,
     Outdent,
+}
+
+/// The quote a literal is rewritten to, when that loses nothing: `double`
+/// or `single`, or `preserve` to leave every literal as written. A literal
+/// the target quote cannot hold without changing its value is left alone.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuoteStyle {
+    #[default]
+    Double,
+    Single,
+    Preserve,
 }
 
 #[derive(Debug, Default, Deserialize)]

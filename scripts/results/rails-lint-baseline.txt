@@ -1,12 +1,12 @@
 RuboCop offenses: rails
-generated: 2026-09-19T20:28:13Z
+generated: 2026-09-19T22:54:01Z
 baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)
 project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-formatted copy
 
 #    Cop                                             baseline     tuxedo      delta  project-cfg
 --   ---                                             --------     ------      -----  -----------
 1    Layout/ArgumentAlignment                             785       3991      +3206            0
-2    Style/StringLiterals                              102451     103688      +1237            0
+2    Style/StringLiterals                              102451     103695      +1244            0
 3    Metrics/MethodLength                                3923       4304       +381            0
 4    Style/EmptyMethod                                    179        411       +232            0
 5    Layout/MultilineMethodCallIndentation *              192        388       +196            0
@@ -274,7 +274,7 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
 267  Layout/IndentationWidth                             5784        242      -5542         1711
 268  Layout/IndentationConsistency                       5667         13      -5654            0
 
-     TOTAL                                             162869     145191     -17678         3697
+     TOTAL                                             162869     145198     -17671         3697
 
 * deliberate: decided, still counted
     Layout/MultilineMethodCallIndentation: chains indent one level from the statement, not aligned to the receiver (see format-verify.rubocop.yml)
@@ -282,4 +282,4 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
     Style/MultilineTernaryOperator: breaks an over-long ternary after `?` and `:` rather than rewriting it as if/else, a change of construct
     Layout/HeredocIndentation: leaves `<<-` alone: its body whitespace is part of the string, so `<<~` is a change of value
 
-introduced by tuxedo (delta above 0): 56 cops (+5801) not decided, 3 cops (+289) deliberate
+introduced by tuxedo (delta above 0): 56 cops (+5808) not decided, 3 cops (+289) deliberate

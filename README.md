@@ -20,7 +20,9 @@ linting experience at a fraction of the runtime cost, by leveraging Rust.
 Tuxedo exists to end formatting discussion in code review. "Move this space"
 is not feedback worth a round-trip, and the way to make it stop is a
 formatter whose output is not up for debate — so Tuxedo is opinionated by
-design, and takes no per-project style config for these choices.
+design. The layout below is the default and the recommended one; the few
+options that exist (see [Configuration](#configuration)) are for a team that
+has already chosen otherwise.
 
 Where more than one layout is defensible, the tie-breaker is **which one
 produces the better diff later**:
@@ -50,6 +52,29 @@ by hand. Tuxedo is a formatter and normalizes in both directions: given
 `x = [1,\n     2]`, RuboCop block-expands it while Tuxedo collapses it to
 `x = [1, 2]`. Both are right by their own rules, so matching RuboCop
 byte-for-byte is not a goal.
+
+## Configuration
+
+`.tuxedo.toml`, found by walking up from the current directory (or named with
+`--config`). Every key is optional and an unknown one is an error. These are
+all the keys the formatter reads:
+
+```toml
+[format]
+line_length = 120                  # column a line is broken to fit
+indent_size = 2                    # spaces per indent level
+hash_brace_space = "space"         # "space" { a: 1 } or "no_space" {a: 1}
+access_modifier_style = "indent"   # "indent" or "outdent" for private/protected/public
+quote_style = "double"             # "double", "single" or "preserve"
+```
+
+`quote_style` rewrites a plain string, a quoted symbol and a quoted hash key
+(`'a': 1`) to the chosen quote, and only when that loses nothing: a literal
+that the other quote would read as an escape or interpolation, or that holds
+that quote, keeps what was written. `%q`, `%w`, `?a`, heredocs, and anything
+inside a `#{}` are never touched, and neither is an implicit concatenation
+whose parts would not all end up with the same quote. `preserve` rewrites
+nothing.
 
 ## Installation
 

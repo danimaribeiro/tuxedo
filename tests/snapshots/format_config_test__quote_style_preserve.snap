@@ -1,0 +1,24 @@
+---
+source: tests/format_config_test.rs
+expression: output
+---
+a = 'plain'
+b = 'has "dq"'
+c = 'back\slash'
+d = 'hash #{x}'
+f = "simple"
+g = "it's"
+h = "esc \\ and \" ok"
+i = "tab\t"
+j = "interp #{a}"
+k = :'a b'
+l = :"a b"
+m = { 'k': 1, "j": 2, "it's": 3 }
+n = 'a' \
+  'b'
+o = 'a' \
+  "b#{c}"
+q = %q(x) + %w[a b].join + ?a
+r = <<~EOS
+  'heredoc'
+EOS
