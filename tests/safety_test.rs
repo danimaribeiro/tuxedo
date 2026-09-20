@@ -165,12 +165,15 @@ fn markers_that_do_not_pair_up_are_refused() {
     }
 }
 
-/// A region keeps its own text but not its line endings: the rest of the
-/// file is written with `\n`.
+/// A region keeps its own text, and the file keeps one line ending
+/// throughout: the region's are written like everything else's.
 #[test]
-fn a_region_written_with_crlf_comes_out_with_lf() {
+fn a_region_in_a_crlf_file_comes_out_with_crlf() {
     let output = format("a   =   1\r\n# tuxedo:off\r\nb   =   2\r\nc   =   3\r\n# tuxedo:on\r\n");
-    assert!(!output.contains("=   2\r"), "{output:?}");
+    assert_eq!(
+        output,
+        "a = 1\r\n# tuxedo:off\r\nb   =   2\r\nc   =   3\r\n# tuxedo:on\r\n"
+    );
 }
 
 #[test]

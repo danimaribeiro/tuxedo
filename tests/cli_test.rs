@@ -389,3 +389,32 @@ fn a_file_nested_too_deep_is_reported_and_the_rest_are_still_formatted() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("deep.rb"));
     assert_eq!(dir.read("ok.rb"), "x = 1\n");
 }
+
+#[test]
+fn a_config_that_cannot_be_read_or_parsed_fails_before_any_file_is_touched() {
+    let dir = TempDir::new("config-failures");
+    let file = dir.write("a.rb", "x  =  1\n");
+    let malformed = dir.write("malformed.toml", "[format\n");
+    let unknown = dir.write("unknown.toml", "bogus = 1\n");
+    let missing = dir.0.join("missing.toml");
+
+    for (config, message) in [
+        (&malformed, "invalid config"),
+        (&unknown, "unknown field `bogus`"),
+        (&missing, "could not read config"),
+    ] {
+        let output = Command::new(TUXEDO)
+            .args(["format", "--config"])
+            .arg(config)
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{}", config.display());
+        assert!(
+            stderr_of(&output).contains(message),
+            "{}",
+            stderr_of(&output)
+        );
+        assert_eq!(dir.read("a.rb"), "x  =  1\n", "the file must be left alone");
+    }
+}

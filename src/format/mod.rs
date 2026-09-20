@@ -221,26 +221,31 @@ pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String,
 }
 
 fn format_checked(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
-    let result = format_unverified(source, config)?;
+    let result = format_unchecked(source, config)?;
     if result != source {
-        let before = verify::fingerprint(source);
-        let after = verify::fingerprint(&result);
-        match (before, after) {
-            (Some(before), Some(after))
-                if before == after || verify::same_modulo_name_order(source, &result) => {}
-            (Some(before), Some(after)) => {
-                return Err(FormatError::AstMismatch {
-                    detail: verify::first_difference(&before, &after),
-                });
-            }
-            _ => {
-                return Err(FormatError::AstMismatch {
-                    detail: "output is not valid Ruby".to_string(),
-                });
-            }
-        }
+        verify_same_program(source, &result)?;
     }
     Ok(result)
+}
+
+/// Whether `output` is the same program as `source`: both parse, to the
+/// same tree. What stands between a formatter bug and a rewritten file.
+pub fn verify_same_program(source: &str, output: &str) -> Result<(), FormatError> {
+    let before = verify::fingerprint(source);
+    let after = verify::fingerprint(output);
+    match (before, after) {
+        (Some(before), Some(after))
+            if before == after || verify::same_modulo_name_order(source, output) =>
+        {
+            Ok(())
+        }
+        (Some(before), Some(after)) => Err(FormatError::AstMismatch {
+            detail: verify::first_difference(&before, &after),
+        }),
+        _ => Err(FormatError::AstMismatch {
+            detail: "output is not valid Ruby".to_string(),
+        }),
+    }
 }
 
 /// Formats without the AST-equivalence check. Only for measuring what the
@@ -294,15 +299,29 @@ fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, Forma
     if !result.is_empty() {
         result.push('\n');
     }
+    // A file written with CRLF line endings keeps them, all of them: the
+    // pieces copied from the source (a heredoc body, a string spanning
+    // lines) carry theirs and the rest of the output is built with `\n`.
+    // What follows `__END__` is data and does not vote.
+    let code = parsed
+        .data_loc()
+        .map_or(source, |data| &source[..data.start_offset()]);
+    let eol = if code.contains("\r\n") { "\r\n" } else { "\n" };
+    if eol == "\r\n" {
+        result = result.replace("\r\n", "\n").replace('\n', eol);
+    }
     // `__END__` and everything after it is the program's `DATA`, not code:
     // copied byte for byte, down to whether it ends in a newline.
     if let Some(data) = parsed.data_loc() {
         if !result.is_empty() {
-            result.push('\n');
+            result.push_str(eol);
         }
         result.push_str(&String::from_utf8_lossy(data.as_slice()));
     } else if result.is_empty() {
-        result.push('\n');
+        result.push_str(eol);
+    }
+    if source.starts_with('\u{feff}') {
+        result.insert(0, '\u{feff}');
     }
     Ok(result)
 }
@@ -954,10 +973,26 @@ impl Formatter {
     fn remaining_comments_doc(&mut self) -> Option<Doc> {
         let mut doc = Doc::nil();
         let mut any = false;
+        let mut previous_end: Option<usize> = None;
         while self.comment_cursor < self.comments.len() {
+            let start = self.comments[self.comment_cursor].start;
+            let line = self.line_of(start);
             if any {
-                doc = doc.append(Doc::hardline());
+                // A blank line the author left between comments stays,
+                // as it does between statements.
+                doc = doc.append(if previous_end.is_some_and(|end| line > end + 1) {
+                    Doc::blank_line()
+                } else {
+                    Doc::hardline()
+                });
             }
+            previous_end = Some(
+                line + self.comments[self.comment_cursor]
+                    .text
+                    .trim_end()
+                    .matches('\n')
+                    .count(),
+            );
             doc = doc.append(Doc::text(Self::own_line_comment(
                 &self.comments[self.comment_cursor].text,
             )));
