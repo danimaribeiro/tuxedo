@@ -1,0 +1,82 @@
+Building tuxedo (release)...
+Preparing working copy...
+Running tuxedo format...
+
+[0/4] Meaning check (source AST == output AST)...
+  CHANGED: db/migrate/20211213060445_email_tokens_token_to_nullable.rb
+  source AST: ...stantReadNode(8)), None, 9, None, None, Some(ArgumentsNode([InterpolatedStringNode(None, [StringNode(None, "", None, [83...
+  output AST: ...stantReadNode(8)), None, 9, None, None, Some(ArgumentsNode([StringNode(None, "", None, [65, 76, 84, 69, 82, 32, 84, 65, ...
+  CHANGED: plugins/discourse-ai/lib/discoveries/retrieval.rb
+  source AST: ...e(Some(ParametersNode([RequiredParameterNode(51)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...e(Some(ParametersNode([RequiredParameterNode(51)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+
+[1/4] Parse check (ruby -c)...
+
+[2/4] Idempotence check (format twice)...
+
+[3/4] Comment placement (scripts/comment-anchors.rb)...
+  DISPLACED: app/models/concerns/has_post_upload_references.rb:15 leading of `thumbnail`: # Video thumbnails have the filename of the video file sha1 
+  DISPLACED: app/models/concerns/has_post_upload_references.rb:16 leading of `thumbnail`: # This is because at time of upload in the composer we don't
+  DISPLACED: app/models/concerns/has_post_upload_references.rb:17 leading of `thumbnail`: # and there is no thumbnail info added to the markdown to ti
+  DISPLACED: app/models/concerns/has_post_upload_references.rb:18 leading of `thumbnail`: # creation.
+  DISPLACED: app/models/report.rb:451 leading of `if`: # For this report we intentionally do not want to count mobi
+  DISPLACED: app/models/topic_tracking_state.rb:486 leading of `if`: # If we're only gathering topics with unread posts, we've al
+  DISPLACED: app/models/topic_tracking_state.rb:487 leading of `if`: # (topic_users.last_read_post_number < topics.highest_post_n
+  DISPLACED: app/models/topic_tracking_state.rb:488 leading of `if`: # attempts to exclude rows where (topic_users.last_read_post
+  DISPLACED: lib/pretty_text/helpers.rb:53 leading of `thumbnail`: # Fallback for old posts that don't contain data-video-base6
+  DISPLACED: lib/tasks/plugin.rake:362 trailing of `=`: # assume all start with ./#{plugin_name}/
+  DISPLACED: lib/url_helper.rb:14 leading of `fragment`: # Addressable::URI::CharacterClasses::UNRESERVED is used her
+  DISPLACED: lib/url_helper.rb:15 leading of `fragment`: # the # in the fragment is not encoded
+  DISPLACED: plugins/discourse-ai/app/models/ai_agent.rb:406 leading of `Class`: # we need a new copy so we don't leak information
+  DISPLACED: plugins/discourse-ai/lib/completions/llm.rb:226 leading of `response_format`: # internals expect symbolized keys, so we normalize here
+  DISPLACED: plugins/discourse-events/spec/jobs/regular/discourse_post_event/bulk_invite_spec.rb:184 leading of `"`: # rubocop:disable Layout/LineLength
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:10 leading of `'`: # Apparently simplecov doesn't automatically filter 'spec' o
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:11 leading of `'`: # have to do it manually.
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:14 leading of `'`: # Only filtered because I tend to not see value in testing f
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:17 leading of `'`: # jruby coverage flips out here and doesn't count much of th
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:18 leading of `'`: # arrays used by this class. This results in an extremely lo
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:19 leading of `'`: # coverage for this specific file but only in jruby, not oth
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:20 leading of `'`: # Since it obliterates coverage percentages I'll filter it u
+  DISPLACED: plugins/discourse-events/vendor/holidays/test/coverage_report.rb:21 leading of `'`: # up with a solution.
+  DISPLACED: plugins/discourse-post-voting/extensions/topic_view_extension.rb:63 leading of `if`: # Lower boundary window
+  DISPLACED: plugins/discourse-subscriptions/app/services/discourse_subscriptions/campaign.rb:162 trailing of `]`: # Discourse only makes single-line item charg
+
+[4/4] Layout conformance (rubocop --only Layout)...
+
+  1746  Layout/LineLength [Safe Correctable]
+  78    Layout/EndAlignment [Safe Correctable]
+  39    Layout/TrailingWhitespace [Safe Correctable]
+  32    Layout/MultilineMethodCallIndentation [Safe Correctable]
+  25    Layout/EmptyComment [Safe Correctable]
+  8     Layout/MultilineOperationIndentation [Safe Correctable]
+  7     Layout/IndentationWidth [Safe Correctable]
+  7     Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
+  6     Layout/EmptyLines [Safe Correctable]
+  5     Layout/BlockAlignment [Safe Correctable]
+  4     Layout/LeadingCommentSpace [Safe Correctable]
+  3     Layout/ElseAlignment [Safe Correctable]
+  2     Layout/ClosingHeredocIndentation [Safe Correctable]
+  2     Layout/FirstHashElementIndentation [Safe Correctable]
+  1     Layout/ArgumentAlignment [Safe Correctable]
+  1     Layout/EmptyLineAfterGuardClause [Safe Correctable]
+  1     Layout/EmptyLineAfterMagicComment [Safe Correctable]
+  1     Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
+  1     Layout/FirstArgumentIndentation [Safe Correctable]
+  1     Layout/SpaceBeforeComment [Safe Correctable]
+
+======================================================================
+  discourse
+----------------------------------------------------------------------
+  meaning     2 files refused: formatting would have changed the AST
+  parse       12373 ok, 0 BROKEN by tuxedo (1 skipped, never parsed)
+  idempotent  0 files change on a second format
+  comments    52233 total, 26 displaced
+  layout      1970 offenses across 20 distinct cops
+  linelength: 1746 over 120, 1644 unsplittable, 102 breakable
+======================================================================
+
+Output kept at test-projects/discourse/verify for inspection.
+Report saved to scripts/results/discourse-format-verify.txt
+
+Meaning changes are the highest-priority failures: tuxedo's output was a
+different program. The files were left untouched, but each one is a bug.

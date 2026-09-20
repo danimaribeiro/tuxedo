@@ -1,0 +1,114 @@
+Building tuxedo (release)...
+Preparing working copy...
+Running tuxedo format...
+
+[0/4] Meaning check (source AST == output AST)...
+  CHANGED: Library/Homebrew/exceptions.rb
+  source AST: ...(Some(ParametersNode([RequiredParameterNode(287)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...(Some(ParametersNode([RequiredParameterNode(287)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/cli/parser.rb
+  source AST: ...(Some(ParametersNode([RequiredParameterNode(364)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...(Some(ParametersNode([RequiredParameterNode(364)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/env_config.rb
+  source AST: ...e(Some(ParametersNode([RequiredParameterNode(45)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...e(Some(ParametersNode([RequiredParameterNode(45)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/system_command.rb
+  source AST: ...(Some(ParametersNode([RequiredParameterNode(100)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...(Some(ParametersNode([RequiredParameterNode(100)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/utils/user.rb
+  source AST: ...iredParameterNode(19), RequiredParameterNode(20)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...iredParameterNode(19), RequiredParameterNode(20)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/cmd/search.rb
+  source AST: ...e(Some(ParametersNode([RequiredParameterNode(24)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...e(Some(ParametersNode([RequiredParameterNode(24)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/cleanup.rb
+  source AST: ...(Some(ParametersNode([RequiredParameterNode(400)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...(Some(ParametersNode([RequiredParameterNode(400)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/test/utils/ruby_check_version_script_spec.rb
+  source AST: ...de(Some(ParametersNode([RequiredParameterNode(8)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...de(Some(ParametersNode([RequiredParameterNode(8)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+  CHANGED: Library/Homebrew/test/install_steps_spec.rb
+  source AST: ...(Some(ParametersNode([RequiredParameterNode(192)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
+  output AST: ...(Some(ParametersNode([RequiredParameterNode(192)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
+
+[1/4] Parse check (ruby -c)...
+
+[2/4] Idempotence check (format twice)...
+  UNSTABLE: Library/Homebrew/vendor/bundle/ruby/4.0.0/gems/sorbet-runtime-0.6.13497/lib/types/props/generated_code_validation.rb
+          @@ -187,7 +187,7 @@
+           
+               private_class_method def self.validate_deserialize_handle_nil(node)
+                 case node.type
+          -      when :hash, :array, :str, :sym, :int, :float, :true, :false, :nil, :const; 
+          +      when :hash, :array, :str, :sym, :int, :float, :true, :false, :nil, :const
+                 when :send
+                   # rubocop:disable Lint/BooleanSymbol
+
+[3/4] Comment placement (scripts/comment-anchors.rb)...
+  DISPLACED: Library/Homebrew/api/cask_struct.rb:60 leading of `Symbol`: # Keys are dependency types like :macos, :arch, :cask, :form
+  DISPLACED: Library/Homebrew/api/cask_struct.rb:62 leading of `T`: # Values can be any of:
+  DISPLACED: Library/Homebrew/api/formula/formula_struct_generator.rb:21 leading of `T`: # Values are arrays of either:
+  DISPLACED: Library/Homebrew/cask/artifact/abstract_artifact.rb:155 trailing of `}`: # backward-compatible string value
+  DISPLACED: Library/Homebrew/cask/artifact/abstract_artifact.rb:156 trailing of `dup`: # Avoid mutating the original argument
+  DISPLACED: Library/Homebrew/cask/audit.rb:889 leading of `return`: # ignore declared minimum OS < 11.x when auditing as ARM a c
+  DISPLACED: Library/Homebrew/dependency.rb:100 leading of `return`: # If installed version has same compatibility_version as req
+  DISPLACED: Library/Homebrew/extend/blank/array.rb:15 trailing of `empty?`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/false_class.rb:14 trailing of `false`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/hash.rb:16 trailing of `empty?`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/nil_class.rb:14 trailing of `false`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/pathname.rb:23 trailing of `blank?`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/string.rb:41 trailing of `blank?`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/symbol.rb:15 trailing of `empty?`: # :nodoc:
+  DISPLACED: Library/Homebrew/extend/blank/true_class.rb:14 trailing of `true`: # :nodoc:
+  DISPLACED: Library/Homebrew/global.rb:30 leading of `"`: # Don't update this beyond 10.15.7 until Safari actually upd
+  DISPLACED: Library/Homebrew/global.rb:31 leading of `"`: # user agent to be beyond 10.15.7 (not the case as-of macOS 
+  DISPLACED: Library/Homebrew/keg.rb:521 trailing of `}`: # all icons subfolders should also mkpath
+  DISPLACED: Library/Homebrew/keg.rb:525 trailing of `}`: #  Lua, Lua51, Lua53 all need the same handling.
+  DISPLACED: Library/Homebrew/keg.rb:540 trailing of `"`: # Common Package Specification database gets explicitly crea
+  DISPLACED: Library/Homebrew/keg.rb:541 trailing of `"`: # pkg-config database gets explicitly created
+  DISPLACED: Library/Homebrew/keg.rb:542 trailing of `"`: # cmake database gets explicitly created
+  DISPLACED: Library/Homebrew/keg.rb:543 trailing of `"`: # lib/language folders also get explicitly created
+  DISPLACED: Library/Homebrew/os/mac/ffi/security.rb:91 leading of `next`: # Validate sealed content against its own identity before tr
+  DISPLACED: Library/Homebrew/os/mac/ffi/security.rb:92 leading of `next`: # https://developer.apple.com/documentation/security/secstat
+
+[4/4] Layout conformance (rubocop --only Layout)...
+
+  296   Layout/HashAlignment [Safe Correctable]
+  56    Layout/LineLength [Safe Correctable]
+  26    Layout/ArgumentAlignment [Safe Correctable]
+  16    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
+  16    Layout/TrailingWhitespace [Safe Correctable]
+  8     Layout/FirstMethodArgumentLineBreak [Safe Correctable]
+  8     Layout/MultilineMethodCallBraceLayout [Safe Correctable]
+  7     Layout/MultilineMethodCallIndentation [Safe Correctable]
+  5     Layout/MultilineOperationIndentation [Safe Correctable]
+  4     Layout/EndAlignment [Safe Correctable]
+  4     Layout/SpaceAroundOperators [Safe Correctable]
+  3     Layout/ElseAlignment [Safe Correctable]
+  3     Layout/EmptyLineAfterGuardClause [Safe Correctable]
+  3     Layout/IndentationWidth [Safe Correctable]
+  2     Layout/EmptyLineAfterMagicComment [Safe Correctable]
+  2     Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
+  2     Layout/FirstHashElementIndentation [Safe Correctable]
+  2     Layout/MultilineArrayBraceLayout [Safe Correctable]
+  1     Layout/BeginEndAlignment [Safe Correctable]
+  1     Layout/BlockAlignment [Safe Correctable]
+  1     Layout/FirstArgumentIndentation [Safe Correctable]
+  1     Layout/RescueEnsureAlignment [Safe Correctable]
+
+======================================================================
+  homebrew
+----------------------------------------------------------------------
+  meaning     9 files refused: formatting would have changed the AST
+  parse       2367 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
+  idempotent  1 files change on a second format
+  comments    36697 total, 52 displaced
+  layout      467 offenses across 22 distinct cops
+  linelength: 56 over 120, 53 unsplittable, 3 breakable
+======================================================================
+
+Output kept at test-projects/homebrew/verify for inspection.
+Report saved to scripts/results/homebrew-format-verify.txt
+
+Meaning changes are the highest-priority failures: tuxedo's output was a
+different program. The files were left untouched, but each one is a bug.
