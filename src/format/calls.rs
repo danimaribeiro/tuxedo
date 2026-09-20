@@ -382,6 +382,23 @@ impl Formatter {
 
         let mut run = self.begin_run();
         self.run_node(&mut run, receiver);
+        // `Dir["a", "b", ...]` reads as a list, and expands like one when it
+        // is too long.
+        let block_pass = node
+            .block()
+            .filter(|b| b.as_block_argument_node().is_some());
+        if name_str == "[]"
+            && !args.is_empty()
+            && block_pass.is_none()
+            && !self.single_line
+            && let (Some(open), Some(close)) = (node.opening_loc(), node.closing_loc())
+        {
+            let span = Some((open.end_offset(), close.start_offset()));
+            let list =
+                self.bracketed_items_doc("[", Doc::softline(), &args, Doc::softline(), "]", span);
+            run.leaves.push(list);
+            return self.end_run(run);
+        }
         self.run_text(&mut run, "[");
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {

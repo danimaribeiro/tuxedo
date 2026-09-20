@@ -342,7 +342,21 @@ fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
     if let Some(n) = node.as_x_string_node() {
         return !Formatter::is_heredoc_opening(n.opening_loc().as_slice());
     }
+    // `a, b = c, d`: the values of a multiple assignment, written bare.
+    if let Some(n) = node.as_array_node() {
+        return n.opening_loc().is_none() && n.elements().iter().all(|e| is_indivisible(&e));
+    }
     if let Some(n) = node.as_call_node() {
+        // A command call (`stub_request "K" => "v"`) has no parenthesis to
+        // break after, so it is as indivisible as its one argument.
+        if n.opening_loc().is_none()
+            && n.receiver().is_none()
+            && n.block().is_none()
+            && let Some(arguments) = n.arguments()
+        {
+            let arguments: Vec<_> = arguments.arguments().iter().collect();
+            return arguments.len() == 1 && is_indivisible_argument(&arguments[0]);
+        }
         let name = n.name();
         let named = name
             .as_slice()
@@ -356,6 +370,11 @@ fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
             && n.receiver().is_none_or(|r| is_indivisible(&r));
     }
     node.as_regular_expression_node().is_some()
+        || node.as_true_node().is_some()
+        || node.as_false_node().is_some()
+        || node.as_nil_node().is_some()
+        || node.as_integer_node().is_some()
+        || node.as_float_node().is_some()
         || node.as_interpolated_regular_expression_node().is_some()
         || node.as_symbol_node().is_some()
         || node.as_interpolated_symbol_node().is_some()
@@ -366,6 +385,34 @@ fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
         || node.as_class_variable_read_node().is_some()
         || node.as_global_variable_read_node().is_some()
         || node.as_self_node().is_some()
+}
+
+/// Where the head of `Path::To.method(` ends -- through the opening
+/// parenthesis -- when `node` is a call whose receiver is a path of names and
+/// which has arguments to open: the part of it that cannot be broken.
+fn call_head(node: &ruby_prism::Node<'_>) -> Option<usize> {
+    let call = node.as_call_node()?;
+    let opening = call.opening_loc()?;
+    let name = call.name();
+    let named = name
+        .as_slice()
+        .first()
+        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_');
+    (named && call.receiver().is_some_and(|r| is_indivisible(&r)) && call.arguments().is_some())
+        .then(|| opening.end_offset())
+}
+
+/// The single argument of a command call: a value that is indivisible, or a
+/// bare `key => value` whose two halves are.
+fn is_indivisible_argument(node: &ruby_prism::Node<'_>) -> bool {
+    if let Some(hash) = node.as_keyword_hash_node() {
+        let elements: Vec<_> = hash.elements().iter().collect();
+        return elements.len() == 1
+            && elements[0]
+                .as_assoc_node()
+                .is_some_and(|pair| is_indivisible(&pair.key()) && is_indivisible(&pair.value()));
+    }
+    is_indivisible(node)
 }
 
 struct CommentSpan {
@@ -1114,6 +1161,27 @@ impl Formatter {
         let value_doc = self.node_doc(value);
         let one_line = self.line_of(value.location().start_offset())
             == self.line_of(value.location().end_offset().saturating_sub(1));
+        if !self.single_line
+            && let Some(head) = call_head(value).and_then(|end| {
+                self.source
+                    .get(value.location().start_offset()..end)
+                    .filter(|head| !head.contains('\n'))
+            })
+        {
+            // `Deep::Const::Path.method(`: a head with no place to break in
+            // front of an argument list. When it does not fit after the
+            // target, the whole call moves under it and breaks there.
+            let nest = self.indent_str.len();
+            let width = unicode_width::UnicodeWidthStr::width(head);
+            if (self.indent + 1) * nest + width <= self.line_length {
+                let stay = Doc::text(format!(" {op} ")).append(value_doc.clone());
+                let moved = Doc::text(format!(" {op}"))
+                    .append(Doc::hardline().append(value_doc).indent(nest));
+                run.leaves
+                    .push(Doc::stay_or_move(&format!(" {op} {head}"), stay, moved));
+                return;
+            }
+        }
         if self.single_line || !one_line || !is_indivisible(value) {
             self.run_text(run, format!(" {op} "));
             run.leaves.push(value_doc);

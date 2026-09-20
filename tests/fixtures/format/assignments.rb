@@ -62,3 +62,16 @@ def long_values
   short = "stays on the line"
   too_long_to_help = "a string so long that moving it under the target would not bring it within the limit of a line, nothing at all, however long this string is made to be"
 end
+
+class A
+  class B
+    class C
+      def m
+        @session_store[:last_write] =
+          ActiveRecord::Middleware::DatabaseSelector::Resolver::Session.convert_time_to_timestamp(Time.now)
+        previous_value_long_name, ActiveRecord::Base.belongs_to_required_by_default_long =
+          ActiveRecord::Base.belongs_to_required_by_default, true
+      end
+    end
+  end
+end
