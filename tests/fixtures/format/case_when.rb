@@ -13,3 +13,10 @@ when count > 10
 else
   puts "few"
 end
+
+case node.type
+when :hash, :array, :str, :sym, :int, :float, :true, :false, :nil, :const # rubocop:disable Lint/BooleanSymbol
+  # Primitives and constants are safe
+when :send
+  1
+end

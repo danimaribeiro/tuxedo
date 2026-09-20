@@ -656,6 +656,9 @@ impl Formatter {
     ) -> Doc {
         let body = statements.map(|s| s.as_node());
         if self.single_line {
+            if body.is_none() {
+                return header;
+            }
             return header
                 .append(Doc::text("; "))
                 .append(self.optional_body_doc(body));

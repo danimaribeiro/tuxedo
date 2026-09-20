@@ -32,3 +32,10 @@ in [0, 1,]
 in Foo[a,]
   2
 end
+
+case node
+in Integer # rubocop:disable Lint/Foo
+  # Integers are safe
+in String
+  1
+end

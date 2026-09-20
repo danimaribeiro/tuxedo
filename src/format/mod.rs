@@ -554,6 +554,11 @@ impl Formatter {
         if !self.single_line
             && node.as_statements_node().is_none()
             && node.as_program_node().is_none()
+            // A clause is a line of its own inside a `case`; when it has no
+            // body it also *looks* like one line, but pulling it flat would
+            // strand its comments in the next clause.
+            && node.as_when_node().is_none()
+            && node.as_in_node().is_none()
             && self.line_has_directive_after(node.location())
         {
             let was_single_line = std::mem::replace(&mut self.single_line, true);
