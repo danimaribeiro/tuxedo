@@ -30,3 +30,15 @@ trace = [
   trace: wrapper.source_extracts.first[:trace],
   more: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 ]
+
+s.files = Dir[
+  "CHANGELOG.md",
+  "MIT-LICENSE",
+  "README.md",
+  "lib/**/*",
+  "app/**/*",
+  "config/**/*",
+  "db/**/*",
+  "package.json"
+]
+x = a[1, 2]

@@ -49,3 +49,29 @@ end
 prev_configs, ActiveRecord::Base.configurations = ActiveRecord::Base.configurations, {
   "arunit" => { "primary" => { "adapter" => "sqlite3" } }
 }
+
+def long_values
+  expected =
+    "ALTER TABLE `people` ADD `last_name` varchar(255), ADD `first_name` varchar(255), ALGORITHM = INPLACE, LOCK = NONE"
+  @message ||=
+    "ALTER TABLE `people` ADD `last_name` varchar(255), ADD `first_name` varchar(255), ALGORITHM = INPLACE, LOCK = NONE"
+  headers["WWW-Authenticate"] =
+    %(Digest realm="#{realm}", qop="auth", algorithm=MD5, nonce="#{nonce}", opaque="#{opaque}", more="more")
+  ActionController::Parameters.always_permitted_parameters_with_a_long_name =
+    app.config.action_controller.always_permitted_parameters_with_a_long_name
+  short = "stays on the line"
+  too_long_to_help = "a string so long that moving it under the target would not bring it within the limit of a line, nothing at all, however long this string is made to be"
+end
+
+class A
+  class B
+    class C
+      def m
+        @session_store[:last_write] =
+          ActiveRecord::Middleware::DatabaseSelector::Resolver::Session.convert_time_to_timestamp(Time.now)
+        previous_value_long_name, ActiveRecord::Base.belongs_to_required_by_default_long =
+          ActiveRecord::Base.belongs_to_required_by_default, true
+      end
+    end
+  end
+end

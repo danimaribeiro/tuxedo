@@ -14,3 +14,28 @@ def visit_module_node(node)
     @namespace_stack << node.constant_path.full_name
   end
 end
+
+case value
+in Integer => n if n > 3
+  n
+in Integer => some_rather_long_capture_name if some_rather_long_capture_name > 3 &&
+    another_condition_here_too &&
+    yet_more_here
+  value
+in String => s unless s.empty?
+  s
+end
+
+case value
+in [0, 1,]
+  1
+in Foo[a,]
+  2
+end
+
+case node
+in Integer # rubocop:disable Lint/Foo
+  # Integers are safe
+in String
+  1
+end

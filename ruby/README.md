@@ -1,6 +1,6 @@
 # tuxedo-r
 
-A self-contained [`tuxedo`](../) executable — a Ruby formatter/linter written in
+A self-contained [`tuxedo`](../) executable — a Ruby formatter written in
 Rust — wrapped up in a Ruby gem, distributed as a set of platform-specific gems, each containing a
 precompiled native binary, plus a tiny Ruby script that locates and execs it.
 

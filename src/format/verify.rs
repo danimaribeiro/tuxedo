@@ -210,7 +210,17 @@ fn normalize(debug: &str) -> String {
             // mistaken for the patterns above.
             let text_end = string_literal_end(bytes, i + 1);
             let end = (text_end + 1).min(bytes.len());
-            out.push_str(&debug[i..end]);
+            let text = &debug[i + 1..text_end];
+            match heredoc_terminator(text) {
+                // A heredoc's terminator line is layout: `<<-` allows it
+                // indented and the formatter moves it.
+                Some(tag) => {
+                    out.push('"');
+                    out.push_str(tag);
+                    out.push_str("\\n\"");
+                }
+                None => out.push_str(&debug[i..end]),
+            }
             i = end;
         } else if debug[i..].starts_with("0x") {
             i += 2;
@@ -225,6 +235,15 @@ fn normalize(debug: &str) -> String {
         }
     }
     out
+}
+
+/// The tag of a heredoc terminator line as `Debug` escapes it (`  CMD\n`),
+/// without the indentation. Nothing else the parser records as a required
+/// location is a bare word ending in a newline.
+fn heredoc_terminator(text: &str) -> Option<&str> {
+    let tag = text.strip_suffix("\\n")?.trim_start_matches(' ');
+    let is_tag = !tag.is_empty() && tag.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    is_tag.then_some(tag)
 }
 
 /// Copies the optional location at `i` (`None` or `Some("text")`) to `out`

@@ -151,6 +151,13 @@ pub enum FormatError {
     /// a bug in Tuxedo, caught before it could reach the file. See
     /// `verify`.
     AstMismatch { detail: String },
+    /// The source nests deeper than the formatter recurses. Reported
+    /// instead of overflowing the stack, which aborts the whole process.
+    TooDeep { limit: usize },
+    /// A node type the formatter never lays out on its own reached
+    /// `node_doc`: a bug in Tuxedo. Refused, because copying its source
+    /// would pass the AST check while leaving the code unformatted.
+    Unreachable { node: &'static str },
 }
 
 impl std::fmt::Display for FormatError {
@@ -166,42 +173,88 @@ impl std::fmt::Display for FormatError {
                 "formatting would change what this code does, so it was left untouched \
                  (this is a bug in tuxedo, please report it)\n  {detail}"
             ),
+            FormatError::TooDeep { limit } => {
+                write!(
+                    f,
+                    "nested more than {limit} levels deep, too deep to format"
+                )
+            }
+            FormatError::Unreachable { node } => write!(
+                f,
+                "a {node} reached the formatter, which never formats one on its own \
+                 (this is a bug in tuxedo, please report it)"
+            ),
         }
     }
 }
 
 impl std::error::Error for FormatError {}
 
+/// How many nodes deep `node_doc` recurses before the file is refused.
+/// Real code stays far under it; generated code that does not would
+/// otherwise take the stack with it.
+const MAX_DEPTH: usize = 1000;
+
+/// Stack for the thread a file is formatted on. The walk's worker threads
+/// get 2 MB and the main thread 8 MB, and the depth a file can reach must
+/// not depend on which one it landed on. Address space only: the pages are
+/// touched when the recursion reaches them.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
+
+fn on_big_stack<T: Send>(work: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(STACK_SIZE)
+            .spawn_scoped(scope, work)
+            .expect("could not spawn the formatting thread")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
 pub fn format(source: &str) -> Result<String, FormatError> {
     format_with_config(source, &FormatConfig::default())
 }
 
 pub fn format_with_config(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
-    let result = format_unverified(source, config)?;
+    on_big_stack(|| format_checked(source, config))
+}
+
+fn format_checked(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
+    let result = format_unchecked(source, config)?;
     if result != source {
-        let before = verify::fingerprint(source);
-        let after = verify::fingerprint(&result);
-        match (before, after) {
-            (Some(before), Some(after))
-                if before == after || verify::same_modulo_name_order(source, &result) => {}
-            (Some(before), Some(after)) => {
-                return Err(FormatError::AstMismatch {
-                    detail: verify::first_difference(&before, &after),
-                });
-            }
-            _ => {
-                return Err(FormatError::AstMismatch {
-                    detail: "output is not valid Ruby".to_string(),
-                });
-            }
-        }
+        verify_same_program(source, &result)?;
     }
     Ok(result)
+}
+
+/// Whether `output` is the same program as `source`: both parse, to the
+/// same tree. What stands between a formatter bug and a rewritten file.
+pub fn verify_same_program(source: &str, output: &str) -> Result<(), FormatError> {
+    let before = verify::fingerprint(source);
+    let after = verify::fingerprint(output);
+    match (before, after) {
+        (Some(before), Some(after))
+            if before == after || verify::same_modulo_name_order(source, output) =>
+        {
+            Ok(())
+        }
+        (Some(before), Some(after)) => Err(FormatError::AstMismatch {
+            detail: verify::first_difference(&before, &after),
+        }),
+        _ => Err(FormatError::AstMismatch {
+            detail: "output is not valid Ruby".to_string(),
+        }),
+    }
 }
 
 /// Formats without the AST-equivalence check. Only for measuring what the
 /// check costs and what it catches; never for writing files.
 pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
+    on_big_stack(|| format_unchecked(source, config))
+}
+
+fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
     let parsed = ruby_prism::parse(source.as_bytes());
     if let Some(error) = parsed.errors().next() {
         let offset = error.location().start_offset();
@@ -227,6 +280,9 @@ pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, 
     let mut formatter = Formatter::new(source, &parsed, config);
     let markers = regions::check_markers(source, &formatter.comments)?;
     let mut doc = formatter.node_doc(&node);
+    if let Some(refusal) = formatter.refusal.take() {
+        return Err(refusal);
+    }
     if let Some(&stray) = markers.iter().find(|m| !formatter.honored_off.contains(m)) {
         return Err(regions::stray_marker(source, stray));
     }
@@ -237,22 +293,126 @@ pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, 
         doc = doc.append(trailing);
     }
     let rendered = formatter.splice_heredoc_bodies(doc.render(formatter.line_length));
+    let rendered = outdent_embdocs(&rendered);
     let trimmed = rendered.trim_end_matches('\n');
     let mut result = trimmed.to_string();
     if !result.is_empty() {
         result.push('\n');
     }
+    // A file written with CRLF line endings keeps them, all of them: the
+    // pieces copied from the source (a heredoc body, a string spanning
+    // lines) carry theirs and the rest of the output is built with `\n`.
+    // What follows `__END__` is data and does not vote.
+    let code = parsed
+        .data_loc()
+        .map_or(source, |data| &source[..data.start_offset()]);
+    let eol = if code.contains("\r\n") { "\r\n" } else { "\n" };
+    if eol == "\r\n" {
+        result = result.replace("\r\n", "\n").replace('\n', eol);
+    }
     // `__END__` and everything after it is the program's `DATA`, not code:
     // copied byte for byte, down to whether it ends in a newline.
     if let Some(data) = parsed.data_loc() {
         if !result.is_empty() {
-            result.push('\n');
+            result.push_str(eol);
         }
         result.push_str(&String::from_utf8_lossy(data.as_slice()));
     } else if result.is_empty() {
-        result.push('\n');
+        result.push_str(eol);
+    }
+    if source.starts_with('\u{feff}') {
+        result.insert(0, '\u{feff}');
     }
     Ok(result)
+}
+
+/// Whether `node` is written as one piece with no place to break inside it:
+/// a string, regex or symbol literal (a heredoc has its body elsewhere), a
+/// variable or constant, or a chain of argument-less calls on one.
+fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
+    let plain_opening = |opening: Option<ruby_prism::Location<'_>>| {
+        opening.is_some_and(|o| !Formatter::is_heredoc_opening(o.as_slice()))
+    };
+    if let Some(n) = node.as_string_node() {
+        return plain_opening(n.opening_loc());
+    }
+    if let Some(n) = node.as_interpolated_string_node() {
+        return plain_opening(n.opening_loc());
+    }
+    if let Some(n) = node.as_x_string_node() {
+        return !Formatter::is_heredoc_opening(n.opening_loc().as_slice());
+    }
+    // `a, b = c, d`: the values of a multiple assignment, written bare.
+    if let Some(n) = node.as_array_node() {
+        return n.opening_loc().is_none() && n.elements().iter().all(|e| is_indivisible(&e));
+    }
+    if let Some(n) = node.as_call_node() {
+        // A command call (`stub_request "K" => "v"`) has no parenthesis to
+        // break after, so it is as indivisible as its one argument.
+        if n.opening_loc().is_none()
+            && n.receiver().is_none()
+            && n.block().is_none()
+            && let Some(arguments) = n.arguments()
+        {
+            let arguments: Vec<_> = arguments.arguments().iter().collect();
+            return arguments.len() == 1 && is_indivisible_argument(&arguments[0]);
+        }
+        let name = n.name();
+        let named = name
+            .as_slice()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_');
+        let unary_sign = matches!(name.as_slice(), b"+@" | b"-@");
+        return n.arguments().is_none()
+            && n.block().is_none()
+            && n.opening_loc().is_none()
+            && (named || unary_sign)
+            && n.receiver().is_none_or(|r| is_indivisible(&r));
+    }
+    node.as_regular_expression_node().is_some()
+        || node.as_true_node().is_some()
+        || node.as_false_node().is_some()
+        || node.as_nil_node().is_some()
+        || node.as_integer_node().is_some()
+        || node.as_float_node().is_some()
+        || node.as_interpolated_regular_expression_node().is_some()
+        || node.as_symbol_node().is_some()
+        || node.as_interpolated_symbol_node().is_some()
+        || node.as_constant_read_node().is_some()
+        || node.as_constant_path_node().is_some()
+        || node.as_local_variable_read_node().is_some()
+        || node.as_instance_variable_read_node().is_some()
+        || node.as_class_variable_read_node().is_some()
+        || node.as_global_variable_read_node().is_some()
+        || node.as_self_node().is_some()
+}
+
+/// Where the head of `Path::To.method(` ends -- through the opening
+/// parenthesis -- when `node` is a call whose receiver is a path of names and
+/// which has arguments to open: the part of it that cannot be broken.
+fn call_head(node: &ruby_prism::Node<'_>) -> Option<usize> {
+    let call = node.as_call_node()?;
+    let opening = call.opening_loc()?;
+    let name = call.name();
+    let named = name
+        .as_slice()
+        .first()
+        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_');
+    (named && call.receiver().is_some_and(|r| is_indivisible(&r)) && call.arguments().is_some())
+        .then(|| opening.end_offset())
+}
+
+/// The single argument of a command call: a value that is indivisible, or a
+/// bare `key => value` whose two halves are.
+fn is_indivisible_argument(node: &ruby_prism::Node<'_>) -> bool {
+    if let Some(hash) = node.as_keyword_hash_node() {
+        let elements: Vec<_> = hash.elements().iter().collect();
+        return elements.len() == 1
+            && elements[0]
+                .as_assoc_node()
+                .is_some_and(|pair| is_indivisible(&pair.key()) && is_indivisible(&pair.value()));
+    }
+    is_indivisible(node)
 }
 
 struct CommentSpan {
@@ -309,6 +469,11 @@ struct Formatter {
     /// Set by a statement list that has drawn the break in front of its
     /// first item itself; see `clause_body_doc`.
     body_owns_first_break: bool,
+    /// How many `node_doc` calls are open, and why the file is being
+    /// refused, if it is: a `Doc` has no way to carry an error out of the
+    /// middle of the tree, so the first one is kept and reported at the end.
+    depth: usize,
+    refusal: Option<FormatError>,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     /// The offsets of the `# tuxedo:off` markers that opened a region, to
@@ -423,6 +588,29 @@ fn reindent_heredoc(heredoc: &PendingHeredoc, indent: usize) -> String {
 const HEREDOC_MARK_START: char = '\u{E000}';
 const HEREDOC_MARK_END: char = '\u{E001}';
 
+/// Leads the text of an `=begin`/`=end` block. Ruby only accepts one at
+/// column 0, wherever the code around it is indented, and a `Doc` cannot
+/// say "column 0": `outdent_embdocs` strips the indent the printer put
+/// before the mark once the document is rendered.
+const EMBDOC_MARK: char = '\u{E002}';
+
+fn outdent_embdocs(rendered: &str) -> String {
+    if !rendered.contains(EMBDOC_MARK) {
+        return rendered.to_string();
+    }
+    let mut out = String::with_capacity(rendered.len());
+    for (i, line) in rendered.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        match line.trim_start_matches(' ').strip_prefix(EMBDOC_MARK) {
+            Some(rest) => out.push_str(rest),
+            None => out.push_str(line),
+        }
+    }
+    out
+}
+
 impl Formatter {
     fn new(source: &str, parsed: &ruby_prism::ParseResult<'_>, config: &FormatConfig) -> Self {
         let comments = parsed
@@ -443,6 +631,8 @@ impl Formatter {
             quote_style: config.quote_style,
             class_body: None,
             body_owns_first_break: false,
+            depth: 0,
+            refusal: None,
             comments,
             comment_cursor: 0,
             honored_off: Vec::new(),
@@ -466,11 +656,28 @@ impl Formatter {
     /// the way a `( )` body is, joined with semicolons where it would
     /// otherwise need lines.
     pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
+        if self.depth >= MAX_DEPTH {
+            self.refusal
+                .get_or_insert(FormatError::TooDeep { limit: MAX_DEPTH });
+            return Doc::nil();
+        }
+        self.depth += 1;
+        let doc = self.node_doc_at_depth(node);
+        self.depth -= 1;
+        doc
+    }
+
+    fn node_doc_at_depth(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
         // A statement list is never the unit: it lays out its own lines and
         // is what attaches the comment, so each statement in it is.
         if !self.single_line
             && node.as_statements_node().is_none()
             && node.as_program_node().is_none()
+            // A clause is a line of its own inside a `case`; when it has no
+            // body it also *looks* like one line, but pulling it flat would
+            // strand its comments in the next clause.
+            && node.as_when_node().is_none()
+            && node.as_in_node().is_none()
             && self.line_has_directive_after(node.location())
         {
             let was_single_line = std::mem::replace(&mut self.single_line, true);
@@ -503,6 +710,14 @@ impl Formatter {
             .iter()
             .any(|tool| body.starts_with(tool))
             || body.starts_with("rubocop :")
+    }
+
+    /// The offset of the end of the line `offset` is on.
+    fn end_of_line_after(&self, offset: usize) -> usize {
+        self.line_starts
+            .get(self.line_of(offset.saturating_sub(1)) + 1)
+            .copied()
+            .unwrap_or(self.source.len())
     }
 
     fn line_of(&self, offset: usize) -> usize {
@@ -557,6 +772,17 @@ impl Formatter {
         }
     }
 
+    /// Like `restore_render_snapshot`, for when the document built before
+    /// the snapshot is kept alongside the one built after it. A heredoc's
+    /// marker in the kept document is an index into `pending_heredocs`, so
+    /// truncating the queue would leave it pointing at whatever the second
+    /// build queued there: bodies swapped between tags.
+    fn rewind_render_snapshot(&mut self, snap: RenderSnapshot) {
+        self.comment_cursor = snap.comment_cursor;
+        self.heredoc_end_line = snap.heredoc_end_line;
+        self.indent = snap.indent;
+    }
+
     fn restore_render_snapshot(&mut self, snap: RenderSnapshot) {
         self.comment_cursor = snap.comment_cursor;
         self.pending_heredocs.truncate(snap.pending_heredocs_len);
@@ -602,6 +828,15 @@ impl Formatter {
         }
         let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
         self.bracketed_group_doc(open, open_sep, body, close_sep, close)
+    }
+
+    /// A comment that sits on a line of its own. An embedded document
+    /// carries its own final newline, which the break after it would double.
+    fn own_line_comment(text: &str) -> String {
+        if text.starts_with("=begin") {
+            return format!("{EMBDOC_MARK}{}", text.trim_end_matches(['\n', '\r']));
+        }
+        Self::format_comment(text).into_owned()
     }
 
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
@@ -727,7 +962,7 @@ impl Formatter {
             let blank =
                 (after_statements || any) && self.source_line_is_blank(line.wrapping_sub(1));
 
-            let text = Self::format_comment(&self.comments[self.comment_cursor].text).into_owned();
+            let text = Self::own_line_comment(&self.comments[self.comment_cursor].text);
             let mut entry = if blank {
                 Doc::blank_line()
             } else {
@@ -827,13 +1062,29 @@ impl Formatter {
     fn remaining_comments_doc(&mut self) -> Option<Doc> {
         let mut doc = Doc::nil();
         let mut any = false;
+        let mut previous_end: Option<usize> = None;
         while self.comment_cursor < self.comments.len() {
+            let start = self.comments[self.comment_cursor].start;
+            let line = self.line_of(start);
             if any {
-                doc = doc.append(Doc::hardline());
+                // A blank line the author left between comments stays,
+                // as it does between statements.
+                doc = doc.append(if previous_end.is_some_and(|end| line > end + 1) {
+                    Doc::blank_line()
+                } else {
+                    Doc::hardline()
+                });
             }
-            doc = doc.append(Doc::text(
-                Self::format_comment(&self.comments[self.comment_cursor].text).into_owned(),
-            ));
+            previous_end = Some(
+                line + self.comments[self.comment_cursor]
+                    .text
+                    .trim_end()
+                    .matches('\n')
+                    .count(),
+            );
+            doc = doc.append(Doc::text(Self::own_line_comment(
+                &self.comments[self.comment_cursor].text,
+            )));
             self.comment_cursor += 1;
             any = true;
         }
@@ -883,11 +1134,72 @@ impl Formatter {
         op: &str,
         value: &ruby_prism::Node<'_>,
     ) -> Doc {
-        self.run_text(&mut run, " ");
-        self.run_text(&mut run, op);
-        self.run_text(&mut run, " ");
-        self.run_node(&mut run, value);
+        self.run_assigned_value(&mut run, op, value);
         self.end_run(run)
+    }
+
+    /// ` op value`, closing an assignment. A value that is one indivisible
+    /// piece -- a string, a regex, a symbol, a path of names -- has nowhere
+    /// to break inside itself, so when the line is too long it moves to a
+    /// line of its own under the target, at one indent:
+    ///
+    /// ```ruby
+    /// expected =
+    ///   "a string that would run past the limit if it stayed after the ="
+    /// ```
+    ///
+    /// Only when that helps: a value that would not fit there either stays
+    /// where it is, since a line that is too long is no shorter for the move.
+    /// Anything that can break inside itself (a call with arguments, a
+    /// collection, a block) keeps its start on the target's line.
+    pub(super) fn run_assigned_value(
+        &mut self,
+        run: &mut InlineRun,
+        op: &str,
+        value: &ruby_prism::Node<'_>,
+    ) {
+        let value_doc = self.node_doc(value);
+        let one_line = self.line_of(value.location().start_offset())
+            == self.line_of(value.location().end_offset().saturating_sub(1));
+        if !self.single_line
+            && let Some(head) = call_head(value).and_then(|end| {
+                self.source
+                    .get(value.location().start_offset()..end)
+                    .filter(|head| !head.contains('\n'))
+            })
+        {
+            // `Deep::Const::Path.method(`: a head with no place to break in
+            // front of an argument list. When it does not fit after the
+            // target, the whole call moves under it and breaks there.
+            let nest = self.indent_str.len();
+            let width = unicode_width::UnicodeWidthStr::width(head);
+            if (self.indent + 1) * nest + width <= self.line_length {
+                let stay = Doc::text(format!(" {op} ")).append(value_doc.clone());
+                let moved = Doc::text(format!(" {op}"))
+                    .append(Doc::hardline().append(value_doc).indent(nest));
+                run.leaves
+                    .push(Doc::stay_or_move(&format!(" {op} {head}"), stay, moved));
+                return;
+            }
+        }
+        if self.single_line || !one_line || !is_indivisible(value) {
+            self.run_text(run, format!(" {op} "));
+            run.leaves.push(value_doc);
+            return;
+        }
+        let width = unicode_width::UnicodeWidthStr::width(
+            value_doc.clone().flat().render(usize::MAX / 2).as_str(),
+        );
+        let nest = self.indent_str.len();
+        let indent_columns = (self.indent + 1) * nest;
+        if indent_columns + width > self.line_length {
+            self.run_text(run, format!(" {op} "));
+            run.leaves.push(value_doc);
+            return;
+        }
+        self.run_text(run, format!(" {op}"));
+        run.leaves
+            .push(Doc::line().append(value_doc).indent(nest).group());
     }
 
     /// The must-break bracketed list: opening token alone, every item on

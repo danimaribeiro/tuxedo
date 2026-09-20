@@ -253,6 +253,15 @@ impl Formatter {
     /// A command literal (`` `stty size` ``, `%x{ls}`) with no
     /// interpolation. The body is shell text, so it is copied verbatim.
     pub(super) fn fmt_x_string_node(&mut self, node: &ruby_prism::XStringNode<'_>) -> Doc {
+        let opening = node.opening_loc();
+        if Self::is_heredoc_opening(opening.as_slice()) {
+            let closing = node.closing_loc();
+            let body_start = node.content_loc().start_offset();
+            let body_end = closing.end_offset();
+            let body = self.heredoc_body(body_start, body_end);
+            let opening_bytes = opening.as_slice().to_vec();
+            return self.heredoc_doc(&opening_bytes, opening.start_offset(), body, body_end);
+        }
         bytes_doc(node.opening_loc().as_slice())
             .append(bytes_doc(node.content_loc().as_slice()))
             .append(bytes_doc(node.closing_loc().as_slice()))
@@ -263,10 +272,37 @@ impl Formatter {
         &mut self,
         node: &ruby_prism::InterpolatedXStringNode<'_>,
     ) -> Doc {
-        let opening = node.opening_loc().as_slice();
-        let closing = node.closing_loc().as_slice();
+        let opening_loc = node.opening_loc();
         let parts = node.parts();
-        self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
+        if Self::is_heredoc_opening(opening_loc.as_slice()) {
+            return self.interpolated_heredoc_doc(opening_loc, Some(node.closing_loc()), &parts);
+        }
+        let opening = opening_loc.as_slice();
+        let closing = node.closing_loc();
+        self.interpolated_literal_doc(Some(opening), &parts, Some(closing.as_slice()))
+    }
+
+    /// A heredoc containing `#{}`. The body starts at the first part; an
+    /// empty heredoc has no parts, in which case the body is just the
+    /// terminator line.
+    fn interpolated_heredoc_doc(
+        &mut self,
+        opening_loc: ruby_prism::Location<'_>,
+        closing_loc: Option<ruby_prism::Location<'_>>,
+        parts: &ruby_prism::NodeList<'_>,
+    ) -> Doc {
+        let body_start = parts
+            .iter()
+            .next()
+            .map(|part| part.location().start_offset())
+            .or_else(|| closing_loc.as_ref().map(|c| c.start_offset()));
+        let body_end = closing_loc.as_ref().map_or(0, |c| c.end_offset());
+        let body = match (body_start, closing_loc.as_ref()) {
+            (Some(start), Some(closing)) => self.heredoc_body(start, closing.end_offset()),
+            _ => String::new(),
+        };
+        let opening_bytes = opening_loc.as_slice().to_vec();
+        self.heredoc_doc(&opening_bytes, opening_loc.start_offset(), body, body_end)
     }
 
     pub(super) fn fmt_interpolated_string_node(
@@ -280,24 +316,7 @@ impl Formatter {
         if let Some(opening_loc) = node.opening_loc()
             && Self::is_heredoc_opening(opening_loc.as_slice())
         {
-            // A heredoc containing `#{}`. The body starts at the first
-            // part; an empty heredoc has no parts, in which case the body
-            // is just the terminator line.
-            let closing_loc = node.closing_loc();
-            let parts_list = node.parts();
-            let body_start = parts_list
-                .iter()
-                .next()
-                .map(|part| part.location().start_offset())
-                .or_else(|| closing_loc.as_ref().map(|c| c.start_offset()));
-            let body_end = closing_loc.as_ref().map_or(0, |c| c.end_offset());
-            let body = match (body_start, closing_loc.as_ref()) {
-                (Some(start), Some(closing)) => self.heredoc_body(start, closing.end_offset()),
-                _ => String::new(),
-            };
-            let opening_start = opening_loc.start_offset();
-            let opening_bytes = opening_loc.as_slice().to_vec();
-            return self.heredoc_doc(&opening_bytes, opening_start, body, body_end);
+            return self.interpolated_heredoc_doc(opening_loc, node.closing_loc(), &parts);
         }
 
         // No delimiters of its own means this isn't one literal at all —
@@ -330,6 +349,19 @@ impl Formatter {
     pub(super) fn fmt_interpolated_regular_expression_node(
         &mut self,
         node: &ruby_prism::InterpolatedRegularExpressionNode<'_>,
+    ) -> Doc {
+        let opening = node.opening_loc().as_slice();
+        let closing = node.closing_loc().as_slice();
+        let parts = node.parts();
+        self.interpolated_literal_doc(Some(opening), &parts, Some(closing))
+    }
+
+    /// An interpolated regex used directly as a condition (`if /#{x}/`),
+    /// which matches against `$_`. Prism gives it its own node type; its
+    /// holes are formatted like any other regex's.
+    pub(super) fn fmt_interpolated_match_last_line_node(
+        &mut self,
+        node: &ruby_prism::InterpolatedMatchLastLineNode<'_>,
     ) -> Doc {
         let opening = node.opening_loc().as_slice();
         let closing = node.closing_loc().as_slice();

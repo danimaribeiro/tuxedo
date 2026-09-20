@@ -1,18 +1,17 @@
-//! The `tuxedo` command line: `format` and `check`.
+//! The `tuxedo` command line: `format`.
 //!
-//! Both subcommands take paths, or read one buffer from stdin when given
-//! none, and walk the filesystem through [`tuxedo::walk_and_process`]
+//! It takes paths, or reads one buffer from stdin when given none, and
+//! walks the filesystem through [`tuxedo::walk_and_process`]
 //! (`.gitignore`-aware unless `--no-ignore`; Ruby by extension and by
-//! name). `format` rewrites in place through [`tuxedo::write_atomic`], or
-//! only reports with `--check` / `--diff`; `check` reports lint
-//! diagnostics, or rewrites with `--fix`. `--stdin-filename` names the
-//! stdin buffer in messages so an editor's diagnostics point at a real
-//! path, and `--ast` dumps the Prism tree of stdin for debugging.
+//! name). It rewrites in place through [`tuxedo::write_atomic`], or only
+//! reports with `--check` / `--diff`. `--stdin-filename` names the stdin
+//! buffer in messages so an editor's diagnostics point at a real path, and
+//! `--ast` dumps the Prism tree of stdin for debugging.
 //!
-//! Exit status: 0 nothing to do; 1 when `--check`, `--diff` or `check`
-//! found work; 2 ([`EXIT_ERROR`]) when a file could not be formatted (a
-//! syntax error, an AST mismatch, an unreadable path, a failed write). A
-//! file that fails is left exactly as it was.
+//! Exit status: 0 nothing to do; 1 when `--check` or `--diff` found work;
+//! 2 ([`EXIT_ERROR`]) when a file could not be formatted (a syntax error,
+//! an AST mismatch, an unreadable path, a failed write). A file that fails
+//! is left exactly as it was.
 
 // These docs are read with `--document-private-items`: the map in
 // CLAUDE.md points here for how the formatter works, and most of what it
@@ -27,7 +26,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(
     name = "tuxedo",
     version,
-    about = "A fast Ruby formatter and linter",
+    about = "A fast Ruby formatter",
     after_help = "Run `tuxedo <command> --help` for more options"
 )]
 struct Cli {
@@ -39,8 +38,6 @@ struct Cli {
 enum Command {
     /// Format Ruby source files
     Format(FormatArgs),
-    /// Check Ruby source files for lint violations
-    Check(CheckArgs),
 }
 
 #[derive(Args)]
@@ -81,36 +78,6 @@ struct FormatArgs {
     no_ignore: bool,
 }
 
-#[derive(Args)]
-struct CheckArgs {
-    /// Files or directories to check
-    paths: Vec<PathBuf>,
-
-    /// Auto-fix lint violations
-    #[arg(long)]
-    fix: bool,
-
-    /// Report this path instead of "stdin" when reading from stdin
-    #[arg(long, value_name = "PATH")]
-    stdin_filename: Option<PathBuf>,
-
-    /// Path to config file
-    #[arg(long)]
-    config: Option<PathBuf>,
-
-    /// Number of threads (default: auto)
-    #[arg(long, short)]
-    jobs: Option<usize>,
-
-    /// Suppress output except errors
-    #[arg(long, short)]
-    quiet: bool,
-
-    /// Don't respect .gitignore
-    #[arg(long)]
-    no_ignore: bool,
-}
-
 fn main() {
     let cli = Cli::parse();
 
@@ -118,10 +85,6 @@ fn main() {
         Command::Format(args) => {
             let config = tuxedo::Config::load(args.config.as_deref());
             run_format(args, config);
-        }
-        Command::Check(args) => {
-            let config = tuxedo::Config::load(args.config.as_deref());
-            run_check(args, config);
         }
     }
 }
@@ -172,14 +135,22 @@ fn unified_diff(label: &str, before: &str, after: &str) -> String {
 }
 
 /// Names the paths the walk could not read, and says whether there were
-/// any -- both commands end on the same "did anything go wrong" question.
+/// any.
 fn report_unreadable(errors: usize) -> bool {
     if errors == 0 {
         return false;
     }
-    let paths = if errors == 1 { "path" } else { "paths" };
-    eprintln!("{errors} {paths} could not be read");
+    eprintln!("{} could not be read", count(errors, "path"));
     true
+}
+
+/// `1 file`, `2 files`.
+fn count(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("{n} {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
 }
 
 /// The config's `exclude` globs, or a fatal error naming the bad one.
@@ -283,13 +254,19 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
 
     if reporting_only {
         eprintln!(
-            "{} files checked: {} would be reformatted, {} already formatted, {} could not be formatted",
-            result.total, result.changed, unchanged, errors
+            "{} checked: {} would be reformatted, {} already formatted, {} could not be formatted",
+            count(result.total, "file"),
+            result.changed,
+            unchanged,
+            errors
         );
     } else if !quiet {
         eprintln!(
-            "{} files checked: {} reformatted, {} unchanged, {} could not be formatted or written",
-            result.total, result.changed, unchanged, errors
+            "{} checked: {} reformatted, {} unchanged, {} could not be formatted or written",
+            count(result.total, "file"),
+            result.changed,
+            unchanged,
+            errors
         );
     }
     let unreadable = report_unreadable(result.errors);
@@ -298,80 +275,6 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
         std::process::exit(EXIT_ERROR);
     }
     if reporting_only && result.changed > 0 {
-        std::process::exit(1);
-    }
-}
-
-fn run_check(args: CheckArgs, config: tuxedo::Config) {
-    if args.paths.is_empty() {
-        let source = read_stdin();
-        let label = stdin_label(args.stdin_filename.as_ref());
-        let diagnostics = tuxedo::check(&source);
-        for d in &diagnostics {
-            println!("{label}:{}:{}: {} [{}]", d.line, d.col, d.message, d.rule);
-        }
-        return;
-    }
-
-    let fix_mode = args.fix;
-    let quiet = args.quiet;
-    let errors = std::sync::atomic::AtomicUsize::new(0);
-    let errors_ref = &errors;
-
-    let result = tuxedo::walk_and_process(
-        &args.paths,
-        args.jobs,
-        args.no_ignore,
-        exclude_of(&config),
-        move |path, source| {
-            let diagnostics = tuxedo::check(source);
-
-            if !quiet {
-                for d in &diagnostics {
-                    println!(
-                        "{}:{}:{}: {} [{}]",
-                        path.display(),
-                        d.line,
-                        d.col,
-                        d.message,
-                        d.rule
-                    );
-                }
-            }
-
-            if fix_mode && let Some(fixed) = tuxedo::fix(source) {
-                match tuxedo::write_atomic(path, &fixed) {
-                    Ok(()) => return Some(fixed),
-                    Err(e) => {
-                        eprintln!("error: could not write {}: {e}", path.display());
-                        errors_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                }
-            }
-
-            if diagnostics.is_empty() {
-                None
-            } else {
-                Some(String::new())
-            }
-        },
-    );
-
-    if !quiet {
-        eprintln!(
-            "{} files checked: {} with issues, {} clean",
-            result.total,
-            result.changed,
-            result.total - result.changed
-        );
-    }
-
-    let unreadable = report_unreadable(result.errors);
-
-    if errors.load(std::sync::atomic::Ordering::Relaxed) > 0 || unreadable {
-        std::process::exit(EXIT_ERROR);
-    }
-    if result.changed > 0 {
         std::process::exit(1);
     }
 }

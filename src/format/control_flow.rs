@@ -182,7 +182,7 @@ impl Formatter {
         if modifier.breaks() {
             return modifier;
         }
-        self.restore_render_snapshot(snap);
+        self.rewind_render_snapshot(snap);
         // A comment after the statement is the statement's, in either
         // shape, and is taken by whoever owns the statement's line. The
         // block form must not claim it as its header's: the printer may
@@ -626,14 +626,22 @@ impl Formatter {
         self.clause_doc(header, header_end, node.statements(), closer)
     }
 
-    /// One `in pattern` clause of a `case/in`. No guard (`in pattern if
-    /// cond`) support yet -- not observed in the wild so far; `InNode`
-    /// doesn't expose a separate guard accessor, so that would need its own
-    /// investigation into how prism represents it.
+    /// One `in pattern` clause of a `case/in`. Prism models a guard
+    /// (`in pattern if cond`) as the pattern being a modifier `IfNode` or
+    /// `UnlessNode` whose body is the real pattern. That node must not go
+    /// through the conditional formatting: the block form is not a
+    /// pattern, so an overlong guard breaks inside its condition instead.
     pub(super) fn fmt_in_node(&mut self, node: &ruby_prism::InNode<'_>) -> Doc {
         let closer = self.clause_closer.take();
-        let header = Doc::text("in ").append(self.node_doc(&node.pattern()));
-        let header_end = node.pattern().location().end_offset();
+        let pattern = node.pattern();
+        let header = Doc::text("in ").append(match guarded_pattern(&pattern) {
+            Some((inner, keyword, predicate)) => self
+                .node_doc(&inner)
+                .append(Doc::text(format!(" {keyword} ")))
+                .append(self.condition_doc(&predicate)),
+            None => self.node_doc(&pattern),
+        });
+        let header_end = pattern.location().end_offset();
         self.clause_doc(header, header_end, node.statements(), closer)
     }
 
@@ -648,6 +656,9 @@ impl Formatter {
     ) -> Doc {
         let body = statements.map(|s| s.as_node());
         if self.single_line {
+            if body.is_none() {
+                return header;
+            }
             return header
                 .append(Doc::text("; "))
                 .append(self.optional_body_doc(body));
@@ -761,4 +772,18 @@ impl Formatter {
             None => out.push(node),
         }
     }
+}
+
+/// The pattern, keyword and condition of `in pattern if cond`, which prism
+/// hands over as a modifier `if`/`unless` wrapping the pattern.
+fn guarded_pattern<'pr>(
+    node: &ruby_prism::Node<'pr>,
+) -> Option<(ruby_prism::Node<'pr>, &'static str, ruby_prism::Node<'pr>)> {
+    let (keyword, statements, predicate) = if let Some(n) = node.as_if_node() {
+        ("if", n.statements()?, n.predicate())
+    } else {
+        let n = node.as_unless_node()?;
+        ("unless", n.statements()?, n.predicate())
+    };
+    Some((statements.body().iter().next()?, keyword, predicate))
 }

@@ -1,0 +1,8 @@
+# RuboCop's shipped defaults with one addition, for scripts/lint-baseline.sh.
+#
+# `--force-default-config` cannot carry a target version, and without one
+# RuboCop analyses as Ruby 2.7: every file using newer syntax reports
+# Lint/Syntax and contributes nothing else. See format-verify.rubocop.yml
+# for why 3.4.
+AllCops:
+  TargetRubyVersion: 3.4

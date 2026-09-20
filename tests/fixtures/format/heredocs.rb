@@ -47,3 +47,55 @@ class Mapper
     sql
   end
 end
+
+f = <<`CMD`
+  echo hi
+CMD
+f = <<-`CMD`
+  echo hi
+CMD
+f = <<~`CMD`
+  echo hi
+CMD
+g = <<~`CMD`
+  echo #{a}
+CMD
+
+execute <<~A if foo(<<~B)
+  body_a
+A
+  body_b
+B
+
+execute <<~A if foo(<<~B, <<~C)
+  body_a
+A
+  body_b
+B
+  body_c
+C
+
+execute <<~SQL if DB.query_single(<<~SQL).length > 0
+  ALTER TABLE email_tokens ALTER COLUMN token DROP NOT NULL
+SQL
+  SELECT 1
+SQL
+
+it "warns" do
+  -> { eval <<~RUBY }.should complain(/warning/, verbose: true)
+    $. = 0
+    10.times { |i| ScratchPad << i if 4..5 }
+  RUBY
+  ScratchPad.recorded.should == []
+end
+
+it "collapses" do
+  bar { eval <<~RUBY }
+    2
+  RUBY
+  z
+  lambda { eval <<~RUBY }.call
+    $. = 0
+  RUBY
+  w
+end

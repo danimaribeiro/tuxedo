@@ -6,12 +6,11 @@ Gem::Specification.new do |spec|
   spec.name = "tuxedo-r"
   spec.version = Tuxedo::R::VERSION
   spec.authors = ["Danimar Ribeiro"]
-  spec.summary = "A self-contained `tuxedo` executable: a fast Ruby formatter/linter written in Rust."
+  spec.summary = "A self-contained `tuxedo` executable: a fast Ruby formatter written in Rust."
   spec.description = <<~DESC
-    Tuxedo is a Ruby code formatter and linter written in Rust, distributed as a
+    Tuxedo is a Ruby code formatter written in Rust, distributed as a
     precompiled native binary wrapped in this Ruby gem (the "R" is both Ruby and
-    Rust). It aims to be a drop-in, `bundle exec`-compatible replacement for
-    tools like RuboCop.
+    Rust). It is `bundle exec`-compatible, and a linter is planned.
   DESC
   spec.homepage = "https://github.com/danimaribeiro/tuxedo"
   spec.license = "MIT"

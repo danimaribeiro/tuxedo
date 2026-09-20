@@ -259,7 +259,7 @@ fn exclude_skips_the_matching_files_in_format() {
 }
 
 #[test]
-fn exclude_skips_the_matching_files_in_check() {
+fn exclude_skips_the_matching_files_when_only_reporting() {
     let dir = tree_with_excludes("exclude-check");
     let output = Command::new(TUXEDO)
         .current_dir(&dir.0)
@@ -268,13 +268,28 @@ fn exclude_skips_the_matching_files_in_check() {
         .unwrap();
     let out = stdout_of(&output) + &stderr_of(&output);
     assert!(out.contains("2 would be reformatted"), "{out}");
+}
 
+#[test]
+fn the_summary_says_one_file_not_one_files() {
+    let dir = TempDir::new("singular");
+    let path = dir.write("a.rb", "x = 1\n");
     let output = Command::new(TUXEDO)
-        .current_dir(&dir.0)
-        .args(["check", "vendor", "app/c_generated.rb"])
+        .args(["format", "--check"])
+        .arg(&path)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert!(
+        stderr_of(&output).contains("1 file checked"),
+        "{}",
+        stderr_of(&output)
+    );
+}
+
+#[test]
+fn the_check_subcommand_and_the_lint_config_are_gone() {
+    let output = Command::new(TUXEDO).args(["check", "."]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
 }
 
 /// The match is against the path from the config's directory, so it does
@@ -353,4 +368,53 @@ fn a_negated_exclude_glob_is_refused() {
         stderr_of(&output)
     );
     assert_eq!(dir.read("a.rb"), UGLY);
+}
+
+#[test]
+fn a_file_nested_too_deep_is_reported_and_the_rest_are_still_formatted() {
+    let dir = TempDir::new("too-deep");
+    dir.write(
+        "deep.rb",
+        &format!("x = {}1{}\n", "(".repeat(5000), ")".repeat(5000)),
+    );
+    dir.write("ok.rb", "x  =  1\n");
+
+    let output = Command::new(TUXEDO)
+        .arg("format")
+        .arg(&dir.0)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("deep.rb"));
+    assert_eq!(dir.read("ok.rb"), "x = 1\n");
+}
+
+#[test]
+fn a_config_that_cannot_be_read_or_parsed_fails_before_any_file_is_touched() {
+    let dir = TempDir::new("config-failures");
+    let file = dir.write("a.rb", "x  =  1\n");
+    let malformed = dir.write("malformed.toml", "[format\n");
+    let unknown = dir.write("unknown.toml", "bogus = 1\n");
+    let missing = dir.0.join("missing.toml");
+
+    for (config, message) in [
+        (&malformed, "invalid config"),
+        (&unknown, "unknown field `bogus`"),
+        (&missing, "could not read config"),
+    ] {
+        let output = Command::new(TUXEDO)
+            .args(["format", "--config"])
+            .arg(config)
+            .arg(&file)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{}", config.display());
+        assert!(
+            stderr_of(&output).contains(message),
+            "{}",
+            stderr_of(&output)
+        );
+        assert_eq!(dir.read("a.rb"), "x  =  1\n", "the file must be left alone");
+    }
 }

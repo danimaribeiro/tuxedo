@@ -175,6 +175,28 @@ impl Doc {
         )
     }
 
+    /// `stay` while `head` -- the text that would follow on the line this
+    /// document starts at -- fits within the width, `moved` when it does not.
+    ///
+    /// [`Doc::fits_or`] for a `moved` shape that starts with a hardline and
+    /// is only ever chosen on a line that is too long: it must not make the
+    /// document report [`Doc::breaks`], which would tell every enclosing
+    /// construct there is no flat shape when there is one.
+    pub(super) fn stay_or_move(head: &str, stay: Doc, moved: Doc) -> Self {
+        let head_width = head.width();
+        let breaks = stay.breaks;
+        Doc::new(
+            RcDoc::column(move |pos| {
+                if pos + head_width <= RENDER_WIDTH.with(Cell::get) {
+                    stay.doc.clone()
+                } else {
+                    moved.doc.clone()
+                }
+            }),
+            breaks,
+        )
+    }
+
     /// The documents one after another.
     pub(super) fn concat(docs: impl IntoIterator<Item = Doc>) -> Self {
         docs.into_iter().fold(Doc::nil(), Doc::append)

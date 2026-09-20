@@ -318,7 +318,10 @@ impl Formatter {
         let is_identifier_call = is_named_call || explicit_dot;
 
         if is_index {
-            return CallHead::whole(self.index_call_doc(node, &receiver, name_str));
+            return CallHead {
+                prefix: self.index_call_doc(node, &receiver, name_str),
+                args: tail,
+            };
         }
         if matches!(name_str, "!" | "~" | "+@" | "-@")
             && node.arguments().is_none()
@@ -379,6 +382,23 @@ impl Formatter {
 
         let mut run = self.begin_run();
         self.run_node(&mut run, receiver);
+        // `Dir["a", "b", ...]` reads as a list, and expands like one when it
+        // is too long.
+        let block_pass = node
+            .block()
+            .filter(|b| b.as_block_argument_node().is_some());
+        if name_str == "[]"
+            && !args.is_empty()
+            && block_pass.is_none()
+            && !self.single_line
+            && let (Some(open), Some(close)) = (node.opening_loc(), node.closing_loc())
+        {
+            let span = Some((open.end_offset(), close.start_offset()));
+            let list =
+                self.bracketed_items_doc("[", Doc::softline(), &args, Doc::softline(), "]", span);
+            run.leaves.push(list);
+            return self.end_run(run);
+        }
         self.run_text(&mut run, "[");
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
@@ -386,10 +406,18 @@ impl Formatter {
             }
             self.run_node(&mut run, arg);
         }
+        if let Some(block_pass) = node
+            .block()
+            .filter(|b| b.as_block_argument_node().is_some())
+        {
+            if !args.is_empty() {
+                self.run_text(&mut run, ", ");
+            }
+            self.run_node(&mut run, &block_pass);
+        }
         self.run_text(&mut run, "]");
         if let Some(value) = value {
-            self.run_text(&mut run, " = ");
-            self.run_node(&mut run, &value);
+            self.run_assigned_value(&mut run, "=", &value);
         }
         self.end_run(run)
     }
@@ -450,9 +478,9 @@ impl Formatter {
         self.run_node(&mut run, receiver);
         self.run_text(&mut run, call_operator(node));
         self.run_text(&mut run, name_str.strip_suffix('=').unwrap_or(name_str));
-        self.run_text(&mut run, " = ");
-        if let Some(value) = node.arguments().and_then(|a| a.arguments().iter().next()) {
-            self.run_node(&mut run, &value);
+        match node.arguments().and_then(|a| a.arguments().iter().next()) {
+            Some(value) => self.run_assigned_value(&mut run, "=", &value),
+            None => self.run_text(&mut run, " = "),
         }
         self.end_run(run)
     }

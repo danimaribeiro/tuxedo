@@ -68,15 +68,17 @@ Checks five properties that must hold regardless of RuboCop, as ratchets
 Formats the project with tuxedo, then runs full RuboCop (not just Layout)
 three ways and reports a per-cop table with the delta:
 
-- **baseline** — `rubocop --force-default-config` on the *original*,
+- **baseline** — RuboCop's shipped defaults (`scripts/lint-baseline.rubocop.yml`, which only pins the target Ruby) on the *original*,
   unformatted source.
-- **tuxedo** — `rubocop --force-default-config` on the tuxedo-formatted copy.
+- **tuxedo** — the same on the tuxedo-formatted copy. A file tuxedo refuses is
+  counted and left unformatted; the report header says how many, so the table
+  is not read as covering the whole project.
 - **project-cfg** — plain `rubocop` (auto-discovering the project's own
   copied `.rubocop.yml`, if any) on the tuxedo-formatted copy. Reported as
   `n/a` if the project has no `.rubocop.yml`, or if it names plugin gems
   that aren't installed here.
 
-**Why `--force-default-config` for the first two columns, deliberately
+**Why shipped defaults for the first two columns, deliberately
 ignoring the project's own config**: a project's `.rubocop.yml` often
 *overrides* RuboCop's actual defaults with house-specific conventions rather
 than customizing them — Rails is a good example. Its config sets

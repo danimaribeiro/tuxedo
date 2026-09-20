@@ -10,8 +10,8 @@ use ruby_prism::Visit;
 /// `do...end` instead.
 ///
 /// Modifier forms (`a if b`) and ternaries are one-line spellings already
-/// and do not count. An endless `def` does: it is always written out with
-/// its `end`.
+/// and do not count. A `def` does, endless or not: an endless one that does
+/// not fit is written out with its `end`.
 pub(super) fn holds_block_construct(node: &ruby_prism::Node<'_>) -> bool {
     struct Finder(bool);
 
@@ -99,7 +99,10 @@ impl Formatter {
     /// `def`'s level.
     ///
     /// Tuxedo always expands a method body, even a one-liner's: `def x; y;
-    /// end` becomes three lines. The exception is `single_line`, where an
+    /// end` becomes three lines. An endless definition (`def x = y`) is the
+    /// author's choice of construct and stays one when it fits; it expands
+    /// to the block form when it does not. A block `def` is never made
+    /// endless. The exception is `single_line`, where an
     /// enclosing construct owns the line and the whole definition has to
     /// fit on it -- `Class.new { def self.a; self; end }`.
     pub(super) fn fmt_def_node(&mut self, node: &ruby_prism::DefNode<'_>) -> Doc {
@@ -147,12 +150,31 @@ impl Formatter {
             .map(|l| l.start_offset())
             .unwrap_or_else(|| node.location().start_offset());
         let header_line = self.line_of(header_end);
-        self.keyword_body_doc(
-            header,
-            header_line,
-            node.body(),
-            node.end_keyword_loc().map(|l| l.start_offset()),
-        )
+        let end_offset = node.end_keyword_loc().map(|l| l.start_offset());
+
+        if node.equal_loc().is_some()
+            && let Some(body) = node.body()
+            && !self.has_pending_comment_in(
+                body.location().start_offset(),
+                self.end_of_line_after(node.location().end_offset()),
+            )
+        {
+            // Both shapes are built and the printer picks by width: the
+            // endless one when it fits, the block form when it does not.
+            // `breaks` on the flat build says there is no flat shape at all.
+            let snap = self.render_snapshot();
+            let was_single_line = std::mem::replace(&mut self.single_line, true);
+            let flat = self.node_doc(&body);
+            self.single_line = was_single_line;
+            if !flat.breaks() {
+                self.rewind_render_snapshot(snap);
+                let block = self.keyword_body_doc(header.clone(), header_line, Some(body), None);
+                let endless = header.append(Doc::text(" = ")).append(flat);
+                return Doc::if_break(block, endless).group();
+            }
+            self.restore_render_snapshot(snap);
+        }
+        self.keyword_body_doc(header, header_line, node.body(), end_offset)
     }
 
     pub(super) fn fmt_required_parameter_node(
@@ -177,11 +199,14 @@ impl Formatter {
         Self::sigil_parameter_doc("*", node.name())
     }
 
+    /// The bare trailing comma of `|k,|` and `in [0, 1,]`: "discard the
+    /// rest" with nothing to write for it. The list that owns it puts the
+    /// comma after its last element, where a `", "` join could not.
     pub(super) fn fmt_implicit_rest_node(
         &mut self,
         _node: &ruby_prism::ImplicitRestNode<'_>,
     ) -> Doc {
-        Doc::text("*")
+        Doc::nil()
     }
 
     pub(super) fn fmt_required_keyword_parameter_node(
@@ -268,7 +293,13 @@ impl Formatter {
             leaves.push(self.node_doc(&param));
         }
         if let Some(rest) = node.rest() {
-            leaves.push(self.node_doc(&rest));
+            if rest.as_implicit_rest_node().is_some() {
+                if let Some(last) = leaves.pop() {
+                    leaves.push(last.append(Doc::text(",")));
+                }
+            } else {
+                leaves.push(self.node_doc(&rest));
+            }
         }
         for param in node.posts().iter() {
             leaves.push(self.node_doc(&param));
@@ -525,7 +556,7 @@ impl Formatter {
             let flat = self.node_doc(&body);
             self.single_line = was_single_line;
             if !flat.breaks() {
-                self.restore_render_snapshot(snap);
+                self.rewind_render_snapshot(snap);
                 let expanded = self.node_doc(&body);
                 self.comment_limit = was_limit;
                 return Doc::if_break(
