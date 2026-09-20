@@ -41,3 +41,10 @@ TEST_TYPES = [
   "Controller tests", # rubocop:disable Style/MutableConstant
   "Helper tests"
 ]
+
+class A
+  X = # :nodoc:
+    Foo.merge(a: 1) do |o|
+      o
+    end
+end

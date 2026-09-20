@@ -1158,6 +1158,26 @@ impl Formatter {
         op: &str,
         value: &ruby_prism::Node<'_>,
     ) {
+        // `X = # :nodoc:` and the value on the next line: the comment is
+        // about the assignment, and the value it would otherwise be nested
+        // in has to stay under it.
+        let value_start = value.location().start_offset();
+        if !self.single_line
+            && let Some(comment) = self.comments.get(self.comment_cursor)
+            && comment.start < value_start
+            && self.line_of(comment.start) < self.line_of(value_start)
+            && let Some(trailing) = self.trailing_comment_doc(self.line_of(comment.start))
+        {
+            let value_doc = self.node_doc(value);
+            self.run_text(run, format!(" {op}"));
+            run.leaves.push(trailing);
+            run.leaves.push(
+                Doc::hardline()
+                    .append(value_doc)
+                    .indent(self.indent_str.len()),
+            );
+            return;
+        }
         let value_doc = self.node_doc(value);
         let one_line = self.line_of(value.location().start_offset())
             == self.line_of(value.location().end_offset().saturating_sub(1));
