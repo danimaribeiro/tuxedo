@@ -15,7 +15,7 @@
 # (gitignored) - so a run's numbers survive as a point-in-time record
 # instead of needing to be regenerated from scratch every session.
 #
-# Why --force-default-config: a project's own .rubocop.yml often overrides
+# Why the shipped defaults (a -c config that only pins the target Ruby): a project's own .rubocop.yml often overrides
 # RuboCop's actual defaults with project-specific conventions rather than
 # customizing them - Rails is a good example (DisabledByDefault: true, plus
 # EnforcedStyle overrides on Layout/IndentationConsistency,
@@ -27,7 +27,7 @@
 # conflating the two produces a misleadingly large mismatch count, the same
 # trap format-compare.sh's rubocop config avoids for Layout specifically
 # (see the comment there re: Thor's AllCops: DisabledByDefault: true).
-# --force-default-config sidesteps this: it ignores the project's
+# Passing -c sidesteps this: it ignores the project's
 # .rubocop.yml (and any `plugins:`/`require:` it declares) entirely and
 # runs only RuboCop's own shipped default cop set.
 #
@@ -68,6 +68,10 @@ echo "Building tuxedo (release)..." >&2
 (cd "$ROOT" && cargo build --release --quiet)
 TUXEDO_BIN="$ROOT/target/release/tuxedo"
 DELIBERATE="$ROOT/scripts/lint-baseline.deliberate.tsv"
+# RuboCop's shipped defaults, plus a target version: with none, RuboCop
+# analyses as Ruby 2.7 and reports Lint/Syntax for every file using newer
+# syntax, in the baseline and tuxedo columns alike.
+DEFAULTS_CFG="$ROOT/scripts/lint-baseline.rubocop.yml"
 
 echo "Formatting a working copy with tuxedo..." >&2
 rm -rf "$BASE/tuxedo"
@@ -92,8 +96,18 @@ CONFIG_ARGS=()
 if [ -f "$ROOT/scripts/configs/$PROJECT.tuxedo.toml" ]; then
   CONFIG_ARGS=(--config "$ROOT/scripts/configs/$PROJECT.tuxedo.toml")
 fi
-"$TUXEDO_BIN" format --quiet "${CONFIG_ARGS[@]}" "$BASE/tuxedo" >/dev/null
-rm -f "$BASE/tuxedo/.ignore"
+# A file tuxedo refuses (a meaning change, which is a bug in tuxedo) makes
+# it exit 2 and is left exactly as the source had it. The run goes on with
+# the rest, and the report says how many were left out.
+FORMAT_ERR="$(mktemp)"
+"$TUXEDO_BIN" format --quiet "${CONFIG_ARGS[@]}" "$BASE/tuxedo" >/dev/null 2>"$FORMAT_ERR" || true
+REFUSED="$(grep -c 'formatting would change what this code does' "$FORMAT_ERR" || true)"
+if [ "$REFUSED" -gt 0 ]; then
+  echo "warning: tuxedo refused $REFUSED file(s); they are unformatted in the tuxedo column:" >&2
+  grep 'formatting would change what this code does' "$FORMAT_ERR" |
+    sed -e "s#$BASE/tuxedo/##" -e 's/:formatting would change.*$//' -e 's/^error: /  /' >&2
+fi
+rm -f "$FORMAT_ERR" "$BASE/tuxedo/.ignore"
 
 # Parses `rubocop --format offenses` output into "<count>\t<CopName>" lines,
 # ignoring everything else (the pending-new-cops notice, the total line).
@@ -103,13 +117,13 @@ count_offenses() {
     | sed -E 's/^ *([0-9]+) +([A-Za-z]+\/[A-Za-z0-9]+).*/\1\t\2/' || true
 }
 
-echo "Running rubocop --force-default-config on the original source..." >&2
+echo "Running rubocop (defaults, pinned target) on the original source..." >&2
 BASELINE_TSV="$(mktemp)"
-count_offenses --force-default-config "$SRC" >"$BASELINE_TSV"
+count_offenses -c "$DEFAULTS_CFG" "$SRC" >"$BASELINE_TSV"
 
-echo "Running rubocop --force-default-config on the tuxedo-formatted copy..." >&2
+echo "Running rubocop (defaults, pinned target) on the tuxedo-formatted copy..." >&2
 TUXEDO_TSV="$(mktemp)"
-count_offenses --force-default-config "$BASE/tuxedo" >"$TUXEDO_TSV"
+count_offenses -c "$DEFAULTS_CFG" "$BASE/tuxedo" >"$TUXEDO_TSV"
 
 # Third measurement: the project's *own* .rubocop.yml (if any) against the
 # tuxedo-formatted copy - "does this satisfy what the project itself checks
@@ -143,7 +157,13 @@ fi
 {
   echo "RuboCop offenses: $PROJECT"
   echo "generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  echo "baseline/tuxedo columns: rubocop --force-default-config (RuboCop's own shipped defaults)"
+  echo "baseline/tuxedo columns: rubocop with only its shipped defaults (scripts/lint-baseline.rubocop.yml pins the target Ruby)"
+  if [ "$REFUSED" -gt 0 ]; then
+    echo "REFUSED: $REFUSED file(s) could not be formatted (tuxedo bug, meaning check) and are UNFORMATTED in the tuxedo column."
+    echo "         The table below does not cover the whole project."
+  else
+    echo "refused: 0 files; the tuxedo column covers every file."
+  fi
   if [ "$project_cfg_available" -eq 1 ]; then
     echo "project-cfg column: rubocop with $PROJECT's own .rubocop.yml, run on the tuxedo-formatted copy"
   else
