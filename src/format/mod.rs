@@ -154,6 +154,10 @@ pub enum FormatError {
     /// The source nests deeper than the formatter recurses. Reported
     /// instead of overflowing the stack, which aborts the whole process.
     TooDeep { limit: usize },
+    /// A node type the formatter never lays out on its own reached
+    /// `node_doc`: a bug in Tuxedo. Refused, because copying its source
+    /// would pass the AST check while leaving the code unformatted.
+    Unreachable { node: &'static str },
 }
 
 impl std::fmt::Display for FormatError {
@@ -175,6 +179,11 @@ impl std::fmt::Display for FormatError {
                     "nested more than {limit} levels deep, too deep to format"
                 )
             }
+            FormatError::Unreachable { node } => write!(
+                f,
+                "a {node} reached the formatter, which never formats one on its own \
+                 (this is a bug in tuxedo, please report it)"
+            ),
         }
     }
 }
@@ -266,8 +275,8 @@ fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, Forma
     let mut formatter = Formatter::new(source, &parsed, config);
     let markers = regions::check_markers(source, &formatter.comments)?;
     let mut doc = formatter.node_doc(&node);
-    if formatter.too_deep {
-        return Err(FormatError::TooDeep { limit: MAX_DEPTH });
+    if let Some(refusal) = formatter.refusal.take() {
+        return Err(refusal);
     }
     if let Some(&stray) = markers.iter().find(|m| !formatter.honored_off.contains(m)) {
         return Err(regions::stray_marker(source, stray));
@@ -352,10 +361,11 @@ struct Formatter {
     /// Set by a statement list that has drawn the break in front of its
     /// first item itself; see `clause_body_doc`.
     body_owns_first_break: bool,
-    /// How many `node_doc` calls are open, and whether one was refused for
-    /// going past `MAX_DEPTH`.
+    /// How many `node_doc` calls are open, and why the file is being
+    /// refused, if it is: a `Doc` has no way to carry an error out of the
+    /// middle of the tree, so the first one is kept and reported at the end.
     depth: usize,
-    too_deep: bool,
+    refusal: Option<FormatError>,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
     /// The offsets of the `# tuxedo:off` markers that opened a region, to
@@ -514,7 +524,7 @@ impl Formatter {
             class_body: None,
             body_owns_first_break: false,
             depth: 0,
-            too_deep: false,
+            refusal: None,
             comments,
             comment_cursor: 0,
             honored_off: Vec::new(),
@@ -539,7 +549,8 @@ impl Formatter {
     /// otherwise need lines.
     pub(super) fn node_doc(&mut self, node: &ruby_prism::Node<'_>) -> Doc {
         if self.depth >= MAX_DEPTH {
-            self.too_deep = true;
+            self.refusal
+                .get_or_insert(FormatError::TooDeep { limit: MAX_DEPTH });
             return Doc::nil();
         }
         self.depth += 1;

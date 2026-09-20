@@ -5,23 +5,30 @@
 //! override is to walk into the children and emit nothing for the node
 //! itself -- which is how `defined?(Foo)` used to come out as `Foo`, and
 //! `undef foo` as `foo`: still valid Ruby, and a different program. With a
-//! `match` and no wildcard arm, a node type Tuxedo has not learned yet has
-//! to be listed under `verbatim`, where its source text is copied through
-//! unchanged, and a node type added by a future Prism release is a compile
-//! error instead of a silent deletion.
+//! `match` and no wildcard arm, every node type has to be placed in one of
+//! the three groups below, and a node type added by a future Prism release
+//! is a compile error instead of a silent deletion.
 //!
-//! Two groups:
+//! Three groups:
 //!
 //! - `formatted` -- its `fmt_*` builds a [`Doc`]. The document carries no
 //!   leading indent and no terminating newline: where it sits is the
 //!   caller's to decide, and a body's indent is the [`Doc::indent`] its
 //!   owner wraps it in.
 //! - `verbatim` -- source text copied through unchanged, as one `Doc::text`
-//!   leaf. For most of these that *is* the formatting: they are single
-//!   tokens (`redo`, `it`, `__ENCODING__`), or text whose whitespace is
-//!   data (a `#{}` hole, a regex literal used as a condition).
+//!   leaf. This is a decision, not a backlog: the node is a single token
+//!   (`redo`, `it`, `__ENCODING__`, a block-local `;x`), or text whose
+//!   whitespace is data (a regex literal used as a condition).
+//! - `unreachable` -- nodes the formatter never lays out through
+//!   `node_doc`, because whoever owns them unwraps them: an owner reads
+//!   `.arguments().arguments()` and lays the elements out itself, `#{}` and
+//!   `#@ivar` are written inline by `interpolated_literal_doc`, and a
+//!   `MissingNode` exists only after a parse error, which never reaches the
+//!   formatter. If one does arrive, copying its source would be valid and
+//!   unformatted, and the AST check would let it through, so the file is
+//!   refused and named instead.
 //!
-//! To give a construct a formatter, move its type out of `verbatim`, add
+//! To give a construct a formatter, move its type out of its group, add
 //! the `fmt_*` to the `formatted` list, and build the document out of
 //! `self.node_doc(&child)` for each child: that call is the only way to get
 //! a child's document, and there is no other visit.
@@ -31,13 +38,14 @@
 //! call; and the markers Prism inserts for a block that uses `it`/`_1`,
 //! which have no text of their own.
 
-use super::Formatter;
 use super::doc::Doc;
+use super::{FormatError, Formatter};
 
 macro_rules! dispatch {
     (
         formatted { $($variant:ident => $cast:ident => $fmt:ident,)* }
         verbatim { $($raw:ident,)* }
+        unreachable { $($never:ident,)* }
     ) => {
         impl Formatter {
             /// The `Doc` for `node`, as `node_doc` lays it out before the
@@ -74,6 +82,14 @@ macro_rules! dispatch {
                     | ruby_prism::Node::ItParametersNode { .. } => Doc::nil(),
                     $(ruby_prism::Node::$raw { .. })|* => {
                         Doc::text(self.verbatim_text(node))
+                    }
+                    $(ruby_prism::Node::$never { .. })|* => {
+                        let node = match node {
+                            $(ruby_prism::Node::$never { .. } => stringify!($never),)*
+                            _ => unreachable!(),
+                        };
+                        self.refusal.get_or_insert(FormatError::Unreachable { node });
+                        Doc::nil()
                     }
                 }
             }
@@ -222,15 +238,17 @@ dispatch! {
         PostExecutionNode => as_post_execution_node => fmt_post_execution_node,
     }
     verbatim {
-        ArgumentsNode,
         BlockLocalVariableNode,
-        EmbeddedStatementsNode,
-        EmbeddedVariableNode,
         ItLocalVariableReadNode,
         MatchLastLineNode,
-        MissingNode,
         RedoNode,
         RetryNode,
         SourceEncodingNode,
+    }
+    unreachable {
+        ArgumentsNode,
+        EmbeddedStatementsNode,
+        EmbeddedVariableNode,
+        MissingNode,
     }
 }
