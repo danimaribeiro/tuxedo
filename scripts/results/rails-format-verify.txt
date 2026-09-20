@@ -37,7 +37,7 @@ Running tuxedo format...
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2117  Layout/LineLength [Safe Correctable]
+  2160  Layout/LineLength [Safe Correctable]
   18    Layout/SpaceInsidePercentLiteralDelimiters [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
   5     Layout/IndentationWidth [Safe Correctable]
@@ -55,8 +55,8 @@ Running tuxedo format...
   parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    75088 total, 26 displaced
-  layout      2167 offenses across 10 distinct cops
-  linelength: 2117 over 120, 1931 unsplittable, 186 breakable
+  layout      2210 offenses across 10 distinct cops
+  linelength: 2160 over 120, 1969 unsplittable, 191 breakable
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.

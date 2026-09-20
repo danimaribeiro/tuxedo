@@ -400,8 +400,7 @@ impl Formatter {
         }
         self.run_text(&mut run, "]");
         if let Some(value) = value {
-            self.run_text(&mut run, " = ");
-            self.run_node(&mut run, &value);
+            self.run_assigned_value(&mut run, "=", &value);
         }
         self.end_run(run)
     }
@@ -462,9 +461,9 @@ impl Formatter {
         self.run_node(&mut run, receiver);
         self.run_text(&mut run, call_operator(node));
         self.run_text(&mut run, name_str.strip_suffix('=').unwrap_or(name_str));
-        self.run_text(&mut run, " = ");
-        if let Some(value) = node.arguments().and_then(|a| a.arguments().iter().next()) {
-            self.run_node(&mut run, &value);
+        match node.arguments().and_then(|a| a.arguments().iter().next()) {
+            Some(value) => self.run_assigned_value(&mut run, "=", &value),
+            None => self.run_text(&mut run, " = "),
         }
         self.end_run(run)
     }

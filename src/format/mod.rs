@@ -326,6 +326,48 @@ fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, Forma
     Ok(result)
 }
 
+/// Whether `node` is written as one piece with no place to break inside it:
+/// a string, regex or symbol literal (a heredoc has its body elsewhere), a
+/// variable or constant, or a chain of argument-less calls on one.
+fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
+    let plain_opening = |opening: Option<ruby_prism::Location<'_>>| {
+        opening.is_some_and(|o| !Formatter::is_heredoc_opening(o.as_slice()))
+    };
+    if let Some(n) = node.as_string_node() {
+        return plain_opening(n.opening_loc());
+    }
+    if let Some(n) = node.as_interpolated_string_node() {
+        return plain_opening(n.opening_loc());
+    }
+    if let Some(n) = node.as_x_string_node() {
+        return !Formatter::is_heredoc_opening(n.opening_loc().as_slice());
+    }
+    if let Some(n) = node.as_call_node() {
+        let name = n.name();
+        let named = name
+            .as_slice()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_');
+        let unary_sign = matches!(name.as_slice(), b"+@" | b"-@");
+        return n.arguments().is_none()
+            && n.block().is_none()
+            && n.opening_loc().is_none()
+            && (named || unary_sign)
+            && n.receiver().is_none_or(|r| is_indivisible(&r));
+    }
+    node.as_regular_expression_node().is_some()
+        || node.as_interpolated_regular_expression_node().is_some()
+        || node.as_symbol_node().is_some()
+        || node.as_interpolated_symbol_node().is_some()
+        || node.as_constant_read_node().is_some()
+        || node.as_constant_path_node().is_some()
+        || node.as_local_variable_read_node().is_some()
+        || node.as_instance_variable_read_node().is_some()
+        || node.as_class_variable_read_node().is_some()
+        || node.as_global_variable_read_node().is_some()
+        || node.as_self_node().is_some()
+}
+
 struct CommentSpan {
     start: usize,
     text: String,
@@ -1045,11 +1087,51 @@ impl Formatter {
         op: &str,
         value: &ruby_prism::Node<'_>,
     ) -> Doc {
-        self.run_text(&mut run, " ");
-        self.run_text(&mut run, op);
-        self.run_text(&mut run, " ");
-        self.run_node(&mut run, value);
+        self.run_assigned_value(&mut run, op, value);
         self.end_run(run)
+    }
+
+    /// ` op value`, closing an assignment. A value that is one indivisible
+    /// piece -- a string, a regex, a symbol, a path of names -- has nowhere
+    /// to break inside itself, so when the line is too long it moves to a
+    /// line of its own under the target, at one indent:
+    ///
+    /// ```ruby
+    /// expected =
+    ///   "a string that would run past the limit if it stayed after the ="
+    /// ```
+    ///
+    /// Only when that helps: a value that would not fit there either stays
+    /// where it is, since a line that is too long is no shorter for the move.
+    /// Anything that can break inside itself (a call with arguments, a
+    /// collection, a block) keeps its start on the target's line.
+    pub(super) fn run_assigned_value(
+        &mut self,
+        run: &mut InlineRun,
+        op: &str,
+        value: &ruby_prism::Node<'_>,
+    ) {
+        let value_doc = self.node_doc(value);
+        let one_line = self.line_of(value.location().start_offset())
+            == self.line_of(value.location().end_offset().saturating_sub(1));
+        if self.single_line || !one_line || !is_indivisible(value) {
+            self.run_text(run, format!(" {op} "));
+            run.leaves.push(value_doc);
+            return;
+        }
+        let width = unicode_width::UnicodeWidthStr::width(
+            value_doc.clone().flat().render(usize::MAX / 2).as_str(),
+        );
+        let nest = self.indent_str.len();
+        let indent_columns = (self.indent + 1) * nest;
+        if indent_columns + width > self.line_length {
+            self.run_text(run, format!(" {op} "));
+            run.leaves.push(value_doc);
+            return;
+        }
+        self.run_text(run, format!(" {op}"));
+        run.leaves
+            .push(Doc::line().append(value_doc).indent(nest).group());
     }
 
     /// The must-break bracketed list: opening token alone, every item on
