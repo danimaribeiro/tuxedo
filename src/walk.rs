@@ -2,6 +2,57 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ignore::WalkBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
+
+/// The `exclude` globs of a config, matched the way `.gitignore` lines are
+/// against a path relative to the config file's directory.
+///
+/// Applied as a filter on the walk rather than through the `ignore`
+/// crate's override builder: an override matches a path only after
+/// stripping a root that has to be spelled the way the walk spells its
+/// paths, and a walk started from `.` or `lib` spells them relative while
+/// the config's directory is absolute. Here the path is made absolute and
+/// cut back to the root first, so the match does not depend on how the
+/// command line named the directory.
+pub struct Exclude {
+    root: std::path::PathBuf,
+    globs: Gitignore,
+}
+
+impl Exclude {
+    /// An error names the first glob that is not valid. A leading `!` is
+    /// refused: it would un-exclude, and `exclude` only ever excludes.
+    pub fn new(root: &Path, patterns: &[String]) -> Result<Self, String> {
+        let mut builder = GitignoreBuilder::new(".");
+        for pattern in patterns {
+            if pattern.starts_with('!') {
+                return Err(format!(
+                    "exclude pattern `{pattern}`: a leading `!` is not supported"
+                ));
+            }
+            builder
+                .add_line(None, pattern)
+                .map_err(|e| format!("exclude pattern `{pattern}`: {e}"))?;
+        }
+        let globs = builder.build().map_err(|e| format!("exclude: {e}"))?;
+        Ok(Self {
+            root: root.to_path_buf(),
+            globs,
+        })
+    }
+
+    fn excludes(&self, path: &Path, is_dir: bool) -> bool {
+        if self.globs.is_empty() {
+            return false;
+        }
+        let Ok(absolute) = std::path::absolute(path) else {
+            return false;
+        };
+        lexically_clean(&absolute)
+            .strip_prefix(&self.root)
+            .is_ok_and(|relative| self.globs.matched(relative, is_dir).is_ignore())
+    }
+}
 
 pub struct WalkResult {
     /// Files handed to `process`. A file that could not be read never
@@ -21,6 +72,7 @@ pub fn walk_and_process(
     paths: &[impl AsRef<Path>],
     jobs: Option<usize>,
     no_ignore: bool,
+    exclude: Exclude,
     process: impl FnMut(&Path, &str) -> Option<String> + Send + Clone,
 ) -> WalkResult {
     let changed = AtomicUsize::new(0);
@@ -39,6 +91,12 @@ pub fn walk_and_process(
     if let Some(n) = jobs {
         builder.threads(n);
     }
+    // A path named on the command line (depth 0) is never excluded: asking
+    // for a file by name is the override, as it is for `.gitignore`.
+    builder.filter_entry(move |entry| {
+        entry.depth() == 0
+            || !exclude.excludes(entry.path(), entry.file_type().is_some_and(|t| t.is_dir()))
+    });
 
     let changed_ref = &changed;
     let total_ref = &total;
@@ -91,6 +149,24 @@ pub fn walk_and_process(
     }
 }
 
+/// `path` with its `.` and `..` components folded away, without touching the
+/// filesystem. `absolute` leaves them in, and `app/../db/x.rb` would
+/// otherwise not match an anchored `/db/x.rb`.
+fn lexically_clean(path: &Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut clean = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                clean.pop();
+            }
+            other => clean.push(other),
+        }
+    }
+    clean
+}
+
 /// Extensions that mean Ruby.
 const RUBY_EXTENSIONS: [&str; 4] = ["rb", "rake", "gemspec", "ru"];
 
@@ -113,8 +189,16 @@ fn is_ruby_file(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_ruby_file;
+    use super::{is_ruby_file, lexically_clean};
     use std::path::Path;
+
+    #[test]
+    fn dot_components_fold_away() {
+        assert_eq!(
+            lexically_clean(Path::new("/a/b/../c/./d.rb")),
+            Path::new("/a/c/d.rb")
+        );
+    }
 
     #[test]
     fn recognises_ruby_by_extension_and_by_name() {

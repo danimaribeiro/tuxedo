@@ -57,9 +57,11 @@ byte-for-byte is not a goal.
 
 `.tuxedo.toml`, found by walking up from the current directory (or named with
 `--config`). Every key is optional and an unknown one is an error. These are
-all the keys the formatter reads:
+all the keys the formatter and the file walk read:
 
 ```toml
+exclude = ["vendor/", "/db/schema.rb"]  # skipped by format and check, on top of .gitignore
+
 [format]
 line_length = 120                  # column a line is broken to fit
 indent_size = 2                    # spaces per indent level
@@ -67,6 +69,11 @@ hash_brace_space = "space"         # "space" { a: 1 } or "no_space" {a: 1}
 access_modifier_style = "indent"   # "indent" or "outdent" for private/protected/public
 quote_style = "double"             # "double", "single" or "preserve"
 ```
+
+`exclude` takes gitignore-style globs, matched against the path from the
+directory the config file sits in (`vendor/` at any depth, `/db/schema.rb`
+only at the top). `--no-ignore` turns `.gitignore` off but not `exclude`, and
+a file named on the command line is formatted even if `exclude` matches it.
 
 `quote_style` rewrites a plain string, a quoted symbol and a quoted hash key
 (`'a': 1`) to the chosen quote, and only when that loses nothing: a literal

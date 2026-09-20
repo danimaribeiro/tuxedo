@@ -214,3 +214,143 @@ fn a_syntax_error_on_stdin_prints_nothing_and_fails() {
     assert_eq!(stdout_of(&output), "");
     assert!(stderr_of(&output).contains("lib/foo.rb"), "{output:?}");
 }
+
+const UGLY: &str = "x   =   1\n";
+const TIDY: &str = "x = 1\n";
+
+/// A tree with one file in each place an `exclude` glob might reach, and a
+/// config that excludes a directory, a name anywhere, and a path.
+fn tree_with_excludes(name: &str) -> TempDir {
+    let dir = TempDir::new(name);
+    dir.write(
+        ".tuxedo.toml",
+        "exclude = [\"vendor/\", \"*_generated.rb\", \"/db/schema.rb\"]\n",
+    );
+    for name in [
+        "app/a.rb",
+        "vendor/gem/b.rb",
+        "app/c_generated.rb",
+        "db/schema.rb",
+        "app/db/schema.rb",
+    ] {
+        dir.write(name, UGLY);
+    }
+    dir
+}
+
+/// `format` and `check` both skip what `exclude` names, and the globs are
+/// gitignore-style: `vendor/` matches a directory at any depth, `*_x.rb` a
+/// name anywhere, `/db/schema.rb` only that path from the config's root.
+#[test]
+fn exclude_skips_the_matching_files_in_format() {
+    let dir = tree_with_excludes("exclude-format");
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "."])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+
+    assert_eq!(dir.read("app/a.rb"), TIDY);
+    assert_eq!(dir.read("app/db/schema.rb"), TIDY);
+    for kept in ["vendor/gem/b.rb", "app/c_generated.rb", "db/schema.rb"] {
+        assert_eq!(dir.read(kept), UGLY, "{kept} should be excluded");
+    }
+}
+
+#[test]
+fn exclude_skips_the_matching_files_in_check() {
+    let dir = tree_with_excludes("exclude-check");
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "--check", "."])
+        .output()
+        .unwrap();
+    let out = stdout_of(&output) + &stderr_of(&output);
+    assert!(out.contains("2 would be reformatted"), "{out}");
+
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["check", "vendor", "app/c_generated.rb"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+}
+
+/// The match is against the path from the config's directory, so it does
+/// not matter where the run starts or how the directory is spelled.
+#[test]
+fn exclude_holds_from_a_subdirectory_and_from_an_absolute_path() {
+    let dir = tree_with_excludes("exclude-cwd");
+    let output = Command::new(TUXEDO)
+        .current_dir(dir.0.join("app"))
+        .args(["format", ".."])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert_eq!(dir.read("vendor/gem/b.rb"), UGLY);
+    assert_eq!(dir.read("db/schema.rb"), UGLY);
+    assert_eq!(dir.read("app/a.rb"), TIDY);
+
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "--no-ignore"])
+        .arg(&dir.0)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert_eq!(
+        dir.read("app/c_generated.rb"),
+        UGLY,
+        "--no-ignore keeps exclude"
+    );
+}
+
+/// Naming a file on the command line formats it even when it is excluded.
+#[test]
+fn a_file_named_on_the_command_line_is_formatted_though_excluded() {
+    let dir = tree_with_excludes("exclude-named");
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "vendor/gem/b.rb"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert_eq!(dir.read("vendor/gem/b.rb"), TIDY);
+    assert_eq!(dir.read("app/c_generated.rb"), UGLY);
+}
+
+#[test]
+fn exclude_is_relative_to_an_explicit_config_file() {
+    let dir = TempDir::new("exclude-explicit");
+    dir.write("conf/tuxedo.toml", "exclude = [\"skip/\"]\n");
+    dir.write("conf/skip/a.rb", UGLY);
+    dir.write("conf/keep/a.rb", UGLY);
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "--config", "conf/tuxedo.toml", "conf"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert_eq!(dir.read("conf/skip/a.rb"), UGLY);
+    assert_eq!(dir.read("conf/keep/a.rb"), TIDY);
+}
+
+#[test]
+fn a_negated_exclude_glob_is_refused() {
+    let dir = TempDir::new("exclude-negated");
+    dir.write(".tuxedo.toml", "exclude = [\"!keep.rb\"]\n");
+    dir.write("a.rb", UGLY);
+    let output = Command::new(TUXEDO)
+        .current_dir(&dir.0)
+        .args(["format", "."])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr_of(&output).contains("leading `!`"),
+        "{}",
+        stderr_of(&output)
+    );
+    assert_eq!(dir.read("a.rb"), UGLY);
+}

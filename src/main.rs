@@ -182,6 +182,14 @@ fn report_unreadable(errors: usize) -> bool {
     true
 }
 
+/// The config's `exclude` globs, or a fatal error naming the bad one.
+fn exclude_of(config: &tuxedo::Config) -> tuxedo::Exclude {
+    tuxedo::Exclude::new(&config.root, &config.exclude).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(EXIT_ERROR);
+    })
+}
+
 fn run_format(args: FormatArgs, config: tuxedo::Config) {
     let format_config = &config.format;
 
@@ -231,6 +239,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
         &args.paths,
         args.jobs,
         args.no_ignore,
+        exclude_of(&config),
         move |path, source| {
             let formatted = match tuxedo::format_with_config(source, format_config) {
                 Ok(formatted) => formatted,
@@ -293,7 +302,7 @@ fn run_format(args: FormatArgs, config: tuxedo::Config) {
     }
 }
 
-fn run_check(args: CheckArgs, _config: tuxedo::Config) {
+fn run_check(args: CheckArgs, config: tuxedo::Config) {
     if args.paths.is_empty() {
         let source = read_stdin();
         let label = stdin_label(args.stdin_filename.as_ref());
@@ -313,6 +322,7 @@ fn run_check(args: CheckArgs, _config: tuxedo::Config) {
         &args.paths,
         args.jobs,
         args.no_ignore,
+        exclude_of(&config),
         move |path, source| {
             let diagnostics = tuxedo::check(source);
 
