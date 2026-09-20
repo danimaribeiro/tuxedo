@@ -53,8 +53,24 @@ require "set"
 ATOMS = [
   Prism::StringNode, Prism::InterpolatedStringNode,
   Prism::RegularExpressionNode, Prism::InterpolatedRegularExpressionNode,
-  Prism::SymbolNode, Prism::XStringNode
+  Prism::SymbolNode, Prism::InterpolatedSymbolNode,
+  Prism::XStringNode, Prism::InterpolatedXStringNode
 ].freeze
+
+# A path of names with no argument list anywhere in it: `Foo::Bar`,
+# `app.config.x`. Tuxedo has nowhere to break inside one either.
+def name_path?(node)
+  case node
+  when Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::LocalVariableReadNode,
+       Prism::InstanceVariableReadNode, Prism::SelfNode, Prism::GlobalVariableReadNode
+    true
+  when Prism::CallNode
+    node.arguments.nil? && node.block.nil? && node.opening_loc.nil? &&
+      node.name.to_s.match?(/\A[a-z_]\w*[?!]?\z/i) && (node.receiver.nil? || name_path?(node.receiver))
+  else
+    false
+  end
+end
 
 MATCHER = %w[*.rb *.rake *.gemspec *.ru Rakefile Gemfile].freeze
 
@@ -125,23 +141,192 @@ def bare_call_pinning_an_atom?(node, lineno)
   ATOMS.any? { |k| only.is_a?(k) } && only.location.start_line == lineno
 end
 
-def widest_atom(node, lineno, line_length, best)
+# A hash pair whose value is a literal, or a literal by itself: the pieces a
+# bare call's first argument can be without there being a place to break.
+def pinned_argument?(node)
+  return ATOMS.any? { |k| node.is_a?(k) } if !node.is_a?(Prism::AssocNode) && !node.is_a?(Prism::KeywordHashNode)
+
+  pairs = node.is_a?(Prism::KeywordHashNode) ? node.elements.first(1) : [node]
+  pairs.all? do |pair|
+    pair.is_a?(Prism::AssocNode) &&
+      (ATOMS.any? { |k| pair.value.is_a?(k) } || name_path?(pair.value) || call_head_end(pair.value))
+  end
+end
+
+# The first argument of a call written without parentheses starts on the
+# line of the method name: `assert_equal "long string",` cannot put the
+# string anywhere but after `assert_equal `. The rest may follow a comma
+# onto the next line, so with several arguments it is name plus first
+# argument that is pinned.
+# What follows an atom on its line and cannot be separated from it: the
+# comma, closing bracket, continuation or operator that ends the line.
+STICKY_TAIL = /\A(?: ?(?:[,)\]}+\\*%\/<>-]|\|\||&&|do\b|\{))*\z/
+
+def sticky_tail_width(line, end_column)
+  tail = line[end_column..].to_s
+  tail.match?(STICKY_TAIL) ? tail.length : 0
+end
+
+# An atom that does not start its line goes onto a line of its own one
+# indent in, so that is the column it has to fit from.
+NEST = 2
+
+def moved_width(width, start_column, line)
+  start_column > line[/\A */].length ? width + NEST : width
+end
+
+def bare_call_pinning_first_argument(node, lineno, line)
+  return unless node.is_a?(Prism::CallNode) && node.opening_loc.nil?
+  return unless node.receiver.nil? || name_path?(node.receiver)
+  return unless node.location.start_line == lineno
+
+  first = node.arguments&.arguments&.first
+  first = first.elements.first if first.is_a?(Prism::KeywordHashNode)
+  return unless first && pinned_argument?(first) && first.location.end_line == lineno
+
+  end_column = first.location.end_column
+  end_column = call_head_end(first.value) || end_column if first.is_a?(Prism::AssocNode)
+  end_column - node.location.start_column + sticky_tail_width(line, end_column)
+end
+
+# `Path::To.method(`: where the part of a call that cannot be broken ends.
+def call_head_end(node)
+  return unless node.is_a?(Prism::CallNode) && node.opening_loc && node.receiver && name_path?(node.receiver)
+  return unless node.receiver.location.start_line == node.opening_loc.start_line
+
+  node.opening_loc.end_column
+end
+
+# An assignment whose value is an operator chain (`a = b ||\n c`,
+# `a = (b |\n c)`): tuxedo leaves the first operand after the `=`, so the
+# line up to the first operator is pinned.
+def chain_value?(value)
+  case value
+  when Prism::AndNode, Prism::OrNode
+    true
+  when Prism::ParenthesesNode
+    value.body.is_a?(Prism::StatementsNode) && value.body.body.size == 1 && chain_value?(value.body.body.first)
+  when Prism::CallNode
+    (value.receiver && value.opening_loc.nil? && value.arguments&.arguments&.size == 1 &&
+      value.name.to_s.match?(/\A[^a-z_]/i)) || (value.receiver && chain_value?(value.receiver))
+
+  else
+    false
+  end
+end
+
+def write_value(node)
+  if node.class.name.end_with?("WriteNode") && node.respond_to?(:value)
+    node.value
+  elsif node.is_a?(Prism::CallNode) && node.name.to_s.end_with?("=") && node.opening_loc.nil? &&
+        node.arguments&.arguments&.size == 1
+    node.arguments.arguments.first
+  end
+end
+
+def widest_atom(node, lineno, line_length, best, line = "")
   return best unless node.is_a?(Prism::Node)
 
   loc = node.location
   if ATOMS.any? { |k| node.is_a?(k) } && loc.start_line == lineno
     # A literal that starts here and ends further down still pins everything
     # from its opening delimiter to the end of this line.
-    width = loc.end_line == lineno ? loc.end_column - loc.start_column : line_length - loc.start_column
+    width = loc.end_line == lineno ? loc.end_column - loc.start_column + sticky_tail_width(line, loc.end_column) : line_length - loc.start_column
+    width = moved_width(width, loc.start_column, line)
     best = [width, node.class.name.split("::").last] if width > best[0]
   end
 
   # A hash pair is as immovable as its value: tuxedo does not break after
   # the key, so the key and the literal after it are one atom.
   if node.is_a?(Prism::AssocNode) && loc.start_line == lineno &&
-     ATOMS.any? { |k| node.value.is_a?(k) } && node.value.location.end_line == lineno
-    width = node.value.location.end_column - loc.start_column
+     (ATOMS.any? { |k| node.value.is_a?(k) } || name_path?(node.value)) && node.value.location.end_line == lineno
+    width = node.value.location.end_column - loc.start_column + sticky_tail_width(line, node.value.location.end_column)
+    width = moved_width(width, loc.start_column, line)
     best = [width, "HashPair"] if width > best[0]
+  end
+
+  # `Path::To.method(`: the head in front of an argument list has no place
+  # to break; tuxedo moves the whole call under an assignment target when
+  # the head does not fit, and cannot do more.
+  if node.is_a?(Prism::CallNode) && node.opening_loc && node.opening_loc.start_line == lineno &&
+     node.receiver && name_path?(node.receiver) && node.receiver.location.start_line == lineno
+    width = node.opening_loc.end_column - node.receiver.location.start_column
+    width = moved_width(width, node.receiver.location.start_column, line)
+    best = [width, "CallHead"] if width > best[0]
+  end
+
+  # The value of an assignment that is an operator chain: only the chain's
+  # own operators are places to break, so the first line is pinned.
+  if node.location.start_line == lineno && (value = write_value(node)) && chain_value?(value) &&
+     value.location.start_line == lineno && value.location.end_line > lineno
+    best = [line.length - line[/\A */].length, "AssignedChain"] if line.length - line[/\A */].length > best[0]
+  end
+
+  # The value of an assignment that is a command call with several
+  # arguments (`x = stub_request "a" => 1,\n "b" => 2`): only its commas are
+  # places to break, so the first line is pinned.
+  if node.location.start_line == lineno && (value = write_value(node)) && value.is_a?(Prism::CallNode) &&
+     value.opening_loc.nil? && value.receiver.nil? && value.location.start_line == lineno &&
+     value.location.end_line > lineno && (value.arguments&.arguments&.size.to_i > 1 ||
+       value.arguments&.arguments&.first.is_a?(Prism::KeywordHashNode))
+    best = [line.length - line[/\A */].length, "AssignedCommand"] if line.length - line[/\A */].length > best[0]
+  end
+
+  # Adjacent literals (`"a" "b"`, `"a" \\`): the first fragment stays where
+  # it starts, after whatever precedes it.
+  if node.is_a?(Prism::InterpolatedStringNode) && node.opening_loc.nil? && loc.start_line == lineno &&
+     (first = node.parts.first) && first.location.end_line == lineno
+    width = first.location.end_column - loc.start_column + sticky_tail_width(line, first.location.end_column)
+    width = moved_width(width, loc.start_column, line)
+    best = [width, "ImplicitConcatenation"] if width > best[0]
+  end
+
+  # A class header is one line: `class Name < Superclass`.
+  if node.is_a?(Prism::ClassNode) && loc.start_line == lineno && (superclass = node.superclass) &&
+     superclass.location.end_line == lineno
+    width = superclass.location.end_column - loc.start_column
+    best = [width, "ClassHeader"] if width > best[0]
+  end
+
+  # A method name is one token, and `def name` cannot be split from it.
+  if node.is_a?(Prism::DefNode) && loc.start_line == lineno && node.name_loc.end_line == lineno
+    width = node.name_loc.end_column - loc.start_column
+    best = [width, "MethodName"] if width > best[0]
+  end
+
+  # A parenthesised literal is one piece: `(+"...").force_encoding(`.
+  if node.is_a?(Prism::ParenthesesNode) && loc.start_line == lineno && loc.end_line == lineno &&
+     node.body.is_a?(Prism::StatementsNode) && node.body.body.size == 1 &&
+     (ATOMS.any? { |k| node.body.body.first.is_a?(k) } ||
+      (node.body.body.first.is_a?(Prism::CallNode) && node.body.body.first.name.to_s.end_with?("@")))
+    width = loc.end_column - loc.start_column
+    best = [width, "ParenthesisedLiteral"] if width > best[0]
+  end
+
+  # A pattern is held on one line (`in [a, b]`, `x in {k: v}`): the layout
+  # has no expanded shape for it.
+  if [Prism::ArrayPatternNode, Prism::HashPatternNode, Prism::FindPatternNode].any? { |k| node.is_a?(k) } &&
+     loc.start_line == lineno && loc.end_line == lineno
+    width = loc.end_column - loc.start_column
+    best = [width, "Pattern"] if width > best[0]
+  end
+  if (node.is_a?(Prism::MatchPredicateNode) || node.is_a?(Prism::MatchRequiredNode) || node.is_a?(Prism::InNode)) &&
+     loc.start_line == lineno && node.pattern.location.end_line == lineno &&
+     [Prism::ArrayPatternNode, Prism::HashPatternNode, Prism::FindPatternNode].any? { |k| node.pattern.is_a?(k) }
+    width = node.pattern.location.end_column - loc.start_column
+    best = [width, "Pattern"] if width > best[0]
+  end
+
+  # Block parameters are never wrapped, so the call and its `do |...|` are
+  # one line.
+  if node.is_a?(Prism::BlockNode) && node.parameters && node.opening_loc.start_line == lineno &&
+     node.parameters.location.end_line == lineno
+    width = node.parameters.location.end_column - (node.location.start_line == lineno ? 0 : loc.start_column)
+    best = [width, "BlockParameters"] if width > best[0]
+  end
+
+  if (width = bare_call_pinning_first_argument(node, lineno, line))
+    best = [width, "BareCallArgument"] if width > best[0]
   end
 
   if bare_call_pinning_an_atom?(node, lineno)
@@ -149,7 +334,7 @@ def widest_atom(node, lineno, line_length, best)
     best = [width, "BareCallArgument"] if width > best[0]
   end
 
-  node.compact_child_nodes.each { |child| best = widest_atom(child, lineno, line_length, best) }
+  node.compact_child_nodes.each { |child| best = widest_atom(child, lineno, line_length, best, line) }
   best
 end
 
@@ -206,7 +391,15 @@ files.each do |path|
       next
     end
 
-    width, atom = widest_atom(result.value, lineno, line.length, [0, nil])
+    width, atom = widest_atom(result.value, lineno, line.length, [0, nil], line)
+    trailing = comments.fetch(lineno, []).find { |c| !line[0...c.location.start_column].strip.empty? }
+    if trailing && line[0...trailing.location.start_column].rstrip.length <= limit
+      # Tuxedo leaves a comment on the line it was written on, so the code
+      # before it cannot be given a line of its own: what is over the limit
+      # is the comment, and moving that is not a layout decision.
+      offenses << Offense.new(rel, lineno, line.length, limit + 1, "TrailingComment", line.length)
+      next
+    end
     comments.fetch(lineno, []).each do |comment|
       cw = comment.location.end_column - comment.location.start_column
       width, atom = cw, "Comment" if cw > width
