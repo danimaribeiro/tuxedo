@@ -318,7 +318,10 @@ impl Formatter {
         let is_identifier_call = is_named_call || explicit_dot;
 
         if is_index {
-            return CallHead::whole(self.index_call_doc(node, &receiver, name_str));
+            return CallHead {
+                prefix: self.index_call_doc(node, &receiver, name_str),
+                args: tail,
+            };
         }
         if matches!(name_str, "!" | "~" | "+@" | "-@")
             && node.arguments().is_none()
@@ -385,6 +388,15 @@ impl Formatter {
                 self.run_text(&mut run, ", ");
             }
             self.run_node(&mut run, arg);
+        }
+        if let Some(block_pass) = node
+            .block()
+            .filter(|b| b.as_block_argument_node().is_some())
+        {
+            if !args.is_empty() {
+                self.run_text(&mut run, ", ");
+            }
+            self.run_node(&mut run, &block_pass);
         }
         self.run_text(&mut run, "]");
         if let Some(value) = value {
