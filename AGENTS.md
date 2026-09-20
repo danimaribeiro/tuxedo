@@ -83,9 +83,21 @@ Fixtures only pin down what someone thought to write. Real projects under
 measure, through `scripts/format-verify.sh <project>` and
 `scripts/lint-baseline.sh <project>`; that README explains every number.
 
-The rule: **meaning, parse and idempotence may never regress.** Comment placement
-and layout conformance are ratchets that should only go down, and may move a
-little either way on a layout change.
+The rule: **meaning, parse and idempotence may never regress.** Those three are
+pass/fail, and they are at zero.
+
+Comment placement and layout conformance are held to a different standard:
+**every offense is either fixed or recorded with a reason, and the number that
+matters is the unexplained one.** Disagreeing with RuboCop is not a defect — some
+disagreements follow from block indentation, and a line that is one literal wider
+than the limit cannot be split without inventing a break. Disagreeing without
+saying so is. A reason belongs in a list the script reads, not in a config
+comment, so that a stale exemption reads as one. The target is zero unexplained.
+
+That target buys a claim worth making: everything Tuxedo emits, RuboCop accepts,
+and every divergence is written down. It does not buy "the layout is right" —
+RuboCop only checks a break that is there, and never asks whether Tuxedo should
+have broken a construct it kept flat.
 
 The recipe for any layout change: build the binary from `main` and from your
 branch, format `test-projects/rails` and `test-projects/thor` with each, `diff -rq`
