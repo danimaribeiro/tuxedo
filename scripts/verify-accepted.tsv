@@ -1,0 +1,44 @@
+# What format-verify.sh accepts, and why. Everything else it reports is a bug.
+#
+# One line per rule, tab-separated:
+#
+#   scope   before   pattern   reason   witness
+#
+# scope    a RuboCop cop (Layout/HashAlignment) or `Comments` for a comment the
+#          placement check reports as displaced.
+# before   how many source lines above the offense's own line are searched
+#          too, for a construct that begins earlier than the line RuboCop names.
+# pattern  a Ruby regexp matched against those lines joined by newlines, or
+#          `@heredoc` for an offense inside a heredoc body.
+# reason   why tuxedo is right and RuboCop is not asked to agree.
+# witness  the corpus project where the rule matches something. A rule applies
+#          to every project, but is only checked for staleness on its witness:
+#          a project that never hits it says nothing about whether it is dead.
+#
+# Layout/LineLength is not listed here: scripts/classify-linelength.rb splits
+# it into the lines nothing can shorten and the ones tuxedo fails to break,
+# and only the second count is a bug.
+#
+# A rule that matches nothing on its witness is reported as stale: an
+# exemption that outlives what it exempted would hide the regression it was
+# written to allow.
+#
+# --- A keyword used as a value ---
+# `x || if c ... end`, `(class << x ... end)`, `meta = class << x`: RuboCop has
+# no style that puts `else`/`end` at the statement's indent, and tuxedo keeps
+# them there (see format-verify.rubocop.yml). Covers the alignment and
+# indentation cops that follow from it. (`when` and `begin`/`end` have the same
+# disagreement and no instance on rails; add one when a project has it.)
+Layout/IndentationWidth	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword	rails
+Layout/EndAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps its `end` at the statement's indent	rails
+Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
+# --- Text that is not the formatter's ---
+Layout/SpaceInsidePercentLiteralDelimiters	0	%x\(	the content of `%x( )` is a shell command, copied verbatim	rails
+Layout/ExtraSpacing	0	@heredoc	the body of a heredoc is data, not code	rails
+Layout/EmptyComment	0	^\s*#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails
+# --- Layouts that follow from block indentation ---
+Layout/HashAlignment	3	\byield\s+\w+:	the keys of a braceless hash after `yield` continue at a fixed indent from the statement, not under the first key	rails
+Layout/FirstArgumentIndentation	4	^\s*/[imx]*\.\w+\($	an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one	rails
+Layout/MultilineOperationIndentation	4	\b(if|unless|while|until)\b[^\n]*\{\s*\|[^\n]*\|\s*$	the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition	rails
+# --- Comments that move on purpose ---
+Comments	0	trailing of `end`: 	`def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct	rails
