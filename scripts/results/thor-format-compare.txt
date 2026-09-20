@@ -1,5 +1,5 @@
 format-compare: thor
-generated: 2026-09-19T05:03:01Z
+generated: 2026-09-20T06:38:34Z
 
 MISMATCH: lib/thor.rb
 MISMATCH: lib/thor/actions.rb
@@ -56,9 +56,9 @@ MISMATCH: thor.gemspec
 51 / 80 files differ between tuxedo and rubocop output.
 2 files tuxedo could not format, left as source.
 
-tuxedo:  0.040s
-rubocop: 5.860s
-tuxedo is 146.5x faster
+tuxedo:  0.078s
+rubocop: 6.471s
+tuxedo is 83.0x faster
 
 To see a diff for one file:
   scripts/format-diff.sh thor <relative/path.rb>
