@@ -47,3 +47,16 @@ class Mapper
     sql
   end
 end
+
+f = <<`CMD`
+  echo hi
+CMD
+f = <<-`CMD`
+  echo hi
+CMD
+f = <<~`CMD`
+  echo hi
+CMD
+g = <<~`CMD`
+  echo #{a}
+CMD
