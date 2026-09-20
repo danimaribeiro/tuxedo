@@ -83,6 +83,28 @@ inside a `#{}` are never touched, and neither is an implicit concatenation
 whose parts would not all end up with the same quote. `preserve` rewrites
 nothing.
 
+## Turning the formatter off
+
+`# tuxedo:off` and `# tuxedo:on`, each on a line of its own, copy the
+statements between them through exactly as written. It is for what a
+formatter cannot improve, such as a hand-aligned table:
+
+```ruby
+# tuxedo:off
+MATRIX = [
+  [1,   0,   0],
+  [0,   1,   0],
+  [0,   0,   1]
+]
+# tuxedo:on
+```
+
+A region with no `on` runs to the end of the body it opened in, and an `off`
+before the first statement holds the whole file. The markers go between
+statements. An `on` with no `off` before it, an `off` inside a region that is
+already off, and one in the middle of a literal (a hash, an argument list)
+are errors, reported like a syntax error, and the file is left untouched.
+
 ## Installation
 
 Tuxedo is distributed as a Ruby gem wrapping a precompiled native binary — no

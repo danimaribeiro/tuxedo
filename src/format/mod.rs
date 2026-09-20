@@ -99,6 +99,7 @@ mod dispatch;
 mod doc;
 mod literals;
 mod patterns;
+mod regions;
 mod statements;
 mod variables;
 mod verify;
@@ -224,7 +225,11 @@ pub fn format_unverified(source: &str, config: &FormatConfig) -> Result<String, 
         .as_program_node()
         .is_some_and(|program| program.statements().body().iter().next().is_none());
     let mut formatter = Formatter::new(source, &parsed, config);
+    let markers = regions::check_markers(source, &formatter.comments)?;
     let mut doc = formatter.node_doc(&node);
+    if let Some(&stray) = markers.iter().find(|m| !formatter.honored_off.contains(m)) {
+        return Err(regions::stray_marker(source, stray));
+    }
     if let Some(trailing) = formatter.remaining_comments_doc() {
         if !empty_program {
             doc = doc.append(Doc::hardline());
@@ -306,6 +311,9 @@ struct Formatter {
     body_owns_first_break: bool,
     comments: Vec<CommentSpan>,
     comment_cursor: usize,
+    /// The offsets of the `# tuxedo:off` markers that opened a region, to
+    /// tell any that sat where none can from the ones that did.
+    honored_off: Vec<usize>,
     line_starts: Vec<usize>,
     source: String,
     /// Verbatim heredoc bodies, indexed by the marker written into
@@ -437,6 +445,7 @@ impl Formatter {
             body_owns_first_break: false,
             comments,
             comment_cursor: 0,
+            honored_off: Vec::new(),
             line_starts: line_starts(source),
             source: source.to_string(),
             pending_heredocs: Vec::new(),
