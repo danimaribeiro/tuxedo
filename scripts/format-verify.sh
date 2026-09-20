@@ -185,7 +185,7 @@ rm -rf "$TWICE"
 echo
 echo "[3/4] Comment placement (scripts/comment-anchors.rb)..."
 comments_out="$(mktemp)"
-ruby "$ROOT/scripts/comment-anchors.rb" "$SRC" "$OUT" --list 25 >"$comments_out"
+ruby "$ROOT/scripts/comment-anchors.rb" "$SRC" "$OUT" --list 100000 >"$comments_out"
 grep DISPLACED "$comments_out" | cut -c1-160 || true
 comments_summary="$(tail -1 "$comments_out")"
 comments_summary="${comments_summary#comments: }"
