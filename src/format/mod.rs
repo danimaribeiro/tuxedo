@@ -604,6 +604,14 @@ impl Formatter {
             || body.starts_with("rubocop :")
     }
 
+    /// The offset of the end of the line `offset` is on.
+    fn end_of_line_after(&self, offset: usize) -> usize {
+        self.line_starts
+            .get(self.line_of(offset.saturating_sub(1)) + 1)
+            .copied()
+            .unwrap_or(self.source.len())
+    }
+
     fn line_of(&self, offset: usize) -> usize {
         match self.line_starts.binary_search(&offset) {
             Ok(i) => i,

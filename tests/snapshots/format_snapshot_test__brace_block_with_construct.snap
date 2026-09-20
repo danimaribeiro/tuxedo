@@ -19,9 +19,7 @@ Class.new {
   end
 }
 foo {
-  def a
-    1
-  end
+  def a = 1
 }
 foo {
   x = case y

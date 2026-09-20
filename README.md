@@ -46,6 +46,10 @@ ROLES = [
 ]
 ```
 
+Tuxedo does not change one construct into another. An endless method
+(`def name = expr`) stays endless while it fits on the line and expands to
+the block form when it does not; a block `def` is never made endless.
+
 RuboCop is a reference, not the target. RuboCop is a linter, so it only ever
 *adds* line breaks — it has no mandate to overrule an author who broke a line
 by hand. Tuxedo is a formatter and normalizes in both directions: given
