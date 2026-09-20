@@ -640,6 +640,17 @@ impl Formatter {
         }
     }
 
+    /// Like `restore_render_snapshot`, for when the document built before
+    /// the snapshot is kept alongside the one built after it. A heredoc's
+    /// marker in the kept document is an index into `pending_heredocs`, so
+    /// truncating the queue would leave it pointing at whatever the second
+    /// build queued there: bodies swapped between tags.
+    fn rewind_render_snapshot(&mut self, snap: RenderSnapshot) {
+        self.comment_cursor = snap.comment_cursor;
+        self.heredoc_end_line = snap.heredoc_end_line;
+        self.indent = snap.indent;
+    }
+
     fn restore_render_snapshot(&mut self, snap: RenderSnapshot) {
         self.comment_cursor = snap.comment_cursor;
         self.pending_heredocs.truncate(snap.pending_heredocs_len);

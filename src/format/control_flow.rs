@@ -182,7 +182,7 @@ impl Formatter {
         if modifier.breaks() {
             return modifier;
         }
-        self.restore_render_snapshot(snap);
+        self.rewind_render_snapshot(snap);
         // A comment after the statement is the statement's, in either
         // shape, and is taken by whoever owns the statement's line. The
         // block form must not claim it as its header's: the printer may

@@ -534,7 +534,7 @@ impl Formatter {
             let flat = self.node_doc(&body);
             self.single_line = was_single_line;
             if !flat.breaks() {
-                self.restore_render_snapshot(snap);
+                self.rewind_render_snapshot(snap);
                 let expanded = self.node_doc(&body);
                 self.comment_limit = was_limit;
                 return Doc::if_break(

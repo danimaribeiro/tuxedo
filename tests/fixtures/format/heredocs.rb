@@ -60,3 +60,23 @@ CMD
 g = <<~`CMD`
   echo #{a}
 CMD
+
+execute <<~A if foo(<<~B)
+  body_a
+A
+  body_b
+B
+
+execute <<~A if foo(<<~B, <<~C)
+  body_a
+A
+  body_b
+B
+  body_c
+C
+
+execute <<~SQL if DB.query_single(<<~SQL).length > 0
+  ALTER TABLE email_tokens ALTER COLUMN token DROP NOT NULL
+SQL
+  SELECT 1
+SQL
