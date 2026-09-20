@@ -18,6 +18,17 @@ pub struct Config {
 
     #[serde(default)]
     pub lint: LintConfig,
+
+    /// Gitignore-style globs, relative to [`Config::root`], that a walk
+    /// skips on top of `.gitignore`. Top level rather than under `[format]`
+    /// because `check` honours it as well.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+
+    /// The directory the config file sits in, which `exclude` is relative
+    /// to. Empty when there is no file, and then `exclude` is empty too.
+    #[serde(skip)]
+    pub root: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,8 +130,11 @@ fn discover() -> Option<(PathBuf, String)> {
 }
 
 fn parse_config(contents: &str, path: &Path) -> Config {
-    toml::from_str(contents).unwrap_or_else(|e| {
+    let mut config: Config = toml::from_str(contents).unwrap_or_else(|e| {
         eprintln!("error: invalid config {}: {e}", path.display());
         std::process::exit(1);
-    })
+    });
+    let root = path.parent().filter(|p| !p.as_os_str().is_empty());
+    config.root = std::path::absolute(root.unwrap_or(Path::new("."))).unwrap_or_default();
+    config
 }
