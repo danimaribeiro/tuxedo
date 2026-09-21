@@ -40,31 +40,28 @@
 # so zero offenses is a subset relation ("everything Tuxedo emits, rubocop
 # accepts"), not byte equality with rubocop's own autocorrect.
 #
-# --- The two disagreements that can never reach zero ---
+# --- What tuxedo does not do, and where that is written down ---
 #
-# Both follow from property 2, and neither is a bug to fix. Everything
-# else this config reports is a formatter bug; those are tracked as GitHub
-# issues, not here.
+# Every offense this config reports is either a formatter bug or a recorded
+# decision. The decisions are data, in scripts/verify-accepted.tsv (one rule
+# per line, each with its reason), and format-verify.sh reports whatever they
+# do not cover as UNEXPLAINED. This comment keeps the *why* that runs through
+# them: they follow from property 2, or from text that is not code.
 #
-# Layout/ElseAlignment, Layout/EndAlignment, Layout/CaseIndentation,
-# Layout/BeginEndAlignment, Layout/IndentationWidth (partial):
-#   For a keyword used as a value in a position that is *not* a plain
-#   assignment (`x << if cond`, `foo(if cond ...)`, `a || begin ... end`),
-#   rubocop has no style that puts `else`/`end`/`when` at the statement's
-#   indent: even `variable`/`start_of_line` only cover the `x = if` shape.
-#   Tuxedo keeps them at a fixed indent from the statement in every
-#   position. The `EnforcedStyleAlignWith: variable` / `EnforcedStyle: end`
-#   settings below cover the assignment shape, which is most of them.
+# A keyword used as a value in a position that is not a plain assignment
+# (`x << if cond`, `foo(if cond ...)`, `a || begin ... end`): rubocop has no
+# style that puts `else`/`end`/`when` at the statement's indent, even
+# `variable`/`start_of_line` only cover the `x = if` shape. Tuxedo keeps them
+# at a fixed indent from the statement in every position. The
+# `EnforcedStyleAlignWith: variable` / `EnforcedStyle: end` settings below
+# cover the assignment shape, which is most of them.
 #
-# Layout/LineLength (partial):
-#   A single literal wider than the limit (one string, one regex, a comment,
-#   `raise "huge message"` with nothing to break after) cannot wrap without
-#   inventing a split. Tuxedo does not invent splits. A `#{}` hole is held
-#   on one line for the same reason. Every other LineLength hit is a
-#   construct Tuxedo does not break yet, and is a bug.
-#   `scripts/classify-linelength.rb` separates the two, and
-#   `format-verify.sh` prints the split under the layout line.
-
+# Layout/LineLength: a single literal wider than the limit (one string, one
+# regex, a comment, `raise "huge message"` with nothing to break after)
+# cannot wrap without inventing a split, and tuxedo does not invent splits.
+# `scripts/classify-linelength.rb` separates those from the lines tuxedo
+# fails to break; only the second is a bug, and it is counted as unexplained.
+#
 # Without a target, RuboCop analyses as Ruby 2.7, and a file using anything
 # newer (`it`, endless methods, hash shorthand, `=>` patterns, anonymous
 # arguments) does not parse: under `--only Layout` it is dropped from the

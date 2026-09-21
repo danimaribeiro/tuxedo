@@ -185,17 +185,17 @@ rm -rf "$TWICE"
 echo
 echo "[3/4] Comment placement (scripts/comment-anchors.rb)..."
 comments_out="$(mktemp)"
-ruby "$ROOT/scripts/comment-anchors.rb" "$SRC" "$OUT" --list 25 >"$comments_out"
-grep DISPLACED "$comments_out" | cut -c1-160 || true
+ruby "$ROOT/scripts/comment-anchors.rb" "$SRC" "$OUT" --list 100000 >"$comments_out"
 comments_summary="$(tail -1 "$comments_out")"
 comments_summary="${comments_summary#comments: }"
-rm -f "$comments_out"
+echo "  $comments_summary (each one is listed below as accepted or UNEXPLAINED)"
 
 # --- 4. Layout conformance --------------------------------------------
 echo
 echo "[4/4] Layout conformance (rubocop --only Layout)..."
 layout_offenses="n/a"
 unparsed_by_rubocop=0
+emacs_out="$(mktemp)"
 if command -v rubocop >/dev/null 2>&1; then
   # Syntax errors would be reported as Lint/Syntax and drown out the Layout
   # signal, so only lint the files that actually parse.
@@ -212,7 +212,6 @@ if command -v rubocop >/dev/null 2>&1; then
   # counts below, `emacs` for the one file:line per offense that the
   # LineLength split needs. Two formatters beat a second rubocop pass over
   # the same three and a half thousand files.
-  emacs_out="$(mktemp)"
   if [ -s "$parsing_files" ]; then
     # shellcheck disable=SC2046
     BUNDLE_GEMFILE=/dev/null rubocop --only Layout,Lint/Syntax \
@@ -248,11 +247,31 @@ if command -v rubocop >/dev/null 2>&1; then
     fi
     rm -f "$linelength_sites"
   fi
-  rm -f "$parsing_files" "$rubocop_out" "$emacs_out"
+  rm -f "$parsing_files" "$rubocop_out"
 else
   echo "  skipped: rubocop not found on PATH (gem install rubocop)"
   layout_total="n/a"
 fi
+
+# --- Explained or not --------------------------------------------------
+# Every offense and every displaced comment is either matched by a rule in
+# scripts/verify-accepted.tsv, which carries the reason, or unexplained. The
+# unexplained ones, plus the LineLength lines tuxedo failed to break, are the
+# number this script exists to drive to zero.
+echo
+echo "Accepted (scripts/verify-accepted.tsv) and unexplained:"
+classified="$(mktemp)"
+ruby "$ROOT/scripts/classify-offenses.rb" "$OUT" \
+  --accepted "$ROOT/scripts/verify-accepted.tsv" \
+  --offenses "$emacs_out" --comments "$comments_out" --project "$PROJECT" >"$classified"
+cat "$classified"
+offense_summary="$(tail -1 "$classified")"
+unexplained_layout="$(sed -nE 's/.* ([0-9]+) unexplained layout.*/\1/p' <<<"$offense_summary")"
+unexplained_comments="$(sed -nE 's/.* ([0-9]+) unexplained comments.*/\1/p' <<<"$offense_summary")"
+stale_rules="$(sed -nE 's/.* ([0-9]+) stale.*/\1/p' <<<"$offense_summary")"
+breakable="$(sed -nE 's/.* ([0-9]+) breakable.*/\1/p' <<<"${linelength_summary:-}")"
+unexplained_layout=$(( ${unexplained_layout:-0} + ${breakable:-0} ))
+rm -f "$classified" "$comments_out" "$emacs_out"
 
 # --- Summary -----------------------------------------------------------
 echo
@@ -274,6 +293,9 @@ fi
 if [ -n "${linelength_summary:-}" ]; then
   printf "  %s\n" "$linelength_summary"
 fi
+echo "----------------------------------------------------------------------"
+printf "  UNEXPLAINED %s layout (LineLength breakable included), %s comments; %s stale rules\n" \
+  "$unexplained_layout" "${unexplained_comments:-0}" "${stale_rules:-0}"
 echo "======================================================================"
 echo
 echo "Output kept at test-projects/$PROJECT/verify for inspection."

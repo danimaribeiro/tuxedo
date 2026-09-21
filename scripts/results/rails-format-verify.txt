@@ -9,35 +9,11 @@ Running tuxedo format...
 [2/4] Idempotence check (format twice)...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
-  DISPLACED: actioncable/test/channel/test_case_test.rb:194 trailing of `end`: # no-op
-  DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:617 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/lib/active_record/connection_adapters/abstract/database_statements.rb:623 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:61 leading of `raise`: # Currently the OpenSSL bindings do not raise an error if au
-  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:62 leading of `raise`: # truncated, which would allow an attacker to easily forge i
-  DISPLACED: activerecord/lib/active_record/encryption/cipher/aes256_gcm.rb:63 leading of `raise`: # https://github.com/ruby/openssl/issues/63
-  DISPLACED: activerecord/lib/active_record/encryption/configurable.rb:25 leading of `properties`: # Set the default for this property here instead of in +Conf
-  DISPLACED: activerecord/lib/active_record/encryption/configurable.rb:26 leading of `properties`: # to happen *after* the keys have been set.
-  DISPLACED: activerecord/lib/active_record/scoping/named.rb:222 leading of `generate_relation_method`: # Most Kernel extends are both singleton and instance me
-  DISPLACED: activerecord/lib/active_record/scoping/named.rb:223 leading of `generate_relation_method`: # respond_to is a fast check, but we don't want to defin
-  DISPLACED: activerecord/lib/active_record/scoping/named.rb:224 leading of `generate_relation_method`: # only on the module (ex. Module#name)
-  DISPLACED: activerecord/lib/active_record/statement_cache.rb:31 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/lib/active_record/tasks/database_tasks.rb:7 trailing of `end`: # :nodoc:
-  DISPLACED: activerecord/test/cases/finder_test.rb:1765 leading of `Account`: # ensure this test can run independently of order
-  DISPLACED: activerecord/test/cases/migration/columns_test.rb:137 leading of `skip`: # MariaDB starting with 10.2.8
-  DISPLACED: activerecord/test/cases/migration/columns_test.rb:138 leading of `skip`: # Dropping a column that is part of a multi-column UNIQUE co
-  DISPLACED: activestorage/test/models/attachment_test.rb:234 leading of `ActiveStorage`: # Restore the original method
-  DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:102 leading of `transliterated`: # Restore the string encoding of the input if it was n
-  DISPLACED: activesupport/lib/active_support/inflector/transliterate.rb:103 leading of `transliterated`: # Apply invalid/undef :replace as tidy_bytes does
-  DISPLACED: activesupport/lib/active_support/message_pack/extensions.rb:18 trailing of `end`: # :nodoc:
-  DISPLACED: activesupport/test/current_attributes_test.rb:285 trailing of `end`: # Sets the cache because of a `method_added` hook
-  DISPLACED: railties/lib/rails/generators/rails/app/app_generator.rb:322 trailing of `=`: # :nodoc:
-  DISPLACED: railties/test/application/rake/multi_dbs_test.rb:403 leading of `FileUtils`: # move the dogs migration if it unless it already lives ther
-  DISPLACED: railties/test/application/rake/multi_dbs_test.rb:405 leading of `FileUtils`: # delete the dogs migration if it's still present in the
-  DISPLACED: railties/test/application/rake/multi_dbs_test.rb:406 leading of `FileUtils`: # migrate folder. This is necessary because sometimes
+  75088 total, 7 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2160  Layout/LineLength [Safe Correctable]
+  2087  Layout/LineLength [Safe Correctable]
   18    Layout/SpaceInsidePercentLiteralDelimiters [Safe Correctable]
   14    Layout/EmptyComment [Safe Correctable]
   5     Layout/IndentationWidth [Safe Correctable]
@@ -48,15 +24,30 @@ Running tuxedo format...
   1     Layout/FirstArgumentIndentation [Safe Correctable]
   1     Layout/MultilineOperationIndentation [Safe Correctable]
 
+Accepted (scripts/verify-accepted.tsv) and unexplained:
+  accepted    7  Comments                                 `def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct
+  accepted    3  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
+  accepted   14  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
+  accepted    4  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
+  accepted    1  Layout/ExtraSpacing                      the body of a heredoc is data, not code
+  accepted    1  Layout/FirstArgumentIndentation          an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one
+  accepted    3  Layout/HashAlignment                     the keys of a braceless hash after `yield` continue at a fixed indent from the statement, not under the first key
+  accepted    5  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
+  accepted    1  Layout/MultilineOperationIndentation     the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition
+  accepted   18  Layout/SpaceInsidePercentLiteralDelimiters the content of `%x( )` is a shell command, copied verbatim
+offenses: 50 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
+
 ======================================================================
   rails
 ----------------------------------------------------------------------
   meaning     0 files refused: formatting would have changed the AST
   parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    75088 total, 26 displaced
-  layout      2210 offenses across 10 distinct cops
-  linelength: 2160 over 120, 1969 unsplittable, 191 breakable
+  comments    75088 total, 7 displaced
+  layout      2137 offenses across 10 distinct cops
+  linelength: 2087 over 120, 2087 unsplittable, 0 breakable
+----------------------------------------------------------------------
+  UNEXPLAINED 0 layout (LineLength breakable included), 0 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/rails/verify for inspection.

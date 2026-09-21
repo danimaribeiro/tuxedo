@@ -3,112 +3,111 @@ Preparing working copy...
 Running tuxedo format...
 
 [0/4] Meaning check (source AST == output AST)...
-  CHANGED: language/pattern_matching_spec.rb
-  source AST: ...rayPatternNode(None, [IntegerNode(_), IntegerNode(_)], Some(ImplicitRestNode()), [], None, None), Some(StatementsNode([T...
-  output AST: ...rayPatternNode(None, [IntegerNode(_), IntegerNode(_)], Some(SplatNode("*", None)), [], None, None), Some(StatementsNode(...
-  CHANGED: language/proc_spec.rb
-  source AST: ...e(Some(ParametersNode([RequiredParameterNode(13)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
-  output AST: ...e(Some(ParametersNode([RequiredParameterNode(13)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
-  CHANGED: language/block_spec.rb
-  source AST: ...de(Some(ParametersNode([RequiredParameterNode(4)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
-  output AST: ...de(Some(ParametersNode([RequiredParameterNode(4)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
-  CHANGED: core/data/initialize_spec.rb
-  output is not valid Ruby
-  CHANGED: language/method_spec.rb
-  source AST: ...e(Some(SelfNode()), None, 24, None, None, None, None, None, Some(BlockArgumentNode(Some(LocalVariableReadNode(62, 0)), "...
-  output AST: ...e(Some(SelfNode()), None, 24, None, None, None, None, None, None)), None, 7, None, None, None, None, None, None)), None,...
---
-  CHANGED: core/hash/each_pair_spec.rb
-  source AST: ...e(Some(ParametersNode([RequiredParameterNode(14)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
-  output AST: ...e(Some(ParametersNode([RequiredParameterNode(14)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
---
-  CHANGED: core/proc/parameters_spec.rb
-  source AST: ...de(Some(ParametersNode([RequiredParameterNode(9)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
-  output AST: ...de(Some(ParametersNode([RequiredParameterNode(9)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
-  CHANGED: core/module/define_method_spec.rb
-  source AST: ...de(Some(ParametersNode([RequiredParameterNode(8)], [], Some(ImplicitRestNode()), [], [], None, None)), [], None, None)),...
-  output AST: ...de(Some(ParametersNode([RequiredParameterNode(8)], [], Some(RestParameterNode(None, None, "*")), [], [], None, None)), [...
 
 [1/4] Parse check (ruby -c)...
 
 [2/4] Idempotence check (format twice)...
-  UNSTABLE: language/if_spec.rb
-          @@ -334,6 +334,7 @@
-                   $. = 0
-                   10.times { |i| ScratchPad << i if 4..5 }
-                 RUBY
-          +
-                 ScratchPad.recorded.should == []
-               end
-             end
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
-  DISPLACED: core/binding/implicit_parameter_defined_spec.rb:4 trailing of `1`: # use eval to avoid warnings on Ruby 3.3
-  DISPLACED: core/binding/implicit_parameter_get_spec.rb:5 trailing of `1`: # use eval to avoid warnings on Ruby 3.3
-  DISPLACED: core/binding/implicit_parameters_spec.rb:4 trailing of `1`: # use eval to avoid warnings on Ruby 3.3
-  DISPLACED: core/class/fixtures/classes.rb:38 trailing of `end`: # reopen
-  DISPLACED: core/string/split_spec.rb:412 trailing of `'`: # in russian, means "test"
-  DISPLACED: language/heredoc_spec.rb:8 trailing of `'`: # used for interpolation
-  DISPLACED: language/it_parameter_spec.rb:4 trailing of `1`: # use eval to avoid warnings on Ruby 3.3
-  DISPLACED: language/string_spec.rb:11 trailing of `'`: # used for interpolation
-  DISPLACED: library/erb/def_method_spec.rb:16 trailing of `'`: # 'arg1' and 'arg2' are used in example.rhtml
-  DISPLACED: library/stringio/getch_spec.rb:23 trailing of `1`: # "f" has byte size 1
-  DISPLACED: library/stringio/getch_spec.rb:24 trailing of `3`: # "ö" has byte size 2
-  DISPLACED: library/stringio/getch_spec.rb:25 trailing of `5`: # "ó" has byte size 2
-  DISPLACED: library/stringio/getch_spec.rb:26 trailing of `6`: # "b" has byte size 1
-  DISPLACED: library/uri/plus_spec.rb:72 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:91 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:184 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:203 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:231 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:328 trailing of `'`: # ok? yes, it confuses you
-  DISPLACED: library/uri/plus_spec.rb:329 trailing of `'`: # and it is clearly
-  DISPLACED: library/uri/plus_spec.rb:340 trailing of `'`: # ok? yes, it confuses you
-  DISPLACED: library/uri/plus_spec.rb:341 trailing of `'`: # and it is clearly
-  DISPLACED: library/uri/plus_spec.rb:350 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:360 trailing of `'`: # ok
-  DISPLACED: library/uri/plus_spec.rb:370 trailing of `'`: # ok
+  4067 total, 32 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  313  Layout/LineLength [Safe Correctable]
-  31   Layout/IndentationWidth [Safe Correctable]
-  18   Layout/SpaceInsideHashLiteralBraces [Safe Correctable]
+  331  Layout/LineLength [Safe Correctable]
+  32   Layout/IndentationWidth [Safe Correctable]
   12   Layout/EndAlignment [Safe Correctable]
-  10   Layout/SpaceInsideBlockBraces [Safe Correctable]
   8    Layout/ElseAlignment [Safe Correctable]
-  7    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
-  4    Layout/EmptyLinesAroundAttributeAccessor [Safe Correctable]
+  7    Layout/SpaceAroundBlockParameters [Safe Correctable]
   3    Layout/EmptyComment [Safe Correctable]
   3    Layout/EmptyLineAfterMagicComment [Safe Correctable]
-  3    Layout/SpaceAfterComma [Safe Correctable]
-  2    Layout/ClosingHeredocIndentation [Safe Correctable]
-  2    Layout/SpaceAroundBlockParameters [Safe Correctable]
+  3    Layout/FirstArrayElementLineBreak [Safe Correctable]
+  3    Layout/MultilineArrayLineBreaks [Safe Correctable]
   1    Layout/DefEndAlignment [Safe Correctable]
   1    Layout/EmptyLineAfterGuardClause [Safe Correctable]
-  1    Layout/EmptyLines [Safe Correctable]
+  1    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
   1    Layout/FirstArgumentIndentation [Safe Correctable]
-  1    Layout/FirstArrayElementLineBreak [Safe Correctable]
   1    Layout/MultilineArrayBraceLayout [Safe Correctable]
-  1    Layout/MultilineArrayLineBreaks [Safe Correctable]
   1    Layout/MultilineOperationIndentation [Safe Correctable]
-  1    Layout/SpaceBeforeBlockBraces [Safe Correctable]
-  1    Layout/SpaceInLambdaLiteral [Safe Correctable]
   1    Layout/TrailingWhitespace [Safe Correctable]
+
+Accepted (scripts/verify-accepted.tsv) and unexplained:
+  accepted    1  Comments                                 `def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct
+  accepted    8  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
+  accepted    3  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
+  accepted   10  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
+  accepted   30  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
+  UNEXPLAINED core/kernel/local_variables_spec.rb:39 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED core/module/module_function_spec.rb:382 Layout/EmptyLinesAroundAccessModifier: Keep a blank line before and after `module_function`.
+  UNEXPLAINED core/proc/syntax_tree_spec.rb:31 Layout/TrailingWhitespace: Trailing whitespace detected.
+  UNEXPLAINED core/string/fixtures/iso-8859-9-encoding.rb:2 Layout/EmptyLineAfterMagicComment: Expected at least 1 empty line after magic comments; found 0.
+  UNEXPLAINED core/thread/fixtures/classes.rb:295 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in a `while` statement spanning multiple lines.
+  UNEXPLAINED language/array_spec.rb:71 Layout/FirstArrayElementLineBreak: Add a line break before the first element of a multi-line array.
+  UNEXPLAINED language/array_spec.rb:71 Layout/MultilineArrayLineBreaks: Each item in a multi-line array must start on a separate line.
+  UNEXPLAINED language/array_spec.rb:72 Layout/MultilineArrayBraceLayout: The closing array brace must be on the line after the last array element.
+  UNEXPLAINED language/block_spec.rb:833 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/block_spec.rb:834 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/block_spec.rb:844 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/block_spec.rb:865 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/block_spec.rb:870 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/block_spec.rb:876 Layout/SpaceAroundBlockParameters: Space before first block parameter detected.
+  UNEXPLAINED language/def_spec.rb:89 Layout/DefEndAlignment: `end` at 89, 4 is not aligned with `def` at 88, 18.
+  UNEXPLAINED language/defined_spec.rb:1306 Layout/IndentationWidth: Use 2 (not -7) spaces for indentation.
+  UNEXPLAINED language/defined_spec.rb:1307 Layout/EndAlignment: `end` at 1307, 4 is not aligned with `while` at 1305, 13.
+  UNEXPLAINED language/defined_spec.rb:1312 Layout/IndentationWidth: Use 2 (not -7) spaces for indentation.
+  UNEXPLAINED language/defined_spec.rb:1313 Layout/EndAlignment: `end` at 1313, 4 is not aligned with `until` at 1311, 13.
+  UNEXPLAINED language/fixtures/break.rb:175 Layout/EmptyLineAfterGuardClause: Add empty line after guard clause.
+  UNEXPLAINED language/fixtures/bytes_magic_comment.rb:2 Layout/EmptyLineAfterMagicComment: Expected at least 1 empty line after magic comments; found 0.
+  UNEXPLAINED language/fixtures/vim_magic_comment.rb:2 Layout/EmptyLineAfterMagicComment: Expected at least 1 empty line after magic comments; found 0.
+  UNEXPLAINED language/regexp/grouping_spec.rb:34 Layout/FirstArgumentIndentation: Indent the first argument one step more than the start of the previous line.
+  UNEXPLAINED library/cgi/queryextension/accept_spec.rb:17 Layout/FirstArrayElementLineBreak: Add a line break before the first element of a multi-line array.
+  UNEXPLAINED library/cgi/queryextension/accept_spec.rb:19 Layout/MultilineArrayLineBreaks: Each item in a multi-line array must start on a separate line.
+  UNEXPLAINED library/cgi/queryextension/user_agent_spec.rb:17 Layout/FirstArrayElementLineBreak: Add a line break before the first element of a multi-line array.
+  UNEXPLAINED library/cgi/queryextension/user_agent_spec.rb:19 Layout/MultilineArrayLineBreaks: Each item in a multi-line array must start on a separate line.
+  UNEXPLAINED core/binding/implicit_parameter_defined_spec.rb:4 Comments: trailing of `1`: # use eval to avoid warnings on Ruby 3.3
+  UNEXPLAINED core/binding/implicit_parameter_get_spec.rb:5 Comments: trailing of `1`: # use eval to avoid warnings on Ruby 3.3
+  UNEXPLAINED core/binding/implicit_parameters_spec.rb:4 Comments: trailing of `1`: # use eval to avoid warnings on Ruby 3.3
+  UNEXPLAINED core/string/split_spec.rb:412 Comments: trailing of `'`: # in russian, means "test"
+  UNEXPLAINED language/heredoc_spec.rb:8 Comments: trailing of `'`: # used for interpolation
+  UNEXPLAINED language/it_parameter_spec.rb:4 Comments: trailing of `1`: # use eval to avoid warnings on Ruby 3.3
+  UNEXPLAINED language/string_spec.rb:11 Comments: trailing of `'`: # used for interpolation
+  UNEXPLAINED library/erb/def_method_spec.rb:16 Comments: trailing of `'`: # 'arg1' and 'arg2' are used in example.rhtml
+  UNEXPLAINED library/stringio/getch_spec.rb:23 Comments: trailing of `1`: # "f" has byte size 1
+  UNEXPLAINED library/stringio/getch_spec.rb:24 Comments: trailing of `3`: # "ö" has byte size 2
+  UNEXPLAINED library/stringio/getch_spec.rb:25 Comments: trailing of `5`: # "ó" has byte size 2
+  UNEXPLAINED library/stringio/getch_spec.rb:26 Comments: trailing of `6`: # "b" has byte size 1
+  UNEXPLAINED library/uri/plus_spec.rb:72 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:91 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:184 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:203 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:231 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:328 Comments: trailing of `'`: # ok? yes, it confuses you
+  UNEXPLAINED library/uri/plus_spec.rb:329 Comments: trailing of `'`: # and it is clearly
+  UNEXPLAINED library/uri/plus_spec.rb:340 Comments: trailing of `'`: # ok? yes, it confuses you
+  UNEXPLAINED library/uri/plus_spec.rb:341 Comments: trailing of `'`: # and it is clearly
+  UNEXPLAINED library/uri/plus_spec.rb:350 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:360 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:370 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:380 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:390 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/uri/plus_spec.rb:400 Comments: trailing of `'`: # ok
+  UNEXPLAINED library/win32ole/win32ole_method/shared/name.rb:15 Comments: trailing of `'`: # note the capitalization
+  UNEXPLAINED library/win32ole/win32ole_param/shared/name.rb:16 Comments: trailing of `'`: # note the capitalization
+  UNEXPLAINED optional/capi/encoding_spec.rb:69 Comments: trailing of `'`: # Each codepoint in this string is 3 bytes in UTF-8
+  UNEXPLAINED optional/capi/spec_helper.rb:47 Comments: trailing of `case`: # if lib is older than headers, source or libruby, then reco
+offenses: 78 listed, 27 unexplained layout, 31 unexplained comments, 0 stale
 
 ======================================================================
   ruby-spec
 ----------------------------------------------------------------------
-  meaning     8 files refused: formatting would have changed the AST
+  meaning     0 files refused: formatting would have changed the AST
   parse       4441 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
-  idempotent  1 files change on a second format
+  idempotent  0 files change on a second format
   comments    4067 total, 32 displaced
-  layout      427 offenses across 24 distinct cops
-  linelength: 313 over 120, 299 unsplittable, 14 breakable
+  layout      409 offenses across 16 distinct cops
+  linelength: 331 over 120, 327 unsplittable, 4 breakable
+----------------------------------------------------------------------
+  UNEXPLAINED 31 layout (LineLength breakable included), 31 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/ruby-spec/verify for inspection.
 Report saved to scripts/results/ruby-spec-format-verify.txt
-
-Meaning changes are the highest-priority failures: tuxedo's output was a
-different program. The files were left untouched, but each one is a bug.

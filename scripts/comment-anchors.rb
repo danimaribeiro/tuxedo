@@ -22,7 +22,10 @@
 #     of the file is "dangling", anchored to that closer.
 #
 # A comment is displaced when its (kind, text, anchor) triple exists in the
-# source and not in the formatted output. Whitespace, line breaks and the
+# source and not in the formatted output. One exception: an own-line comment
+# above `x if cond` that the formatter turned into the block form
+# (`if cond` / `x` / `end`) is still directly above the same statement, but
+# its anchor is now `if`, so that anchor is accepted for it too. Whitespace, line breaks and the
 # `#foo` -> `# foo` normalization never change a triple, so reformatting
 # code around a comment is free; only moving it is counted.
 
@@ -72,6 +75,7 @@ total = 0
 displaced = []
 # Mirrors the matcher in src/walk.rs: every file tuxedo formats, not just
 # the ones named *.rb.
+MODIFIER_BLOCK_ANCHORS = %w[if unless].freeze
 RUBY_GLOBS = ["**/*.rb", "**/*.rake", "**/*.gemspec", "**/*.ru", "**/Rakefile", "**/Gemfile"].freeze
 
 RUBY_GLOBS.flat_map { |glob| Dir.glob(glob, base: source_dir) }.uniq.sort.each do |rel|
@@ -88,6 +92,8 @@ RUBY_GLOBS.flat_map { |glob| Dir.glob(glob, base: source_dir) }.uniq.sort.each d
     key = [a.kind, a.text, a.anchor]
     if remaining.fetch(key, 0).positive?
       remaining[key] -= 1
+    elsif a.kind == :leading && (block_form = MODIFIER_BLOCK_ANCHORS.find { |k| remaining.fetch([a.kind, a.text, k], 0).positive? })
+      remaining[[a.kind, a.text, block_form]] -= 1
     else
       displaced << [rel, a]
     end

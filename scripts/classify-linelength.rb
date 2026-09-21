@@ -182,7 +182,8 @@ def bare_call_pinning_first_argument(node, lineno, line)
 
   first = node.arguments&.arguments&.first
   first = first.elements.first if first.is_a?(Prism::KeywordHashNode)
-  return unless first && pinned_argument?(first) && first.location.end_line == lineno
+  return unless first && pinned_argument?(first)
+  return unless first.location.end_line == lineno || (first.is_a?(Prism::AssocNode) && call_head_end(first.value))
 
   end_column = first.location.end_column
   end_column = call_head_end(first.value) || end_column if first.is_a?(Prism::AssocNode)
@@ -222,6 +223,15 @@ def write_value(node)
         node.arguments&.arguments&.size == 1
     node.arguments.arguments.first
   end
+end
+
+# Whether an implicit concatenation (`"a" "b"`, `"a" \\`) starts on this line.
+def implicit_concatenation_at?(node, lineno)
+  return false unless node.is_a?(Prism::Node)
+  return true if node.is_a?(Prism::InterpolatedStringNode) && node.opening_loc.nil? &&
+                 node.location.start_line == lineno
+
+  node.compact_child_nodes.any? { |child| implicit_concatenation_at?(child, lineno) }
 end
 
 def widest_atom(node, lineno, line_length, best, line = "")
@@ -400,6 +410,7 @@ files.each do |path|
       offenses << Offense.new(rel, lineno, line.length, limit + 1, "TrailingComment", line.length)
       next
     end
+    atom = "ImplicitConcatenation" if implicit_concatenation_at?(result.value, lineno)
     comments.fetch(lineno, []).each do |comment|
       cw = comment.location.end_column - comment.location.start_column
       width, atom = cw, "Comment" if cw > width
@@ -410,7 +421,11 @@ files.each do |path|
   end
 end
 
-unsplittable, breakable = offenses.partition { |o| o.best > limit }
+# Kinds tuxedo leaves alone whatever the room: the first fragment of an
+# implicit concatenation stays after the `=` it follows, because moving it
+# would leave its continuation lines at an indent nothing else uses.
+ALWAYS_PINNED = %w[ImplicitConcatenation].freeze
+unsplittable, breakable = offenses.partition { |o| o.best > limit || ALWAYS_PINNED.include?(o.atom) }
 
 # In --sites mode the caller already knows the total and is relying on this
 # split to account for it, so a site that produced no verdict -- a file

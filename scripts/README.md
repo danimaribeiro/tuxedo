@@ -63,6 +63,23 @@ Checks five properties that must hold regardless of RuboCop, as ratchets
    tuxedo's own output, against `scripts/format-verify.rubocop.yml` (which
    encodes tuxedo's own target layout, not RuboCop's stock defaults).
 
+### Explained and unexplained
+
+Counting every offense in one lump hides which ones are decisions. The
+verify run therefore ends on **UNEXPLAINED**: the layout offenses and
+displaced comments that no rule in `verify-accepted.tsv` covers, plus the
+`Layout/LineLength` lines tuxedo could have broken and did not. That is the
+number to drive to zero; the accepted ones are listed above it, each with the
+reason from the file.
+
+- `verify-accepted.tsv` is the list: one rule per line, with the cop (or
+  `Comments`), how many source lines above the offense to look at, a regexp,
+  the reason, and the project on which the rule is checked for staleness. A
+  rule that matches nothing on its witness project is reported `STALE`.
+- `classify-offenses.rb` applies it.
+- `classify-linelength.rb` handles `Layout/LineLength`, where whether a line
+  can be shortened depends on the syntax around it, not a line's text.
+
 ## lint-baseline.sh \<project\>
 
 Formats the project with tuxedo, then runs full RuboCop (not just Layout)
