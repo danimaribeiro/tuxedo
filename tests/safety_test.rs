@@ -104,6 +104,14 @@ fn a_vim_modeline_encoding_directive_is_a_magic_comment() {
 }
 
 #[test]
+fn a_comment_after_a_heredoc_opening_tag_stays_on_that_line() {
+    assert_unchanged(
+        "foo do\n  eval <<-RUBY, binding, __FILE__, __LINE__ + 1 # why\n  puts 1\n  RUBY\nend\n",
+    );
+    assert_unchanged("x = <<~SQL # why\n  select 1\nSQL\ny = 2\n");
+}
+
+#[test]
 fn squiggly_heredoc_starting_with_interpolation_keeps_its_margin() {
     assert_unchanged("x = <<~MSG\n  #{a} one\n    two\nMSG\n");
     assert_unchanged("foo(<<~A, <<~B)\n  #{a}\n   x\nA\n    #{b}\n  y\nB\n");
