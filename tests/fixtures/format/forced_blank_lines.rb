@@ -26,3 +26,7 @@ def guard_example
 
   do_stuff
 end
+
+# vim: set fileencoding=big5:
+
+puts 1

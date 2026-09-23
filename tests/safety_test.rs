@@ -97,6 +97,13 @@ fn unary_operator_method_names() {
 }
 
 #[test]
+fn a_vim_modeline_encoding_directive_is_a_magic_comment() {
+    assert_unchanged("# vim: set fileencoding=big5:\n\nputs 1\n");
+    assert_unchanged("# vim: filetype=ruby, encoding=utf-8, ts=2\n\nputs 1\n");
+    assert_unchanged("# vim: set ft=ruby ts=2 sw=2:\nputs 1\n");
+}
+
+#[test]
 fn squiggly_heredoc_starting_with_interpolation_keeps_its_margin() {
     assert_unchanged("x = <<~MSG\n  #{a} one\n    two\nMSG\n");
     assert_unchanged("foo(<<~A, <<~B)\n  #{a}\n   x\nA\n    #{b}\n  y\nB\n");

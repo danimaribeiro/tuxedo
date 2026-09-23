@@ -48,8 +48,26 @@ fn is_attr_accessor_call(node: &ruby_prism::Node<'_>) -> bool {
 /// ...) -- Layout/EmptyLineAfterMagicComment wants a blank line separating
 /// the last of a run of these from whatever follows, since they're
 /// interpreter directives rather than documentation for the code below.
+///
+/// A Vim modeline (`# vim: set fileencoding=big5:`) is a fourth spelling
+/// MRI itself recognizes for the encoding directive, alongside the plain
+/// and Emacs (`-*- ... -*-`) forms below -- editors read the rest of the
+/// `key=value` list too, but only the encoding keys change how the parser
+/// itself reads the file.
 fn is_magic_comment(text: &str) -> bool {
     let inner = text.trim_start_matches('#').trim();
+
+    if let Some(rest) = inner
+        .strip_prefix("vim:")
+        .or_else(|| inner.strip_prefix("vi:"))
+    {
+        let rest = rest.strip_prefix("set ").unwrap_or(rest);
+        return rest
+            .split([':', ' ', ','])
+            .filter_map(|pair| pair.split_once('='))
+            .any(|(key, _)| matches!(key.trim(), "fileencoding" | "encoding"));
+    }
+
     let inner = inner.strip_prefix("-*-").map(str::trim).unwrap_or(inner);
     let inner = inner.strip_suffix("-*-").map(str::trim).unwrap_or(inner);
     let Some((key, _)) = inner.split_once(':') else {
