@@ -50,6 +50,13 @@ prev_configs, ActiveRecord::Base.configurations = ActiveRecord::Base.configurati
   "arunit" => { "primary" => { "adapter" => "sqlite3" } }
 }
 
+# A value that is not the last one on a bare comma-joined line stays flat
+# even past the limit -- it shares its line with a tail it cannot shorten
+# by breaking, only reflow. The last value here is an unsplittable string,
+# so the line's only room to give is between the values, one per line.
+old_value, ENV["HTTP_ACCEPT"] = ENV["HTTP_ACCEPT"],
+  "text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5"
+
 def long_values
   expected =
     "ALTER TABLE `people` ADD `last_name` varchar(255), ADD `first_name` varchar(255), ALGORITHM = INPLACE, LOCK = NONE"

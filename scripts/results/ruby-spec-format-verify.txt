@@ -20,13 +20,13 @@ Running tuxedo format...
   7    Layout/SpaceAroundBlockParameters [Safe Correctable]
   3    Layout/EmptyComment [Safe Correctable]
   3    Layout/FirstArrayElementLineBreak [Safe Correctable]
-  3    Layout/MultilineArrayLineBreaks [Safe Correctable]
   2    Layout/EmptyLineAfterMagicComment [Safe Correctable]
   1    Layout/DefEndAlignment [Safe Correctable]
   1    Layout/EmptyLineAfterGuardClause [Safe Correctable]
   1    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
   1    Layout/FirstArgumentIndentation [Safe Correctable]
   1    Layout/MultilineArrayBraceLayout [Safe Correctable]
+  1    Layout/MultilineArrayLineBreaks [Safe Correctable]
   1    Layout/MultilineOperationIndentation [Safe Correctable]
 
 Accepted (scripts/verify-accepted.tsv) and unexplained:
@@ -40,14 +40,13 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   accepted   12  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
   accepted    1  Layout/FirstArgumentIndentation          an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one
   accepted    1  Layout/FirstArrayElementLineBreak        a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees
-  accepted    2  Layout/FirstArrayElementLineBreak        a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed
+  accepted    2  Layout/FirstArrayElementLineBreak        a bare assignment RHS's first value stays on the line the assignment began on, like a bare command argument list's does
   accepted   32  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
   accepted    1  Layout/MultilineArrayBraceLayout         a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees
   accepted    1  Layout/MultilineArrayLineBreaks          a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees
-  accepted    2  Layout/MultilineArrayLineBreaks          a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed
   accepted    1  Layout/MultilineOperationIndentation     a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses
   accepted    7  Layout/SpaceAroundBlockParameters        a block-local variable list is spaced like every other separator, not held to the no-space-inside-pipes style
-offenses: 76 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
+offenses: 74 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
 
 ======================================================================
   ruby-spec
@@ -56,7 +55,7 @@ offenses: 76 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
   parse       4441 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    4067 total, 1 displaced
-  layout      407 offenses across 15 distinct cops
+  layout      405 offenses across 15 distinct cops
   linelength: 331 over 120, 331 unsplittable, 0 breakable
 ----------------------------------------------------------------------
   UNEXPLAINED 0 layout (LineLength breakable included), 0 comments; 0 stale rules

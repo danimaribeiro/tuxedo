@@ -1357,12 +1357,10 @@ impl Formatter {
             }
         }
         self.indent -= 1;
-        // The first argument continues the call line and stays outside the
-        // indent, so a collection of its own that wraps keeps the
-        // statement's indent.
-        Doc::text(" ")
-            .append(first)
-            .append(rest.indent(self.indent_str.len()))
+        // The first argument continues the line before it and stays
+        // outside the indent, so a collection of its own that wraps keeps
+        // the statement's indent.
+        first.append(rest.indent(self.indent_str.len()))
     }
 
     /// `items` one per line, comma-separated.
@@ -1371,27 +1369,23 @@ impl Formatter {
         Doc::join(leaves, Doc::text(",").append(Doc::hardline()))
     }
 
-    /// The expanded shape of a bare command argument list: the first
-    /// argument stays on the call line, every later one starts a line of
-    /// its own at one indent. Ruby has no paren-less way to put the first
+    /// The expanded shape of a bare comma-joined list: the first item
+    /// stays on the line before it, every later one starts a line of its
+    /// own at one indent. Ruby has no paren-less way to put the first
     /// argument on a new line, and Tuxedo does not rewrite command style
     /// into a parenthesized call.
     fn expanded_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
         self.indent += 1;
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         self.indent -= 1;
-        Doc::text(" ").append(Self::bare_args_body_doc(
-            leaves,
-            Doc::hardline(),
-            self.indent_str.len(),
-        ))
+        Self::bare_args_body_doc(leaves, Doc::hardline(), self.indent_str.len())
     }
 
-    /// `a, b, c` for a bare command list, with `separator` after each
-    /// comma: the first argument carries no line point in front of it (it
-    /// continues the call line) and is left outside the `indent`, so a
-    /// collection of its own that wraps keeps the statement's indent the
-    /// way the string emitter gave it.
+    /// `a, b, c` for a bare comma-joined list, with `separator` after each
+    /// comma: the first item carries no line point in front of it (it
+    /// continues whatever line it started on) and is left outside the
+    /// `indent`, so a collection of its own that wraps keeps the
+    /// statement's indent the way the string emitter gave it.
     fn bare_args_body_doc(leaves: Vec<Doc>, separator: Doc, nest_width: usize) -> Doc {
         let mut leaves = leaves.into_iter();
         let first = leaves.next().unwrap_or_else(Doc::nil);
@@ -1474,7 +1468,7 @@ impl Formatter {
         }
 
         if !parenthesized && items.len() > 1 && !self.single_line {
-            return self.bare_args_doc(&items);
+            return Doc::text(" ").append(self.bare_args_doc(&items));
         }
 
         // A single bare argument, an empty `()`, or a list being forced
@@ -1494,12 +1488,14 @@ impl Formatter {
         self.end_run(run)
     }
 
-    /// A bare command argument list as one all-or-nothing group. An
-    /// argument that is already multi-line (a `do...end` block call, a
-    /// collection that has to expand) leaves no flat form to choose, so
-    /// the expanded shape is built directly -- the same two-step
-    /// `bracketed_items_doc` takes, and for the same reason: such an
-    /// argument is still an opaque text leaf that the printer would
+    /// A bare comma-joined list as one all-or-nothing group, with no
+    /// separator of its own in front of the first item -- the caller
+    /// supplies whatever belongs there (a command call's space, an
+    /// assignment's ` = `). An item that is already multi-line (a
+    /// `do...end` block call, a collection that has to expand) leaves no
+    /// flat form to choose, so the expanded shape is built directly -- the
+    /// same two-step `bracketed_items_doc` takes, and for the same reason:
+    /// such an item is still an opaque text leaf that the printer would
     /// measure as one long line.
     fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
         // Only a comment *between* arguments needs this shape; one inside
@@ -1518,13 +1514,7 @@ impl Formatter {
             self.restore_render_snapshot(snap);
             return self.expanded_bare_args_doc(items);
         }
-        Doc::text(" ")
-            .append(Self::bare_args_body_doc(
-                leaves,
-                Doc::line(),
-                self.indent_str.len(),
-            ))
-            .group()
+        Self::bare_args_body_doc(leaves, Doc::line(), self.indent_str.len()).group()
     }
 
     /// Writes a leaf/literal node (a symbol, a literal, a variable read, ...)

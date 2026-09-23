@@ -78,14 +78,15 @@ Layout/EmptyLinesAroundAccessModifier	0	\{\s*(private|protected|public|module_fu
 Layout/FirstArrayElementLineBreak	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
 Layout/MultilineArrayLineBreaks	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
 Layout/MultilineArrayBraceLayout	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
-# `old_value, ENV["K"] = ENV["K"], "very long string"`: a bare multiple
-# -assignment RHS is meant to never expand (`src/format/collections.rs`,
-# `fmt_array_node`), but its first value's own group still measures against
-# the rest of the line and breaks -- uselessly, since the unsplittable
-# string after it is what overflows either way. A real bug, not a choice;
-# tracked to fix so the break stops happening rather than to keep matching
-# RuboCop's want for one value per line.
-Layout/FirstArrayElementLineBreak	0	,\s*\S+\s*=\s*\S+\[$	a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed	ruby-spec
-Layout/MultilineArrayLineBreaks	2	,\s*[\w.\[\]"'\s]+=\s*[\w.\[\]"'\s]+,	a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed	ruby-spec
+# `old_value, ENV["K"] = ENV["K"], "very long string"`, `git_args =
+# Utils::Git.git, "-C", ...`: a value written `x = a, b, c` has no bracket
+# of its own to expand into, so when it does not fit tuxedo gives it the
+# same shape a bare command argument list already gets (`bare_args_doc`)
+# -- the first value continues the line the assignment began on, every
+# later one gets its own line. RuboCop reads the bare RHS as an array and
+# wants a line break before the first element too; tuxedo keeps it
+# attached on purpose, the way renaming or dropping the last value never
+# reflows the first.
+Layout/FirstArrayElementLineBreak	0	=\s*(?!["'\[({])\S.*,$	a bare assignment RHS's first value stays on the line the assignment began on, like a bare command argument list's does	ruby-spec
 # --- Comments that move on purpose ---
 Comments	0	trailing of `end`: 	`def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct	rails

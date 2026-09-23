@@ -1,5 +1,5 @@
 use super::doc::Doc;
-use super::{Formatter, bytes_doc};
+use super::{Formatter, bytes_doc, is_indivisible};
 use crate::config::HashBraceSpace;
 
 impl Formatter {
@@ -35,22 +35,43 @@ impl Formatter {
 
         let bracketed = opening.is_some();
 
-        // An array with no brackets of its own (`return 1, 2`, the right
-        // -hand side of `a, b = 1, 2`) has nothing to expand into, and an
-        // empty one has nothing to expand.
-        if !bracketed || elements.is_empty() {
-            let mut run = self.begin_run();
-            if bracketed {
-                self.run_text(&mut run, "[");
+        // An empty bracketed array has nothing to expand.
+        if bracketed && elements.is_empty() {
+            return Doc::text("[]");
+        }
+
+        // An array with no brackets of its own -- the right-hand side of
+        // `a, b = 1, 2` -- has no bracket to expand *into*. When the last
+        // value has somewhere to break inside itself (a call, a hash, a
+        // collection), that is where the line's own room to give is, and
+        // it stays where it is and breaks in place, the way any assigned
+        // value does. Only when the last value is indivisible -- nothing
+        // in it for a break to land on, the way a bare string or number
+        // never breaks -- is the comma-joined list itself given somewhere
+        // to break: the same all-or-nothing group a bare command argument
+        // list already gets (`bare_args_doc`), first value on the line it
+        // started, every later one at one indent.
+        if !bracketed {
+            let last = elements.len().saturating_sub(1);
+            if elements.len() > 1
+                && !self.single_line
+                && elements.last().is_some_and(is_indivisible)
+            {
+                return self.bare_args_doc(&elements);
             }
+            let mut run = self.begin_run();
             for (i, element) in elements.iter().enumerate() {
                 if i > 0 {
                     self.run_text(&mut run, ", ");
                 }
-                self.run_node(&mut run, element);
-            }
-            if bracketed {
-                self.run_text(&mut run, "]");
+                // A value that isn't the last shares its line with
+                // whatever follows it, and that tail is the comma-joined
+                // run's to shorten, not this element's -- so a break
+                // inside a non-last value never buys the line anything,
+                // only a needless reflow of an otherwise-fine expression.
+                let doc = self.node_doc(element);
+                let doc = if i < last { doc.flat() } else { doc };
+                run.leaves.push(doc);
             }
             return self.end_run(run);
         }
