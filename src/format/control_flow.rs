@@ -336,6 +336,15 @@ impl Formatter {
         }
 
         if !has_keyword {
+            // An empty implicit body (`def foo\nrescue\nend`) has nothing
+            // of its own to draw a line break for: `clauses` already opens
+            // on one (its `clause_separator`), which is this returned
+            // doc's first break. Telling the caller so keeps it from
+            // adding a second one before it, which would print a line
+            // with nothing on it but its own indent.
+            if !has_statements && !single_line {
+                self.body_owns_first_break = true;
+            }
             return body.append(if single_line {
                 clauses
             } else {
@@ -349,7 +358,12 @@ impl Formatter {
                 .append(Doc::text("; end"));
         }
         let doc = Doc::text("begin").append(header_comment.unwrap_or_else(Doc::nil));
-        doc.append(Doc::hardline().append(body).indent(nest))
+        let body_doc = if has_statements {
+            Doc::hardline().append(body).indent(nest)
+        } else {
+            Doc::nil()
+        };
+        doc.append(body_doc)
             .append(clauses)
             .append(Doc::hardline())
             .append(Doc::text("end"))

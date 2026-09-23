@@ -39,6 +39,14 @@ fn nodes_without_a_formatter_are_copied_through() {
 }
 
 #[test]
+fn a_clause_after_an_empty_body_has_no_line_to_itself() {
+    assert_unchanged("begin\nend\n");
+    assert_unchanged("def foo\nrescue\nend\n");
+    assert_unchanged("def foo\nensure\n  cleanup\nend\n");
+    assert_unchanged("proc do\nrescue\nend\n");
+}
+
+#[test]
 fn implicit_block_parameters() {
     assert_unchanged("x.map { it * 2 }\n");
     assert_unchanged("x.map { _1 * 2 }\n");

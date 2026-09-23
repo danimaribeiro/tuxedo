@@ -37,3 +37,16 @@ foo {
     errors << e
   end
 }
+
+def empty_rescue
+rescue
+end
+
+def empty_ensure
+ensure
+  cleanup
+end
+
+begin
+rescue
+end
