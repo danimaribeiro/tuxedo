@@ -48,3 +48,10 @@ class A
       o
     end
 end
+
+case status # comes from the queue, not user input
+when :ok
+  1
+when :error
+  2
+end

@@ -527,6 +527,7 @@ impl Formatter {
         let predicate = node.predicate();
         self.case_doc(
             predicate,
+            node.case_keyword_loc().end_offset(),
             node.conditions().iter().collect(),
             node.else_clause().map(|e| e.as_node()),
             node.else_clause().map(|e| e.location().start_offset()),
@@ -543,6 +544,7 @@ impl Formatter {
         let predicate = node.predicate();
         self.case_doc(
             predicate,
+            node.case_keyword_loc().end_offset(),
             node.conditions().iter().collect(),
             node.else_clause().map(|e| e.as_node()),
             node.else_clause().map(|e| e.location().start_offset()),
@@ -563,6 +565,7 @@ impl Formatter {
     fn case_doc(
         &mut self,
         predicate: Option<ruby_prism::Node<'_>>,
+        keyword_end: usize,
         clauses: Vec<ruby_prism::Node<'_>>,
         else_clause: Option<ruby_prism::Node<'_>>,
         else_offset: Option<usize>,
@@ -570,8 +573,17 @@ impl Formatter {
     ) -> Doc {
         let single_line = self.single_line;
         let mut doc = Doc::text("case");
-        if let Some(predicate) = predicate {
-            doc = doc.append(Doc::text(" ")).append(self.node_doc(&predicate));
+        let header_end = match &predicate {
+            Some(predicate) => {
+                doc = doc.append(Doc::text(" ")).append(self.node_doc(predicate));
+                predicate.location().end_offset()
+            }
+            None => keyword_end,
+        };
+        // `case # why` -- a comment written on the `case`/predicate line
+        // itself stays there, same as every other clause header.
+        if !single_line && let Some(comment) = self.trailing_comment_doc(self.line_of(header_end)) {
+            doc = doc.append(comment);
         }
 
         // A comment between `case x` and the first clause goes above that
