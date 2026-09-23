@@ -44,6 +44,14 @@ def normalize(text)
   "# #{text[1..]}"
 end
 
+# A plain string literal's opening/closing delimiter is a bare `'` or `"`
+# by itself -- Style/StringLiterals rewrites one into the other, so a
+# comment that stayed on the very same string would otherwise look
+# displaced for no reason but its quote character.
+def anchor_value(token)
+  token.value == "'" || token.value == '"' ? "<quote>" : token.value
+end
+
 def anchors(path)
   result = Prism.lex(File.read(path))
   return nil unless result.success?
@@ -58,10 +66,10 @@ def anchors(path)
       !%i[NEWLINE IGNORED_NEWLINE COMMENT].include?(before.type)
 
     if trailing
-      Anchor.new(:trailing, normalize(token.value), before.value, line)
+      Anchor.new(:trailing, normalize(token.value), anchor_value(before), line)
     else
       after = tokens[(index + 1)..].find { |t| !SKIPPED_AFTER.include?(t.type) }
-      value = after.nil? || after.type == :EOF ? "<eof>" : after.value
+      value = after.nil? || after.type == :EOF ? "<eof>" : anchor_value(after)
       Anchor.new(:leading, normalize(token.value), value, line)
     end
   end

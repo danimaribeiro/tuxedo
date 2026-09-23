@@ -24,21 +24,63 @@
 # written to allow.
 #
 # --- A keyword used as a value ---
-# `x || if c ... end`, `(class << x ... end)`, `meta = class << x`: RuboCop has
-# no style that puts `else`/`end` at the statement's indent, and tuxedo keeps
-# them there (see format-verify.rubocop.yml). Covers the alignment and
-# indentation cops that follow from it. (`when` and `begin`/`end` have the same
-# disagreement and no instance on rails; add one when a project has it.)
-Layout/IndentationWidth	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword	rails
-Layout/EndAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps its `end` at the statement's indent	rails
-Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
+# `x || if c ... end`, `(class << x ... end)`, `meta = class << x`,
+# `defined?(while x ... end)`: RuboCop has no style that puts `else`/`end` at
+# the statement's indent, and tuxedo keeps them there (see
+# format-verify.rubocop.yml). Covers the alignment and indentation cops that
+# follow from it. (`when` and `begin`/`end` have the same disagreement and no
+# instance on rails; add one when a project has it.)
+Layout/IndentationWidth	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword	rails
+Layout/EndAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its `end` at the statement's indent	rails
+Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
+# `method_name = def some_method\nend`: same disagreement, `def`'s own
+# alignment cop.
+Layout/DefEndAlignment	4	(\|\||&&|<<|=|\()\s*def\b	a `def` used as a value keeps its `end` at the statement's indent	ruby-spec
 # --- Text that is not the formatter's ---
 Layout/SpaceInsidePercentLiteralDelimiters	0	%x\(	the content of `%x( )` is a shell command, copied verbatim	rails
 Layout/ExtraSpacing	0	@heredoc	the body of a heredoc is data, not code	rails
 Layout/EmptyComment	0	^\s*#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails
 # --- Layouts that follow from block indentation ---
 Layout/HashAlignment	3	\byield\s+\w+:	the keys of a braceless hash after `yield` continue at a fixed indent from the statement, not under the first key	rails
-Layout/FirstArgumentIndentation	4	^\s*/[imx]*\.\w+\($	an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one	rails
+Layout/FirstArgumentIndentation	4	/[a-zA-Z]*\.\w+\($	an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one	rails
 Layout/MultilineOperationIndentation	4	\b(if|unless|while|until)\b[^\n]*\{\s*\|[^\n]*\|\s*$	the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition	rails
+# A modifier `while`/`until` whose condition wraps at an operator (the
+# condition itself, not a block, is what's too long): the continuation gets
+# the statement's normal single indent step, the fixed-indent rule this
+# project applies everywhere, not RuboCop's doubled indent for a continued
+# expression.
+Layout/MultilineOperationIndentation	1	\b(while|until)\b[^\n]*(!=|==|[<>+\-*\/]=?)\s*\n	a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses	ruby-spec
+# `do |; c|`, `{ |; c| c }`: a block-local variable list gets the same space
+# after `;` that every other list separator gets (`, `, `; ` between
+# statements). RuboCop's no-space-inside-pipes style reads the semicolon as
+# part of the parameter list it doesn't want touched.
+Layout/SpaceAroundBlockParameters	0	\|;\s	a block-local variable list is spaced like every other separator, not held to the no-space-inside-pipes style	ruby-spec
+# `if cond\n  break\nelse\n  break\nend`: every branch is a jump statement, so
+# nothing here falls through either way, but it is still a real two-way
+# branch (property 1 forbids treating one arm as more "guarded" than the
+# other) -- Tuxedo's guard clause is the narrower, single-branch case.
+Layout/EmptyLineAfterGuardClause	4	\bif\b[^\n]*\n\s*(break|next|return|redo|retry)\b[^\n]*\n\s*else\b[^\n]*\n\s*(break|next|return|redo|retry)\b	an if/else where every branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after	ruby-spec
+# `module_eval { module_function }`: the access modifier is the sole
+# statement of a one-line block, which has no line of its own to put a
+# blank line before or after.
+Layout/EmptyLinesAroundAccessModifier	0	\{\s*(private|protected|public|module_function)\s*\}	a bare access modifier that is the whole body of a single-line block has no line to put a blank line around	ruby-spec
+# `%w(a b\` + a literal newline + `c d)`: the word list's own backslash
+# continuation puts real source lines between the array's opening `%w(` and
+# the code that follows it on the statement's last line. RuboCop's line
+# math for these three cops reads that as the following bracketed array
+# being multi-line; the array itself (`["a", "b\nc", "d"]`) is written on
+# one line, and splitting the %w list would change the string it produces.
+Layout/FirstArrayElementLineBreak	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
+Layout/MultilineArrayLineBreaks	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
+Layout/MultilineArrayBraceLayout	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees	ruby-spec
+# `old_value, ENV["K"] = ENV["K"], "very long string"`: a bare multiple
+# -assignment RHS is meant to never expand (`src/format/collections.rs`,
+# `fmt_array_node`), but its first value's own group still measures against
+# the rest of the line and breaks -- uselessly, since the unsplittable
+# string after it is what overflows either way. A real bug, not a choice;
+# tracked to fix so the break stops happening rather than to keep matching
+# RuboCop's want for one value per line.
+Layout/FirstArrayElementLineBreak	0	,\s*\S+\s*=\s*\S+\[$	a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed	ruby-spec
+Layout/MultilineArrayLineBreaks	2	,\s*[\w.\[\]"'\s]+=\s*[\w.\[\]"'\s]+,	a bare multi-assignment value breaks to try to fit a line only a later, unsplittable value overflows -- known bug, not yet fixed	ruby-spec
 # --- Comments that move on purpose ---
 Comments	0	trailing of `end`: 	`def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct	rails
