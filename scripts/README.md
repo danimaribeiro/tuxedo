@@ -10,6 +10,26 @@ git clone --depth 1 https://github.com/rails/rails test-projects/rails/source
 
 `test-projects/` is gitignored; nothing under it is part of this repo.
 
+Five projects currently have a `scripts/results/` baseline, chosen for
+different shapes so two meaning/parse regressions in a row on the same
+kind of code don't read as a clean bill of health:
+
+- `rails` (`rails/rails`) and `thor` (`rails/thor`) — framework-style code
+  in one house style. CLAUDE.md's "Measuring a change" recipe runs against
+  these two for every layout change; they're small enough for that to stay
+  fast.
+- `ruby-spec` (`ruby/spec`) — block-heavy specs, `it`/pattern-matching
+  density.
+- `discourse` (`discourse/discourse`) — a large application: ERB-heavy,
+  DSL-heavy, hand-aligned tables.
+- `homebrew` (`Homebrew/brew`) — a large CLI codebase with its own
+  formatting conventions.
+
+The last two are not part of the required recipe (`format-verify.sh
+discourse` alone takes minutes); they're run when triaging a specific
+backlog (see #145, #146) or hunting a regression the smaller two didn't
+surface.
+
 The scripts need `ruby` and `rubocop` on `PATH`. If the shell has neither,
 they are under mise: `mise exec ruby -- scripts/format-verify.sh rails`, or
 put `~/.local/share/mise/installs/ruby/<version>/bin` first on `PATH`.
