@@ -104,6 +104,14 @@ fn a_vim_modeline_encoding_directive_is_a_magic_comment() {
 }
 
 #[test]
+fn a_trailing_comment_on_a_semicolon_joined_line_stays_on_the_last_statement() {
+    assert_eq!(
+        format("io.getch; io.pos.should == 1 # why\n"),
+        "io.getch\nio.pos.should == 1 # why\n"
+    );
+}
+
+#[test]
 fn a_comment_after_a_heredoc_opening_tag_stays_on_that_line() {
     assert_unchanged(
         "foo do\n  eval <<-RUBY, binding, __FILE__, __LINE__ + 1 # why\n  puts 1\n  RUBY\nend\n",

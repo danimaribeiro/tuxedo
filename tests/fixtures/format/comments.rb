@@ -55,3 +55,6 @@ when :ok
 when :error
   2
 end
+
+io.getch
+io.pos.should == 1 # trails the second statement, not the first

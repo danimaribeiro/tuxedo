@@ -218,7 +218,17 @@ impl Formatter {
         // starts before it was copied through with the rest.
         let mut region_end = 0;
 
-        for stmt in node.body().iter() {
+        // The start line of each statement, one ahead of the main loop
+        // below: cheap enough to precompute, and it lets a statement check
+        // whether the next one shares its line without needing to hold a
+        // whole extra `Node`.
+        let start_lines: Vec<usize> = node
+            .body()
+            .iter()
+            .map(|s| self.line_of(s.location().start_offset()))
+            .collect();
+
+        for (index, stmt) in node.body().iter().enumerate() {
             if stmt.location().start_offset() < region_end {
                 prev_stmt = Some(stmt);
                 continue;
@@ -293,7 +303,15 @@ impl Formatter {
             // line below is folded in to extend the statement for blank
             // -line and next-statement purposes.
             let mut end_line = self.line_of(stmt.location().end_offset().saturating_sub(1));
-            if let Some(comment) = self.trailing_comment_doc(end_line) {
+            // A `;`-joined line (`a; b # why`) puts more than one statement
+            // on `end_line`; only the last one is actually next to the
+            // comment; an earlier one that also checked by line number
+            // alone would claim it first and leave it on the wrong
+            // statement once each gets its own line.
+            let last_on_line = start_lines
+                .get(index + 1)
+                .is_none_or(|&next| next != end_line);
+            if last_on_line && let Some(comment) = self.trailing_comment_doc(end_line) {
                 leaf = leaf.append(comment);
             }
             if let Some(heredoc_line) = self.heredoc_end_line.take() {
