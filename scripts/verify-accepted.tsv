@@ -37,6 +37,11 @@ Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|cl
 # alignment cop.
 Layout/DefEndAlignment	4	(\|\||&&|<<|=|\()\s*def\b	a `def` used as a value keeps its `end` at the statement's indent	ruby-spec
 # --- Text that is not the formatter's ---
+# `# encoding: big5`, `# -*- encoding: iso-8859-9 -*-`: the file itself isn't
+# valid UTF-8, so tuxedo refuses it and copies it through untouched --
+# nothing it could insert a blank line into without deciding an encoding
+# that isn't its call to make.
+Layout/EmptyLineAfterMagicComment	1	coding:\s*(?!utf|us-ascii|ascii)\S+	a magic comment naming a non-UTF-8 encoding means the file itself isn't UTF-8, and tuxedo refuses to touch a file it can't safely read	ruby-spec
 Layout/SpaceInsidePercentLiteralDelimiters	0	%x\(	the content of `%x( )` is a shell command, copied verbatim	rails
 Layout/ExtraSpacing	0	@heredoc	the body of a heredoc is data, not code	rails
 Layout/EmptyComment	0	^\s*#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails

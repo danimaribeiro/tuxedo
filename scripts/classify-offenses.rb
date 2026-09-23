@@ -60,7 +60,11 @@ matches = lambda do |rule, text, path, lineno|
   if rule.pattern == "@heredoc"
     heredocs[path].any? { |range| range.cover?(lineno) }
   else
-    Regexp.new(rule.pattern, Regexp::MULTILINE).match?(text)
+    # A file tuxedo refuses for not being valid UTF-8 is still read here
+    # (rubocop can lint text a Ruby string can't hold), and `scrub` keeps a
+    # rule that matches its magic comment from raising on the invalid bytes
+    # elsewhere in its window instead of just not matching them.
+    Regexp.new(rule.pattern, Regexp::MULTILINE).match?(text.scrub)
   end
 end
 

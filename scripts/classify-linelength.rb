@@ -15,10 +15,10 @@
 # tuxedo genuinely fails to break hides the second number behind the first.
 #
 # Every over-long line is measured against its widest *atom* -- a string,
-# regex, symbol or backtick literal, or a comment. The best a formatter can
-# do is stand that atom alone on a line at the statement's own indent; it can
-# nest deeper but never dedent. If the line is still over the limit there,
-# nothing is left to try:
+# regex, symbol or backtick literal, a number, or a comment. The best a
+# formatter can do is stand that atom alone on a line at the statement's own
+# indent; it can nest deeper but never dedent. If the line is still over the
+# limit there, nothing is left to try:
 #
 #   UNSPLITTABLE  indent + widest atom > limit
 #   BREAKABLE     everything else -- a construct tuxedo does not break yet
@@ -54,7 +54,8 @@ ATOMS = [
   Prism::StringNode, Prism::InterpolatedStringNode,
   Prism::RegularExpressionNode, Prism::InterpolatedRegularExpressionNode,
   Prism::SymbolNode, Prism::InterpolatedSymbolNode,
-  Prism::XStringNode, Prism::InterpolatedXStringNode
+  Prism::XStringNode, Prism::InterpolatedXStringNode,
+  Prism::IntegerNode, Prism::FloatNode, Prism::RationalNode, Prism::ImaginaryNode
 ].freeze
 
 # A path of names with no argument list anywhere in it: `Foo::Bar`,
