@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
 
   # NOTE: the platform-specific gems built by rakelib/package.rake add the
   # compiled `exe/<platform>/tuxedo` binary on top of this file list.
-  spec.files = Dir["lib/**/*", "exe/tuxedo", "README.md"]
+  spec.files = Dir["lib/**/*", "exe/tuxedo", "README.md", "LICENSE"]
   spec.bindir = "exe"
   spec.executables << "tuxedo"
   spec.require_paths = ["lib"]
