@@ -1,3 +1,0 @@
-message << "dddddddd" \
-            "dfgdfgd" \
-            "fdfd"
