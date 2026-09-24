@@ -1,3 +1,11 @@
+//! `class`, `module` and `class << self`, and the constant reads and
+//! constant paths (`Foo::Bar`, `::Top`) that name them.
+//!
+//! Each is a header line, a body one indent in, and `end` back at the
+//! header's level. A class body is the one statement list that
+//! `access_modifier_style` applies to, which is why `class_body_doc` tells
+//! the body it is one.
+
 use super::Formatter;
 use super::doc::Doc;
 use crate::config::AccessModifierStyle;
@@ -57,10 +65,9 @@ impl Formatter {
     ) -> Doc {
         let mut run = self.begin_run();
         if let Some(parent) = node.parent() {
-            // The parent is part of this path, not a statement of its
-            // own: as the body of `def f; Thor::DynamicCommand; end` it
-            // once came out as `Thor` on its own line followed by
-            // `::DynamicCommand`, which is still valid Ruby and a
+            // The parent goes into the same run as the name: it is part of
+            // this path, not a statement of its own. `Thor` on one line and
+            // `::DynamicCommand` on the next is still valid Ruby, and a
             // different constant lookup.
             self.run_node(&mut run, &parent);
         }

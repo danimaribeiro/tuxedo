@@ -1,3 +1,7 @@
+//! Reads of local, instance, class and global variables, and `self`.
+//!
+//! Each is its name, copied from source: there is no layout to decide.
+
 use super::Formatter;
 use super::bytes_doc;
 use super::doc::Doc;

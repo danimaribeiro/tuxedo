@@ -9,9 +9,8 @@
 //! two children joined by a fixed separator, so each is an [`InlineRun`]
 //! over `run_node` of its children and carries no line point of its own.
 //! What the `Doc` buys them is their *children*: one that carries line
-//! points (an adjacent-string-literal concatenation, say) is now laid out
-//! by the enclosing group, which can see what precedes it on the line,
-//! instead of being rendered on its own and pasted in.
+//! points (an adjacent-string-literal concatenation, say) is laid out by
+//! the enclosing group, which can see what precedes it on the line.
 //!
 //! [`InlineRun`]: super::InlineRun
 

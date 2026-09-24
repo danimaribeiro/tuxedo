@@ -3,8 +3,8 @@
 //! This is a plain exhaustive `match`, deliberately not an
 //! `impl ruby_prism::Visit`. `Visit`'s default for a node type with no
 //! override is to walk into the children and emit nothing for the node
-//! itself -- which is how `defined?(Foo)` used to come out as `Foo`, and
-//! `undef foo` as `foo`: still valid Ruby, and a different program. With a
+//! itself, so `defined?(Foo)` would come out as `Foo` and `undef foo` as
+//! `foo`: still valid Ruby, and a different program. With a
 //! `match` and no wildcard arm, every node type has to be placed in one of
 //! the three groups below, and a node type added by a future Prism release
 //! is a compile error instead of a silent deletion.

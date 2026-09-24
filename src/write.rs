@@ -1,3 +1,9 @@
+//! Writing a formatted file back: [`write_atomic`].
+//!
+//! The file on disk is usually the only copy of the source it holds, so the
+//! write has to be all or nothing, keep the file's permissions, and be safe
+//! to run from several threads into one directory at once.
+
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};

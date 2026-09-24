@@ -1,3 +1,14 @@
+//! Method calls, and the keywords shaped like them: `super`, `yield`,
+//! `return`, `break` and `next`.
+//!
+//! A call is a receiver, a message, an argument list and maybe a block,
+//! and the argument list follows the all-or-nothing rule of every
+//! bracketed list (`call_args_doc` in `mod.rs`). The rule this file adds
+//! is for method chains: a chain in which at least two links carry
+//! arguments or a block is one group (`try_build_chain_doc`), so it either
+//! fits on its line or breaks before every `.`/`&.`, each link one indent
+//! in from the statement.
+
 use super::Formatter;
 use super::doc::Doc;
 
@@ -192,9 +203,6 @@ impl Formatter {
             1
         };
 
-        // The base stays in `output` while the links are built, so a link's
-        // arguments measure the column the base leaves the line at rather
-        // than column zero.
         let mut run = self.begin_run();
         self.run_node(&mut run, &base);
         // Every link sits one indent level deeper than the statement once
@@ -262,10 +270,6 @@ impl Formatter {
     /// append to the argument list it will share a line with. Nothing when
     /// the call has no block, or carries a block-pass argument (`&:sym`)
     /// in that slot instead.
-    ///
-    /// Building it visits the parameters, which leaves `inline` set, and
-    /// the head built next is laid out as if it had been -- the width
-    /// measurement this replaces did the same.
     fn block_tail_doc(&mut self, block: Option<&ruby_prism::Node<'_>>) -> Doc {
         match block.and_then(|b| b.as_block_node()) {
             Some(block) => self.block_header_doc(&block),

@@ -1,3 +1,15 @@
+//! Conditionals, loops and exception handling: `if`/`unless` in block,
+//! modifier and ternary form, `case/when` and `case/in`, `while`, `until`,
+//! `for`, `begin/rescue/else/ensure`, the `rescue` modifier, `&&`/`||` and
+//! `and`/`or`, and the one-line pattern matches `expr => pattern` and
+//! `expr in pattern`.
+//!
+//! The form a conditional was written in is kept: a modifier stays a
+//! modifier and a ternary a ternary, while a block `if` is always written
+//! out on its lines, even one written as `if a then b end`. Clauses (`elsif`, `else`, `when`, `in`, `rescue`, `ensure`) sit at the
+//! level of the keyword that opened the construct, with their bodies one
+//! indent in; a `when` is not indented from its `case`.
+
 use super::Formatter;
 use super::doc::Doc;
 

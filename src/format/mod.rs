@@ -2,7 +2,7 @@
 //!
 //! # The pipeline
 //!
-//! [`format_with_config`] runs six stages, and there is no output buffer
+//! [`format_with_config`] runs five stages, and there is no output buffer
 //! anywhere in them:
 //!
 //! 1. Parse with `ruby_prism`. Any syntax error is [`FormatError::Syntax`]:
@@ -481,8 +481,8 @@ struct Formatter {
     honored_off: Vec<usize>,
     line_starts: Vec<usize>,
     source: String,
-    /// Verbatim heredoc bodies, indexed by the marker written into
-    /// `output` after each opening tag. See `heredoc_doc` and
+    /// Verbatim heredoc bodies, indexed by the marker `heredoc_doc` puts
+    /// after each opening tag. See `heredoc_doc` and
     /// `splice_heredoc_bodies`.
     pending_heredocs: Vec<PendingHeredoc>,
     /// Source line of the last heredoc terminator emitted. Prism ends a
@@ -1384,8 +1384,8 @@ impl Formatter {
     /// `a, b, c` for a bare comma-joined list, with `separator` after each
     /// comma: the first item carries no line point in front of it (it
     /// continues whatever line it started on) and is left outside the
-    /// `indent`, so a collection of its own that wraps keeps the
-    /// statement's indent the way the string emitter gave it.
+    /// `indent`, so a collection of its own that wraps is indented from the
+    /// statement, not from the column the list starts at.
     fn bare_args_body_doc(leaves: Vec<Doc>, separator: Doc, nest_width: usize) -> Doc {
         let mut leaves = leaves.into_iter();
         let first = leaves.next().unwrap_or_else(Doc::nil);
@@ -1517,11 +1517,6 @@ impl Formatter {
         Self::bare_args_body_doc(leaves, Doc::line(), self.indent_str.len()).group()
     }
 
-    /// Writes a leaf/literal node (a symbol, a literal, a variable read, ...)
-    /// that carries no indentation or newline of its own. Most such nodes
-    /// only ever appear as a sub-expression (inline), but they can also be a
-    /// whole statement on their own (e.g. a bare `true` as a method body),
-    /// in which case they need to behave like any other statement.
     /// True if a string-ish literal's opening delimiter marks a heredoc
     /// (`<<~SQL`, `<<-EOS`, `<<EOS`, `<<'EOS'`) rather than a normal quote.
     fn is_heredoc_opening(opening: &[u8]) -> bool {
@@ -1532,15 +1527,12 @@ impl Formatter {
     /// where it sits, and the body is deferred.
     ///
     /// A heredoc is the one Ruby construct whose text does not live where
-    /// its node sits. `foo(<<~SQL, x)` means "emit `<<~SQL`, keep
-    /// formatting the rest of *this* line, then dump the body on the lines
-    /// that follow". The emitter is otherwise strictly linear, so writing
-    /// the body at the point the node is visited is what produced
-    /// `z = <<-FOO  hi` — the body pulled onto the opening line.
-    ///
-    /// Rather than teach all 39 newline sites to flush a queue, we record
-    /// where in `output` the tag landed and splice the bodies in once, at
-    /// the end, in `splice_heredoc_bodies`.
+    /// its node sits. `foo(<<~SQL, x)` means "write `<<~SQL`, finish the
+    /// rest of *this* line, then put the body on the lines that follow",
+    /// and which line the tag ends up on is only known once the printer
+    /// has chosen the breaks. So the tag carries a marker, the body waits in
+    /// `pending_heredocs`, and `splice_heredoc_bodies` puts each body after
+    /// the line its marker landed on, once the whole file is rendered.
     ///
     /// `body` is copied verbatim, byte for byte. A heredoc body is opaque
     /// text, not code: its leading whitespace is data (re-indenting inside
@@ -1573,7 +1565,7 @@ impl Formatter {
             source_indent,
             dash: opening.starts_with(b"<<-"),
         });
-        // A marker rather than an offset into `output`: a speculative
+        // A marker rather than an offset into the rendered text: a speculative
         // render can be thrown away and the text written again somewhere
         // else, so an offset taken while it is built points at the wrong
         // place afterwards. A marker travels with the text wherever it
@@ -1583,7 +1575,7 @@ impl Formatter {
         )))
     }
 
-    /// Splices every deferred heredoc body into `output`, each one just
+    /// Splices every deferred heredoc body into `rendered`, each one just
     /// after the newline ending the line its opening tag landed on.
     ///
     /// Walks in reverse offset order so that earlier splices cannot shift

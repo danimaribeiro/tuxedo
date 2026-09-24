@@ -1,3 +1,15 @@
+//! Every assignment: `=`, `op=`, `||=` and `&&=` to a local, instance,
+//! class or global variable, a constant or constant path, an attribute
+//! (`a.b ||= c`) or an index (`a[i] += 1`); multiple assignment
+//! (`a, (b, c), *d = e`); and the `*_target_node`s a multiple assignment,
+//! a `for` or a `rescue => e` binds through.
+//!
+//! Almost all of them reduce to `finish_assignment` in `mod.rs`: the target
+//! and ` op ` as one run of text, then the value at the statement's own
+//! indent. The value is never aligned under the `=`, because that column
+//! is set by the length of the target, and renaming the target would
+//! reindent the whole value.
+
 use super::doc::Doc;
 use super::{Formatter, bytes_doc};
 

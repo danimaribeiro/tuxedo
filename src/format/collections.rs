@@ -1,3 +1,12 @@
+//! Array and hash literals, `%w`/`%i` word lists, ranges, splats and
+//! double splats, hash entries (`key: value`, `key => value`), block-pass
+//! arguments (`&blk`), and the array and hash patterns of `case/in`.
+//!
+//! A bracketed collection either fits on one line or puts every element on
+//! a line of its own, one indent in, with the closing bracket back on a
+//! line of its own and no trailing comma: never bin-packed (`bracketed_items_doc` in `mod.rs`). A `%w`
+//! list keeps the percent syntax and delimiters it was written with.
+
 use super::doc::Doc;
 use super::{Formatter, bytes_doc, is_indivisible};
 use crate::config::HashBraceSpace;
@@ -354,12 +363,12 @@ impl Formatter {
         self.end_run(run)
     }
 
-    /// The omitted value of a shorthand `key:` entry (hash-literal
-    /// value-omission or a pattern-match bind) -- see the comment in
-    /// `fmt_assoc_node`, which returns before ever visiting this node in
-    /// practice. Renders nothing; kept only so an unexpected direct visit
-    /// doesn't fall through to prism's default (which would print the
-    /// implied variable's read/target, defeating the point).
+    /// The omitted value of a shorthand `key:` entry (hash-literal value
+    /// omission, or a pattern-match bind). `fmt_assoc_node` writes the key
+    /// and never visits the value, so nothing reaches this; it exists
+    /// because `dispatch` has to place every node type. It renders
+    /// nothing: the value was never written, and writing the variable it
+    /// stands for would turn `{ x: }` into `{ x: x }`.
     pub(super) fn fmt_implicit_node(&mut self, _node: &ruby_prism::ImplicitNode<'_>) -> Doc {
         Doc::nil()
     }

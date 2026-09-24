@@ -1,3 +1,19 @@
+//! Which files a run formats, and running the formatter over them.
+//!
+//! [`walk_and_process`] walks the named paths with the `ignore` crate (the
+//! walker ripgrep uses) on its thread pool: hidden files are skipped,
+//! `.gitignore` is honoured unless `--no-ignore` turns it off, and the
+//! config's `exclude` globs ([`Exclude`]) are applied on top. Only files
+//! that look like Ruby are handed on, by extension (`.rb`, `.rake`,
+//! `.gemspec`, `.ru`) or by name (`Rakefile`, `Gemfile`). A path named on
+//! the command line is never excluded, but it still has to look like Ruby.
+//!
+//! What the walk could not hand on -- a directory it could not descend, a
+//! file it could not read or that is not UTF-8 -- is counted in
+//! [`WalkResult::errors`] and fails the run, the same as a file the
+//! formatter refused: a run that skipped part of the tree must not look
+//! clean.
+
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

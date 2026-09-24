@@ -1,3 +1,13 @@
+//! Statement lists -- every body in a file, from the top level down --
+//! and `alias`.
+//!
+//! A body is one statement per line, or joined with `; ` where the
+//! construct that owns it is held to one line (a `( )` body, a `#{}`
+//! hole). Blank lines between statements are kept, at most one in a row,
+//! and one is added where RuboCop's layout cops require it: around method,
+//! class and module definitions, access modifiers and `attr_*` calls, and
+//! after a guard clause (`wants_forced_blank_line`).
+
 use super::Formatter;
 use super::doc::Doc;
 

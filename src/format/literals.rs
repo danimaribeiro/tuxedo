@@ -1,3 +1,13 @@
+//! Literals: numbers, strings, symbols, regular expressions, backticks,
+//! heredoc openings, `true`/`false`/`nil`, `__FILE__`/`__LINE__`, `$1`/`$&`,
+//! and parentheses.
+//!
+//! A literal's text is copied from source; the only rewrite is the quote
+//! of a plain string or quoted symbol (`requote`, under `quote_style`),
+//! and only when the value survives it. Interpolation holes (`#{}`) are
+//! held to one line and never requoted. Adjacent string literals
+//! (`"a" "b"`) always go one part per line, joined with `\`.
+
 use super::Formatter;
 use super::bytes_doc;
 use super::doc::Doc;
@@ -201,20 +211,15 @@ impl Formatter {
         bytes_doc(node.location().as_slice())
     }
 
-    /// A rational literal (`2.5r`, `3r`). Unlike most numeric nodes,
-    /// `RationalNode` carries no child node for the number it wraps --
-    /// `location()` is the only way to get its text -- so there was no
-    /// `fmt_*` for it at all, and prism's default Visit fell through
-    /// silently: a call argument like `Time.new(2002, 10, 31, 2, 2,
-    /// 2.123456789r, "+02:00")` came out with that argument dropped
-    /// entirely (`Time.new(2002, 10, 31, 2, 2, , "+02:00")` -- a syntax
-    /// error one comma later, but really a silent data-loss bug).
+    /// A rational literal (`2.5r`, `3r`). `RationalNode` carries the
+    /// numerator and denominator as values, not the text written, so the
+    /// source span is the only way to get `2.5r` back rather than `5/2r`.
     pub(super) fn fmt_rational_node(&mut self, node: &ruby_prism::RationalNode<'_>) -> Doc {
         bytes_doc(node.location().as_slice())
     }
 
-    /// An imaginary/complex literal (`5i`, `2.5i`). Same missing-handler
-    /// gap as `fmt_rational_node`, same fix.
+    /// An imaginary literal (`5i`, `2.5i`), copied from source like a
+    /// rational one.
     pub(super) fn fmt_imaginary_node(&mut self, node: &ruby_prism::ImaginaryNode<'_>) -> Doc {
         bytes_doc(node.location().as_slice())
     }
@@ -445,14 +450,6 @@ impl Formatter {
     /// (preserving their original escaping); a hole is rendered inline,
     /// collapsing any internal statements onto one line the way a `{ }`
     /// block body does.
-    ///
-    /// The run is written into `output` in place and only lifted back out
-    /// once the last part is done, rather than rendered into a detached
-    /// buffer: a hole renders through the string emitter, which measures
-    /// `current_column` to decide how much room it has, so everything
-    /// ahead of it on the line — the opening delimiter and every earlier
-    /// part — has to really be there while it renders. `bounds` records
-    /// where each leaf ended so the run can be cut back apart afterwards.
     pub(super) fn interpolated_literal_doc(
         &mut self,
         opening: Option<&[u8]>,

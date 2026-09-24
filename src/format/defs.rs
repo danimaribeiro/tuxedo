@@ -1,3 +1,13 @@
+//! Method definitions, parameters, blocks and lambdas.
+//!
+//! A `def` with a body is always written out on its own lines, even a
+//! one-liner; an endless `def x = y` stays endless while it fits and
+//! expands to the block form when it does not. A `{ }` block stays on one
+//! line while it fits and holds a single statement with no construct of
+//! its own (`holds_block_construct`); otherwise it expands the way
+//! `do...end` does. Parameter lists follow the all-or-nothing rule of every
+//! bracketed list.
+
 use super::Formatter;
 use super::doc::Doc;
 use ruby_prism::Visit;
@@ -397,11 +407,9 @@ impl Formatter {
     /// A lambda literal (`->(x) { x + 1 }`, `-> { 42 }`, `->(x) do ... end`).
     ///
     /// Structurally a block with an arrow in front, so the body is built
-    /// the same way `fmt_block_node` does it — but it is its own node type,
-    /// and without this it fell through to Prism's default visitor, which
-    /// emitted the parameters in block form and dropped the `->`, the
-    /// parens and the braces entirely: `->(_) { block.call }` came out as
-    /// `|_| block.call`.
+    /// the same way `fmt_block_node` does it, but it is its own node type:
+    /// the `->`, the parameter parentheses and the braces are all written
+    /// here.
     pub(super) fn fmt_lambda_node(&mut self, node: &ruby_prism::LambdaNode<'_>) -> Doc {
         let brace = node.opening_loc().as_slice() == b"{";
         let opening = Doc::text(if brace { " {" } else { " do" });
