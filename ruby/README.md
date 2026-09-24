@@ -1,14 +1,11 @@
 # tuxedo-r
 
-A self-contained [`tuxedo`](../) executable — a Ruby formatter written in
-Rust — wrapped up in a Ruby gem, distributed as a set of platform-specific gems, each containing a
-precompiled native binary, plus a tiny Ruby script that locates and execs it.
-
-The name is deliberately ambiguous: the "R" stands for both **Ruby** (the
-language it formats, and the language of this wrapper) and **Rust** (the
-language the `tuxedo` binary itself is written in).
-
-No Rust toolchain is required to install or run `tuxedo` this way.
+[Tuxedo](https://github.com/danimaribeiro/tuxedo) is a fast Ruby code
+formatter written in Rust. `tuxedo-r` is the Ruby gem that installs it: each
+platform-specific gem carries a precompiled native binary, so no Rust
+toolchain is needed. The name is deliberately ambiguous: the "R" stands for
+both **Ruby** (the language it formats, and the language of this wrapper) and
+**Rust** (the language the `tuxedo` binary itself is written in).
 
 ## Installation
 
@@ -20,18 +17,20 @@ end
 
 ```bash
 bundle install
-bundle exec tuxedo
+bundle exec tuxedo format --check .
 ```
 
-If you're not using Bundler:
+Without Bundler:
 
 ```bash
 gem install tuxedo-r
-tuxedo
+tuxedo format .
 ```
 
 RubyGems automatically resolves and installs the platform-specific gem that
-matches your machine (e.g. `tuxedo-r-arm64-darwin`).
+matches your machine (for example `tuxedo-r-arm64-darwin`). See the
+[main README](https://github.com/danimaribeiro/tuxedo#readme) for what the
+formatter does, its command line and its configuration.
 
 ### Requirements
 
@@ -44,11 +43,12 @@ older than 3.3.22 resolves the glibc gem, whose binary will not run.
 
 If a precompiled binary isn't available for your platform yet, set
 `TUXEDO_INSTALL_DIR` to a directory containing a `tuxedo` executable (for
-example, one you built yourself from the [Rust crate](../)):
+example, one you built yourself from the
+[Rust crate](https://github.com/danimaribeiro/tuxedo)):
 
 ```bash
 export TUXEDO_INSTALL_DIR=/path/to/tuxedo/target/release
-bundle exec tuxedo
+bundle exec tuxedo format --check .
 ```
 
 ## How it works
@@ -56,8 +56,9 @@ bundle exec tuxedo
 - The `tuxedo-r` gem itself ships no binary — it's the platform-independent
   "meta" gem.
 - `tuxedo-r-<platform>` gems (built by `rake package`, see
-  `rakelib/package.rake`) each bundle a `tuxedo` binary compiled for that
-  target triple, under `exe/<platform>/tuxedo`.
+  [`rakelib/package.rake`](https://github.com/danimaribeiro/tuxedo/blob/main/ruby/rakelib/package.rake))
+  each bundle a `tuxedo` binary compiled for that target triple, under
+  `exe/<platform>/tuxedo`.
 - The `exe/tuxedo` script installed onto your `PATH` is plain Ruby (RubyGems
   requires gem executables to be Ruby scripts) — it just finds the right
   binary for the current platform and `exec`s it, forwarding all arguments and

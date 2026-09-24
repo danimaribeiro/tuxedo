@@ -53,7 +53,7 @@ module Tuxedo
           if NativePlatforms::TARGETS.keys.none? { |p| Gem::Platform.match_gem?(Gem::Platform.new(p), GEM_NAME) }
             raise UnsupportedPlatformException, <<~MESSAGE
               #{GEM_NAME} does not have a precompiled binary for the #{platform} platform.
-              See https://github.com/danimaribeiro/tuxedo#unsupported-platforms for options.
+              See https://github.com/danimaribeiro/tuxedo/tree/main/ruby#unsupported-platforms for options.
             MESSAGE
           end
 

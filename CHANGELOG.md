@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ruby formatter core: all-or-nothing collection expansion, block
   indentation, no trailing comma on the last element.
-- `tuxedo format` and `tuxedo check` CLI subcommands, with `.gitignore`
-  and `--no-ignore` support, and an `exclude` list.
+- `tuxedo format` command, with `--check` and `--diff` to report without
+  writing, stdin support, `.gitignore` and `--no-ignore` handling, and an
+  `exclude` list.
 - `.tuxedo.toml` configuration: `line_length`, `indent_size`,
   `hash_brace_space`, `access_modifier_style`, `quote_style`.
 - `# tuxedo:off` / `# tuxedo:on` region markers for hand-formatted code.
