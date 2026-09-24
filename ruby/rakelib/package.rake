@@ -64,8 +64,9 @@ Tuxedo::R::NativePlatforms::TARGETS.each do |platform, target_triple|
 
     directory exedir
 
-    desc "Compile the tuxedo binary for #{platform} (#{target_triple})"
-    task "build:#{platform}" => [exedir] do
+    # A `file` task: Rake skips this when exepath already exists, so a
+    # runner that pre-stages a binary doesn't also need cargo/cross.
+    file exepath => [exedir] do
       built_path = File.join(TUXEDO_CRATE_DIR, "target", target_triple, "release", binary_name)
 
       cmd = if ENV["CROSS"] == "1" || !target_triple.include?(RbConfig::CONFIG["host_cpu"])
@@ -81,7 +82,8 @@ Tuxedo::R::NativePlatforms::TARGETS.each do |platform, target_triple|
       FileUtils.chmod(0o755, exepath, verbose: true)
     end
 
-    file exepath => "build:#{platform}"
+    desc "Compile the tuxedo binary for #{platform} (#{target_triple})"
+    task "build:#{platform}" => exepath
   end
 end
 

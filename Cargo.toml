@@ -7,6 +7,9 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/danimaribeiro/tuxedo"
 repository = "https://github.com/danimaribeiro/tuxedo"
+# "tuxedo" is already taken on crates.io by an unrelated crate; distribute
+# via the tuxedo-r gem (ruby/) instead.
+publish = false
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }

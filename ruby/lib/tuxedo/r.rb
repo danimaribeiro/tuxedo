@@ -23,9 +23,10 @@ module Tuxedo
     end
 
     class << self
-      # e.g. "x86_64-linux"
+      # e.g. "x86_64-linux"; on Alpine, `version` carries the musl
+      # distinction, without which this would misname the host.
       def platform
-        [:cpu, :os].map { |m| Gem::Platform.local.send(m) }.join("-")
+        [:cpu, :os, :version].map { |m| Gem::Platform.local.send(m) }.compact.join("-")
       end
 
       # Absolute path to the tuxedo binary that should be executed on this host.

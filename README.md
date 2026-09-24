@@ -113,7 +113,9 @@ are errors, reported like a syntax error, and the file is left untouched.
 ## Installation
 
 Tuxedo is distributed as a Ruby gem wrapping a precompiled native binary — no
-Rust toolchain required. See [`ruby/README.md`](ruby/README.md) for
+Rust toolchain required. It is not on crates.io: the name `tuxedo` is already
+taken by an unrelated crate, so `cargo install tuxedo` would install someone
+else's project, not this one. See [`ruby/README.md`](ruby/README.md) for
 installation and usage instructions:
 
 ```ruby
