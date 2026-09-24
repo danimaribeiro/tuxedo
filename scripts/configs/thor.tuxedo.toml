@@ -1,5 +1,11 @@
 # Thor's own .rubocop.yml picks these two styles; lint-baseline.sh formats its
 # copy with them so the project-cfg column measures what the options can fix.
+#
+# quote_style matches RuboCop's shipped default (single_quotes) instead, to
+# keep the baseline/tuxedo columns (measured against those shipped defaults)
+# free of a solved knob. Thor's own .rubocop.yml requires double_quotes,
+# which the project-cfg column scores separately.
 [format]
 hash_brace_space = "no_space"
 access_modifier_style = "outdent"
+quote_style = "single"

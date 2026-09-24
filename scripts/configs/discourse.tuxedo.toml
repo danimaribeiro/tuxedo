@@ -1,0 +1,7 @@
+# lint-baseline.sh's baseline/tuxedo columns measure against RuboCop's
+# shipped defaults, which prefer single_quotes -- so that is what this
+# config matches, to keep that comparison free of a solved knob. discourse's
+# project-cfg column is already n/a (its own .rubocop.yml needs plugin gems
+# not installed here), so there is nothing this trades off against.
+[format]
+quote_style = "single"

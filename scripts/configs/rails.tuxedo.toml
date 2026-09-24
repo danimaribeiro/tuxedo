@@ -1,0 +1,7 @@
+# lint-baseline.sh's baseline/tuxedo columns measure against RuboCop's
+# shipped defaults, which prefer single_quotes -- so that is what this
+# config matches, to keep that comparison free of a solved knob. rails'
+# own .rubocop.yml requires double_quotes instead, which the project-cfg
+# column already scores separately; this file doesn't change that.
+[format]
+quote_style = "single"
