@@ -46,6 +46,9 @@ bundle exec tuxedo format --check .
 
 Without Bundler, `gem install tuxedo-r` puts `tuxedo` on your `PATH`. See
 [`ruby/README.md`](ruby/README.md) for supported platforms and requirements.
+This release ships a precompiled binary for x86_64 Linux (glibc) only; on
+any other platform, build from source and point the gem at it with
+`TUXEDO_INSTALL_DIR`.
 
 Or download a prebuilt archive for your platform from the
 [GitHub Releases](https://github.com/danimaribeiro/tuxedo/releases) page.

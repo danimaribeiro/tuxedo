@@ -73,6 +73,9 @@ module Tuxedo
 
             If you're still seeing this after that, check whether
             `bundle config force_ruby_platform` is set to `true`.
+
+            This version of #{GEM_NAME} may not ship a binary for #{platform} at all; see
+            https://github.com/danimaribeiro/tuxedo/tree/main/ruby#unsupported-platforms for options.
           MESSAGE
         end
 

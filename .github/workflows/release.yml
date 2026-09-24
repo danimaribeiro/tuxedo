@@ -55,35 +55,16 @@ jobs:
     name: Build (${{ matrix.target }})
     needs: check-version
     runs-on: ${{ matrix.os }}
+    # Only x86_64 Linux is built, to keep CI minutes low.
+    # Tuxedo::R::NativePlatforms lists every platform the gem can package.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
-            os: macos-14
-            gem_platform: arm64-darwin
-          - target: x86_64-apple-darwin
-            os: macos-13
-            gem_platform: x86_64-darwin
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             gem_platform: x86_64-linux
             use_cross: true
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            gem_platform: aarch64-linux
-            use_cross: true
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            gem_platform: x86_64-linux-musl
-            use_cross: true
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            gem_platform: aarch64-linux-musl
-            use_cross: true
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            gem_platform: x64-mingw-ucrt
     steps:
       - uses: actions/checkout@v4
 
@@ -170,7 +151,7 @@ jobs:
         run: |
           cd ruby
           bundle exec rake gem:ruby
-          for platform in arm64-darwin x86_64-darwin x86_64-linux aarch64-linux x86_64-linux-musl aarch64-linux-musl x64-mingw-ucrt; do
+          for platform in x86_64-linux; do
             bundle exec rake "gem:${platform}"
           done
 

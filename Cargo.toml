@@ -28,3 +28,8 @@ insta = "1"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# `publish = false` above also hides the binary from dist, which would then
+# find nothing to release; this opts it back in.
+[package.metadata.dist]
+dist = true

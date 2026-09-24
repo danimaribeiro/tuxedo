@@ -28,7 +28,9 @@ tuxedo format .
 ```
 
 RubyGems automatically resolves and installs the platform-specific gem that
-matches your machine (for example `tuxedo-r-arm64-darwin`). The
+matches your machine (for example `tuxedo-r-x86_64-linux`). This release
+ships a precompiled binary for x86_64 Linux (glibc) only; on any other
+platform, see [Unsupported platforms](#unsupported-platforms). The
 [documentation](https://danimar.dev/tuxedo/docs.html) covers what
 the formatter does, its command line and its configuration.
 

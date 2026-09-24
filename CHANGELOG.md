@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `# tuxedo:off` / `# tuxedo:on` region markers for hand-formatted code.
 - AST-equivalence verification: every formatted file is re-parsed and
   compared against the original before it is written.
-- Distributed as the `tuxedo-r` gem, with precompiled binaries for macOS
-  (arm64, x86_64), Linux (x86_64, aarch64; glibc and musl) and Windows
-  (x64).
+- Distributed as the `tuxedo-r` gem and as a standalone archive on GitHub
+  Releases, with a precompiled binary for x86_64 Linux (glibc) only. On any
+  other platform the gem runs a `tuxedo` you build yourself, through
+  `TUXEDO_INSTALL_DIR`.
