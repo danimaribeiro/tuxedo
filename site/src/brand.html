@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tuxedo logo</title>
+  <meta name="description" content="Tuxedo is a fast, opinionated Ruby code formatter written in Rust. Every file it writes is checked to still mean the same code.">
+  <link rel="icon" href="brand/tuxedo-lapel-compact.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/site.css">
+  <script>
+    // Before first paint, so a dark-mode reader never sees a white flash.
+    // No stored choice means follow the system.
+    (() => {
+      const stored = localStorage.getItem("hs_theme") || "auto";
+      const dark = stored === "dark" || (stored === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.add(dark ? "dark" : "light");
+    })();
+  </script>
+</head>
+<body class="bg-white font-sans text-neutral-800 antialiased dark:bg-neutral-950 dark:text-neutral-200">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-50 w-full border-b border-neutral-200 bg-white/80 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/80">
+    <nav class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+      <a href="./" class="flex items-center gap-2 font-semibold text-neutral-900 dark:text-white">
+        <img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-7 dark:hidden"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="hidden size-7 dark:block">
+        <span>tuxedo</span>
+      </a>
+      <div class="flex items-center gap-1 text-sm">
+        <a href="docs.html" class="rounded-lg px-3 py-2 font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white">Docs</a>
+        <a href="https://github.com/danimaribeiro/tuxedo" class="rounded-lg px-3 py-2 font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-white">GitHub</a>
+        <button type="button" class="block rounded-lg p-2 text-neutral-600 hover:bg-neutral-100 dark:hidden" data-hs-theme-click-value="dark" aria-label="Switch to dark mode">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+        <button type="button" class="hidden rounded-lg p-2 text-neutral-400 hover:bg-neutral-800 dark:block" data-hs-theme-click-value="light" aria-label="Switch to light mode">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41m11.32-11.32 1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <h1 class="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">Logo</h1>
+    <p class="mt-3 max-w-2xl text-neutral-600 dark:text-neutral-400">C is the logo in use; A and B are the other concepts drawn for it. Each is shown full size on light and dark, at favicon size (32 and 16 px) and next to the wordmark. <code class="font-mono text-sm">assets/generate_mark.py</code> draws them all.</p>
+      <section class="mt-14">
+        <h2 class="text-xl font-semibold text-neutral-900 dark:text-white">A — Bow tie</h2>
+        <p class="mt-2 max-w-2xl text-neutral-600 dark:text-neutral-400">A solid bow tie: curved wings pinched into a knot, with the pleats cut out of the cloth. The most literal reading of the name.</p>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-white ring-1 ring-neutral-200">
+              <img src="brand/tuxedo-bowtie.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-8"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-neutral-900"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-neutral-950 ring-1 ring-neutral-800">
+              <img src="brand/tuxedo-bowtie-inverse.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-8"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-white"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+        </div>
+        <div class="mt-4 flex items-center gap-6 rounded-xl bg-white p-6 ring-1 ring-neutral-200">
+          <img src="brand/tuxedo-bowtie-gem.svg" alt="" class="size-32">
+          <p class="text-sm text-neutral-600">The <code class="font-mono">tuxedo-r</code> gem variant, with a ruby red knot.</p>
+        </div>
+      </section>
+      <section class="mt-14">
+        <h2 class="text-xl font-semibold text-neutral-900 dark:text-white">B — Brackets</h2>
+        <p class="mt-2 max-w-2xl text-neutral-600 dark:text-neutral-400">HankoXml's <code>&lt; &gt;</code> chevrons turned inward, <code>&gt;•&lt;</code>: the same code brackets, tied into a bow tie by a knot. Keeps the family resemblance with HankoXml.</p>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-white ring-1 ring-neutral-200">
+              <img src="brand/tuxedo-brackets.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-brackets-compact.svg" alt="" class="size-8"><img src="brand/tuxedo-brackets-compact.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-neutral-900"><img src="brand/tuxedo-brackets-compact.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-neutral-950 ring-1 ring-neutral-800">
+              <img src="brand/tuxedo-brackets-inverse.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-brackets-compact-inverse.svg" alt="" class="size-8"><img src="brand/tuxedo-brackets-compact-inverse.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-white"><img src="brand/tuxedo-brackets-compact-inverse.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+        </div>
+        <div class="mt-4 flex items-center gap-6 rounded-xl bg-white p-6 ring-1 ring-neutral-200">
+          <img src="brand/tuxedo-brackets-gem.svg" alt="" class="size-32">
+          <p class="text-sm text-neutral-600">The <code class="font-mono">tuxedo-r</code> gem variant, with a ruby red knot.</p>
+        </div>
+      </section>
+      <section class="mt-14">
+        <h2 class="flex items-center gap-3 text-xl font-semibold text-neutral-900 dark:text-white">C — Lapel <span class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400">Current logo</span></h2>
+        <p class="mt-2 max-w-2xl text-neutral-600 dark:text-neutral-400">A tuxedo front: the jacket as a field, the shirt's V, a bow tie and two studs. An emblem rather than a glyph, so it has one shape at every size.</p>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-white ring-1 ring-neutral-200">
+              <img src="brand/tuxedo-lapel.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-8"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-neutral-900"><img src="brand/tuxedo-lapel-compact.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+          <div class="flex items-center gap-6 rounded-xl p-6 bg-neutral-950 ring-1 ring-neutral-800">
+              <img src="brand/tuxedo-lapel-inverse.svg" alt="" class="size-32">
+              <div class="flex items-end gap-4"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-8"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-4"></div>
+              <div class="ms-auto flex items-center gap-2 font-semibold text-white"><img src="brand/tuxedo-lapel-compact-inverse.svg" alt="" class="size-7">tuxedo</div>
+            </div>
+        </div>
+        <div class="mt-4 flex items-center gap-6 rounded-xl bg-white p-6 ring-1 ring-neutral-200">
+          <img src="brand/tuxedo-lapel-gem.svg" alt="" class="size-32">
+          <p class="text-sm text-neutral-600">The <code class="font-mono">tuxedo-r</code> gem variant, with a ruby red knot.</p>
+        </div>
+      </section>
+  </main>
+
+  <footer class="border-t border-neutral-200 dark:border-neutral-800">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-sm text-neutral-500 sm:px-6">
+      <p>Tuxedo is MIT licensed.</p>
+      <div class="flex gap-4">
+        <a class="hover:text-neutral-900 dark:hover:text-white" href="docs.html">Docs</a>
+        <a class="hover:text-neutral-900 dark:hover:text-white" href="https://rubygems.org/gems/tuxedo-r">RubyGems</a>
+        <a class="hover:text-neutral-900 dark:hover:text-white" href="https://github.com/danimaribeiro/tuxedo/releases">Releases</a>
+        <a class="hover:text-neutral-900 dark:hover:text-white" href="https://github.com/danimaribeiro/tuxedo/blob/main/CHANGELOG.md">Changelog</a>
+        <a class="hover:text-neutral-900 dark:hover:text-white" href="brand.html">Logo</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/preline.js"></script>
+</body>
+</html>

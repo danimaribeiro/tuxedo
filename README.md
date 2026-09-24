@@ -5,6 +5,8 @@ long-term aim is a drop-in replacement for
 [RuboCop](https://github.com/rubocop/rubocop), the way
 [`ruff`](https://github.com/astral-sh/ruff) is for Python.
 
+**Documentation: <https://danimar.dev/tuxedo/>**
+
 RuboCop is thorough but, being written in Ruby, can be slow on large
 codebases. Tuxedo gives the same clean, opinionated formatting at a fraction
 of the runtime, by leveraging Rust.

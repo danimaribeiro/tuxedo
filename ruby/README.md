@@ -28,9 +28,9 @@ tuxedo format .
 ```
 
 RubyGems automatically resolves and installs the platform-specific gem that
-matches your machine (for example `tuxedo-r-arm64-darwin`). See the
-[main README](https://github.com/danimaribeiro/tuxedo#readme) for what the
-formatter does, its command line and its configuration.
+matches your machine (for example `tuxedo-r-arm64-darwin`). The
+[documentation](https://danimar.dev/tuxedo/docs.html) covers what
+the formatter does, its command line and its configuration.
 
 ### Requirements
 

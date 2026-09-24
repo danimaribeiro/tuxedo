@@ -58,6 +58,8 @@ cargo clippy --all-targets -- -D warnings   # CI-enforced
 cargo doc --no-deps --document-private-items --open   # the architecture docs
 
 cd ruby && bundle install && bundle exec rake test    # gem tests (Minitest); CI-enforced
+cd site && npm ci && npm run serve          # docs site at http://localhost:8000
+python3 assets/generate_mark.py assets/     # regenerate the logo SVGs
 ```
 
 CI runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
@@ -73,7 +75,10 @@ node-type match; `src/format/doc.rs` is the layout IR and the only file that nam
 the printer crate; `src/format/verify.rs` is the AST-equivalence check. `src/main.rs`
 is the CLI (`format`, `check`, exit codes), `src/walk.rs` the file walk,
 `src/write.rs` the atomic write, `src/config.rs` the `.tuxedo.toml` loader.
-`ruby/README.md` explains gem packaging. To see the tree a construct parses to:
+`ruby/README.md` explains gem packaging. `site/` is the GitHub Pages site
+(hand-written HTML, Tailwind and Preline, deployed by `pages.yml`); its
+`docs.html` repeats the README's user sections, so a change to the command
+line or the config updates both. To see the tree a construct parses to:
 `echo '<ruby>' | cargo run --release -- format --ast`.
 
 ## Measuring a change to the formatter

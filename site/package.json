@@ -1,0 +1,15 @@
+{
+  "name": "tuxedo-site",
+  "private": true,
+  "description": "The Tuxedo documentation site, published to GitHub Pages.",
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist/assets && cp src/*.html dist/ && mkdir -p dist/brand && cp ../assets/*.svg dist/brand/ && cp node_modules/preline/dist/preline.js dist/assets/ && tailwindcss -i src/site.css -o dist/assets/site.css --minify",
+    "watch": "npm run build && tailwindcss -i src/site.css -o dist/assets/site.css --watch",
+    "serve": "npm run build && python3 -m http.server -d dist 8000"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "preline": "^5.0.0",
+    "tailwindcss": "^4.3.3"
+  }
+}
