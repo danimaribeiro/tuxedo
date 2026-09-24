@@ -14,7 +14,8 @@ Gem::Specification.new do |spec|
   DESC
   spec.homepage = "https://github.com/danimaribeiro/tuxedo"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.0.0"
+  spec.required_ruby_version = ">= 3.1.0"
+  spec.required_rubygems_version = ">= 3.3.22"
 
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"

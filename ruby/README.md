@@ -33,6 +33,13 @@ tuxedo
 RubyGems automatically resolves and installs the platform-specific gem that
 matches your machine (e.g. `tuxedo-r-arm64-darwin`).
 
+### Requirements
+
+Ruby 3.1 or newer and RubyGems 3.3.22 or newer (`gem update --system`).
+`required_ruby_version` is the Ruby that runs the `tuxedo` shim, not the
+Ruby syntax `tuxedo` accepts. On Alpine and other musl hosts, RubyGems
+older than 3.3.22 resolves the glibc gem, whose binary will not run.
+
 ### Unsupported platforms
 
 If a precompiled binary isn't available for your platform yet, set
