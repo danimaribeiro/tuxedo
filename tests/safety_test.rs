@@ -221,3 +221,26 @@ fn long_operator_chains_do_not_overflow_the_stack() {
     let source = format!("x = a{}\n", " + a".repeat(20000));
     assert!(tuxedo::format(&source).is_ok());
 }
+
+/// A call spelled with `::` is never broken before: a line that starts
+/// with `::` is a new statement naming a top-level constant. It stays on
+/// the chain's first line and still counts as a link with arguments.
+#[test]
+fn an_overlong_chain_never_breaks_before_a_scope_call() {
+    assert_unchanged(
+        "Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)\n  .at_xpath(\"//xades:SigningTime\", ns)\n",
+    );
+    assert_eq!(
+        format(
+            "x = Time.iso8601(Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)\n                                   .at_xpath(\"//xades:SigningTime\", ns).text)\n"
+        ),
+        "x = Time.iso8601(\n  Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)\n    .at_xpath(\"//xades:SigningTime\", ns)\n    .text\n)\n"
+    );
+    assert_eq!(
+        format(
+            "some_receiver_with_a_long_name.first_call(argument_one, argument_two)::ScopedCall(argument_three, argument_four).last_call(x)\n"
+        ),
+        "some_receiver_with_a_long_name.first_call(argument_one, argument_two)::ScopedCall(argument_three, argument_four)\n  .last_call(x)\n"
+    );
+    assert_unchanged("Nokogiri::XML(doc).at(x)\n");
+}

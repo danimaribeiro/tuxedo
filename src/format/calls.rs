@@ -75,10 +75,16 @@ fn collect_chain<'a>(
     has_comment: &dyn Fn(usize, usize) -> bool,
 ) -> Option<(ruby_prism::Node<'a>, Vec<ruby_prism::CallNode<'a>>)> {
     let mut links = Vec::new();
+    if is_scope_call(node) {
+        return None;
+    }
     let mut base = node.receiver()?;
 
     while let Some(call) = base.as_call_node() {
-        if !is_plain_method_call(&call) || !block_can_join(&call, has_comment) {
+        if !is_plain_method_call(&call)
+            || !block_can_join(&call, has_comment)
+            || is_scope_call(&call)
+        {
             break;
         }
         match call.receiver() {
@@ -90,12 +96,26 @@ fn collect_chain<'a>(
         }
     }
 
-    if links.is_empty() {
+    let scoped_head = base
+        .as_call_node()
+        .is_some_and(|call| is_scope_call(&call) && is_plain_method_call(&call));
+    if links.is_empty() && !scoped_head {
         None
     } else {
         links.reverse();
         Some((base, links))
     }
+}
+
+/// True for a call spelled with `::` (`Nokogiri::XML(doc)`). It cannot be a
+/// chain link: a line that starts with `::` begins a new statement naming a
+/// top-level constant, so breaking before it turns one call into two.
+/// The chain stops at it instead, and it is the chain's first line. It
+/// still counts as a link that carries work, so `Nokogiri::XML(doc).at(x)`
+/// breaks the way `Nokogiri.XML(doc).at(x)` does.
+fn is_scope_call(call: &ruby_prism::CallNode<'_>) -> bool {
+    call.call_operator_loc()
+        .is_some_and(|l| l.as_slice() == b"::")
 }
 
 /// The `.`/`&.` a chain link is reached through, as written.
@@ -183,8 +203,12 @@ impl Formatter {
                     })
             })
         });
+        let scoped_head = base
+            .as_call_node()
+            .filter(|call| is_scope_call(call) && carries_work(call));
         let working = links
             .iter()
+            .chain(scoped_head.as_ref())
             .chain(std::iter::once(node))
             .filter(|c| carries_work(c))
             .count();
