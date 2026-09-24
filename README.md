@@ -129,9 +129,41 @@ ROLES = [
 ]
 ```
 
-Tuxedo does not change one construct into another. An endless method
-(`def name = expr`) stays endless while it fits on the line and expands to
-the block form when it does not; a block `def` is never made endless.
+Tuxedo keeps the form you wrote, with three exceptions. Each one produces
+the same program, and the safety check (see [Safety](#safety)) confirms it
+on every file:
+
+- **A modifier `if`/`unless` that does not fit on one line becomes a block
+  `if`/`unless`.** Breaking a modifier's condition would leave a line
+  ending in `&&` or `(`, and the reader could not tell where the body stops
+  and the condition starts. A block `if` is never turned into a modifier,
+  and a modifier that fits stays one. `while`/`until` modifiers and
+  `rescue` modifiers stay modifiers, because their block forms mean
+  something different.
+
+  ```ruby
+  return if policy.is_a?(SignaturePolicy) && expected.is_a?(SignaturePolicy) &&
+            policy.identifier == expected.identifier &&
+            policy.digest_value == expected.digest_value
+
+  # becomes
+
+  if policy.is_a?(SignaturePolicy) &&
+      expected.is_a?(SignaturePolicy) &&
+      policy.identifier == expected.identifier &&
+      policy.digest_value == expected.digest_value
+    return
+  end
+  ```
+
+- **The `then` form of `if`, `when` and `in` is always written out**, with
+  the body on its own line, even when every branch would fit:
+  `when 1 then :a` becomes `when 1` followed by `:a` one indent in. Adding
+  a second statement to a branch then adds a line and leaves the others
+  alone.
+- **An endless method (`def name = expr`) that does not fit becomes a block
+  `def`.** One that fits stays endless, and a block `def` is never made
+  endless.
 
 ## Configuration
 

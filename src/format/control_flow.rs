@@ -4,9 +4,15 @@
 //! `and`/`or`, and the one-line pattern matches `expr => pattern` and
 //! `expr in pattern`.
 //!
-//! The form a conditional was written in is kept: a modifier stays a
-//! modifier and a ternary a ternary, while a block `if` is always written
-//! out on its lines, even one written as `if a then b end`. Clauses (`elsif`, `else`, `when`, `in`, `rescue`, `ensure`) sit at the
+//! The form a conditional was written in is kept, with two exceptions. A
+//! modifier `if`/`unless` that does not fit on one line becomes a block
+//! `if`/`unless` (see `conditional_modifier_doc`); a block `if` is never
+//! made a modifier. And the `then` form is always written out on its
+//! lines: `if a then b end`, `when 1 then :a` and `in 1 then :a` put the
+//! body on a line of its own. A ternary stays a ternary, and a
+//! `while`/`until`/`rescue` modifier stays a modifier.
+//!
+//! Clauses (`elsif`, `else`, `when`, `in`, `rescue`, `ensure`) sit at the
 //! level of the keyword that opened the construct, with their bodies one
 //! indent in; a `when` is not indented from its `case`.
 
