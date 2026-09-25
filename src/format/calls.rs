@@ -301,7 +301,18 @@ impl Formatter {
             };
             gap.unwrap_or_else(Doc::nil).append(line).append(segment)
         }));
-        Some(base_doc.append(links_doc.indent(nest_width).group()))
+        // The base is inside the group, so the question is whether the
+        // whole chain fits, not whether what follows the base does. A base
+        // that has to expand (`[...].map { }.join`) then breaks the links as
+        // a receiver's arguments would (`Set.new(...).map { }.join`), and
+        // lengthening one element of it cannot flip every link between the
+        // two shapes. A base that is multi-line at any width (`end.keys`
+        // after an `if`, a `do...end` block) has no shape to flip between,
+        // and the links go on its last line while they fit there.
+        if base_doc.breaks() {
+            return Some(base_doc.append(links_doc.indent(nest_width).group()));
+        }
+        Some(base_doc.append(links_doc.indent(nest_width)).group())
     }
 
     /// The `[args]` of an index link, expanded like any bracketed list when
