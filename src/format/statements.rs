@@ -256,6 +256,18 @@ impl Formatter {
                 .as_ref()
                 .is_some_and(|prev| self.wants_forced_blank_line(prev, &stmt));
             let mut force_blank_pending = force_blank;
+            // A comment written directly under a def's `end` belongs to it
+            // (the `# rubocop:enable` closing a pair opened above the def)
+            // when the author's own blank line further down separates it
+            // from what follows: that gap is the one EmptyLineBetweenDefs
+            // asks for, and forcing another above the comment would cut it
+            // off from the `end`.
+            if force_blank
+                && prev_stmt.as_ref().is_some_and(is_def_like)
+                && prev_end_line.is_some_and(|end| self.comments_below_have_gap(end, start_line))
+            {
+                force_blank_pending = false;
+            }
 
             while self.comment_cursor < self.comments.len() {
                 let comment_line = self.line_of(self.comments[self.comment_cursor].start);
@@ -368,6 +380,26 @@ impl Formatter {
             doc = doc.append(if out { piece.dedent(nest) } else { piece });
         }
         doc
+    }
+
+    /// Whether the pending comments between the line a statement ends on,
+    /// `end_line`, and the line the next one starts on start directly
+    /// under `end_line` and have a blank line somewhere below them: under
+    /// one of the comments, or between the last of them and the statement.
+    fn comments_below_have_gap(&self, end_line: usize, start_line: usize) -> bool {
+        let mut previous_end = end_line;
+        for comment in &self.comments[self.comment_cursor..] {
+            let line = self.line_of(comment.start);
+            if line >= start_line {
+                break;
+            }
+            if line > previous_end + 1 {
+                return previous_end != end_line;
+            }
+            // An embedded document spans lines.
+            previous_end = line + comment.text.trim_end().matches('\n').count();
+        }
+        previous_end != end_line && start_line > previous_end + 1
     }
 
     /// `alias new_name old_name` (bare or symbol-style method names --

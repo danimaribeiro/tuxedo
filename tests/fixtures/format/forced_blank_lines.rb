@@ -21,6 +21,24 @@ class Foo
   end
 end
 
+class Directives
+  # rubocop:disable Metrics/MethodLength
+  def long
+    1
+  end
+  # rubocop:enable Metrics/MethodLength
+
+  def short
+    2
+  end
+
+  # About `documented`, not `short`.
+  def documented
+    3
+  end
+  # rubocop:enable Style/Last
+end
+
 def guard_example
   return unless valid?
 
