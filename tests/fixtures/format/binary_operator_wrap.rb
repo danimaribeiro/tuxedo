@@ -21,3 +21,26 @@ def recipients
     Array(header[:x_original_to]).map(&:to_s) +
     Array(header[:x_forwarded_to]).map(&:to_s)
 end
+
+def validate_reference(errors, ref)
+  if external?(ref)
+    errors << HankoXml::PolicyError.new(
+      "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
+    )
+    error = HankoXml::PolicyError.new(
+      "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
+    )
+    errors << HankoXml::PolicyError.new(
+      "reference URI #{ref.uri.inspect} is external, " \
+        "and allow_external_references is false"
+    )
+    rows << [
+      first_column_value,
+      second_column_value,
+      third_column_value,
+      fourth_column_value,
+      fifth_column_value,
+      sixth
+    ]
+  end
+end

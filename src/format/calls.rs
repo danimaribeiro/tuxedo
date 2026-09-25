@@ -163,6 +163,24 @@ impl CallHead {
     }
 }
 
+/// A value with brackets of its own to break inside: a call with a
+/// parenthesized argument list, or an array or hash literal.
+fn breaks_in_own_brackets(node: &ruby_prism::Node<'_>) -> bool {
+    match node {
+        ruby_prism::Node::CallNode { .. } => node.as_call_node().is_some_and(|call| {
+            call.opening_loc()
+                .is_some_and(|open| open.as_slice() == b"(")
+                && call.arguments().is_some()
+        }),
+        ruby_prism::Node::ArrayNode { .. } => node
+            .as_array_node()
+            .and_then(|array| array.opening_loc())
+            .is_some_and(|open| open.as_slice() == b"["),
+        ruby_prism::Node::HashNode { .. } => true,
+        _ => false,
+    }
+}
+
 /// A call's real `{ }` / `do...end` block, as opposed to a block-pass
 /// argument (`&:sym`), which Prism stores in the same slot but which
 /// belongs inside the argument list.
@@ -637,6 +655,29 @@ impl Formatter {
         operands.push(arg);
 
         let condition = std::mem::take(&mut self.condition_spine);
+
+        // `errors << PolicyError.new(...)` appends one value the way
+        // `error = PolicyError.new(...)` assigns one, and is laid out the
+        // same way: `errors << PolicyError.new(` stays on the line and the
+        // value breaks inside its own brackets, moving under the `<<` only
+        // when even that head does not fit. Broken after the operator
+        // instead, the statement would change shape whenever its argument
+        // happened to span lines.
+        if name_str == "<<"
+            && !condition
+            && let [target, value] = operands.as_slice()
+            && breaks_in_own_brackets(value)
+            && !self.has_pending_comment_in(
+                target.location().end_offset(),
+                value.location().start_offset(),
+            )
+        {
+            let mut run = self.begin_run();
+            self.run_node(&mut run, target);
+            self.run_assigned_value(&mut run, "<<", value);
+            return self.end_run(run);
+        }
+
         let (leaves, gaps) = self.operand_docs(&operands);
         self.infix_doc(leaves, gaps, name_str, condition, false)
     }
