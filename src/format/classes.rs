@@ -2,7 +2,8 @@
 //! constant paths (`Foo::Bar`, `::Top`) that name them.
 //!
 //! Each is a header line, a body one indent in, and `end` back at the
-//! header's level. A class body is the one statement list that
+//! header's level. An empty one is `header; end` on one line while that
+//! fits (`class NotFound < Error; end`). A class body is the one statement list that
 //! `access_modifier_style` applies to, which is why `class_body_doc` tells
 //! the body it is one.
 
@@ -19,13 +20,27 @@ impl Formatter {
                 .append(self.node_doc(&superclass));
         }
         let header_line = self.line_of(node.location().start_offset());
-        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
+        let empty = self.is_empty_definition(&node.as_node());
+        self.class_body_doc(
+            empty,
+            header,
+            header_line,
+            node.body(),
+            node.end_keyword_loc(),
+        )
     }
 
     pub(super) fn fmt_module_node(&mut self, node: &ruby_prism::ModuleNode<'_>) -> Doc {
         let header = Doc::text("module ").append(self.node_doc(&node.constant_path()));
         let header_line = self.line_of(node.constant_path().location().end_offset());
-        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
+        let empty = self.is_empty_definition(&node.as_node());
+        self.class_body_doc(
+            empty,
+            header,
+            header_line,
+            node.body(),
+            node.end_keyword_loc(),
+        )
     }
 
     pub(super) fn fmt_singleton_class_node(
@@ -34,14 +49,22 @@ impl Formatter {
     ) -> Doc {
         let header = Doc::text("class << ").append(self.node_doc(&node.expression()));
         let header_line = self.line_of(node.location().start_offset());
-        self.class_body_doc(header, header_line, node.body(), node.end_keyword_loc())
+        let empty = self.is_empty_definition(&node.as_node());
+        self.class_body_doc(
+            empty,
+            header,
+            header_line,
+            node.body(),
+            node.end_keyword_loc(),
+        )
     }
 
-    /// A class, module or `class <<` body: `keyword_body_doc`, with the
+    /// A class, module or `class <<` body: `definition_doc`, with the
     /// body's statement list told it is one, since that is the list whose
     /// access modifiers `access_modifier_style` places.
     fn class_body_doc(
         &mut self,
+        empty: bool,
         header: Doc,
         header_line: usize,
         body: Option<ruby_prism::Node<'_>>,
@@ -54,7 +77,7 @@ impl Formatter {
                 .and_then(|b| b.as_statements_node())
                 .map(|s| s.location().start_offset());
         }
-        let doc = self.keyword_body_doc(header, header_line, body, Some(end.start_offset()));
+        let doc = self.definition_doc(empty, header, header_line, body, Some(end.start_offset()));
         self.class_body = was_body;
         doc
     }

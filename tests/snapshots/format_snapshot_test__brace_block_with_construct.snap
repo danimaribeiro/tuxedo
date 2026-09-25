@@ -10,8 +10,7 @@ queries.map! { |query|
   end
 }
 Class.new {
-  def create_table(name)
-  end
+  def create_table(name); end
 }
 Class.new {
   def self.a
@@ -23,8 +22,7 @@ foo {
 }
 foo {
   x = case y
-  when 1
-    :one
+  when 1 then :one
   end
 }
 foo {

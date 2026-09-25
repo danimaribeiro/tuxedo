@@ -119,8 +119,7 @@ queries.map! { |query|
   end
 }
 Class.new {
-  def create_table(name)
-  end
+  def create_table(name); end
 }
 foo {
   x = case y

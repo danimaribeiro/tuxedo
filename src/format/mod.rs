@@ -121,6 +121,18 @@ fn explicit_parameters(params: Option<ruby_prism::Node<'_>>) -> Option<ruby_pris
 /// Prism groups `foo(a, k: 1, j: 2)`'s keyword pairs into one
 /// `KeywordHashNode`. Flatten those pairs so a call's argument list wraps
 /// one-argument-per-line the same way RuboCop counts arguments.
+/// Which of the blank lines an author left between the items of a list
+/// survive when the list expands.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ItemGaps {
+    /// Every one: the elements of an array or a hash.
+    All,
+    /// Only one between two keyword pairs: a call's arguments.
+    /// Layout/EmptyLinesAroundArguments flags a blank line next to any
+    /// other argument, and counts the keyword pairs as one argument.
+    BetweenKeywordPairs,
+}
+
 fn flatten_keyword_hash_args(items: Vec<ruby_prism::Node<'_>>) -> Vec<ruby_prism::Node<'_>> {
     let mut out = Vec::with_capacity(items.len());
     for item in items {
@@ -798,18 +810,19 @@ impl Formatter {
     /// after every item, and a flat group that merely broke would put the
     /// separators wherever its own line points happen to be.
     ///
-    /// `span` is the source range between the brackets (end of the opening
-    /// token, start of the closing one). A comment anywhere in it forces
-    /// the expanded shape too, with each comment kept next to its item --
-    /// see `commented_bracketed_items_doc`.
+    /// `pad` goes inside both brackets, as `bracketed_group_doc`'s
+    /// separators do. `span` is the source range between the brackets (end
+    /// of the opening token, start of the closing one). A comment anywhere
+    /// in it forces the expanded shape too, with each comment kept next to
+    /// its item -- see `commented_bracketed_items_doc`.
     fn bracketed_items_doc(
         &mut self,
         open: &str,
-        open_sep: Doc,
+        pad: Doc,
         items: &[ruby_prism::Node<'_>],
-        close_sep: Doc,
         close: &str,
         span: Option<(usize, usize)>,
+        gaps: ItemGaps,
     ) -> Doc {
         if let Some((start, end)) = span
             && !self.single_line
@@ -818,16 +831,102 @@ impl Formatter {
             // A comment between the brackets has no flat form: `#` runs to
             // the end of its line, so the list has to expand and keep each
             // comment next to the item it was written against.
-            return self.commented_bracketed_items_doc(open, items, close, (start, end));
+            return self.commented_bracketed_items_doc(open, items, close, (start, end), gaps);
         }
         let snap = self.render_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
-            return self.expanded_bracketed_items_doc(open, items, close);
+            return self.expanded_bracketed_items_doc(open, items, close, gaps);
         }
-        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
-        self.bracketed_group_doc(open, open_sep, body, close_sep, close)
+        let body = self.join_items(items, leaves, false, gaps);
+        self.bracketed_group_doc(open, pad.clone(), body, pad, close)
+    }
+
+    /// Whether the author left a blank line directly above `next`, and
+    /// below the line `prev` ends on: the gap that groups the items of a
+    /// long list by hand. Only the line right above `next` is asked
+    /// about, so a blank line inside a heredoc body or a multi-line
+    /// string that ends between the two items is not mistaken for one.
+    fn blank_line_between(&self, prev: &ruby_prism::Node<'_>, next: &ruby_prism::Node<'_>) -> bool {
+        let prev_line = self.line_of(prev.location().end_offset().saturating_sub(1));
+        let next_line = self.line_of(next.location().start_offset());
+        next_line > prev_line + 1 && self.source_line_is_blank(next_line - 1)
+    }
+
+    /// What goes after the comma between `prev` and `next`: a line point
+    /// that is a space while the list fits, or a break when it expands
+    /// (`broken`, for a list built in its expanded shape). A blank line
+    /// the author left between the two stays when the list expands, as it
+    /// does between statements, and is dropped when it fits: a gap has no
+    /// flat form, and letting one force the list open would let
+    /// whitespace choose the layout. `gaps` says which gaps may stay.
+    fn item_break(
+        &self,
+        prev: &ruby_prism::Node<'_>,
+        next: &ruby_prism::Node<'_>,
+        broken: bool,
+        gaps: ItemGaps,
+    ) -> Doc {
+        let is_pair = |node: &ruby_prism::Node<'_>| {
+            node.as_assoc_node().is_some() || node.as_assoc_splat_node().is_some()
+        };
+        let allowed = gaps == ItemGaps::All || (is_pair(prev) && is_pair(next));
+        match (allowed && self.blank_line_between(prev, next), broken) {
+            (true, true) => Doc::blank_line(),
+            (true, false) => Doc::if_break(Doc::blank_line(), Doc::line()),
+            (false, true) => Doc::hardline(),
+            (false, false) => Doc::line(),
+        }
+    }
+
+    /// The break in front of `items[i]` in a list expanded around its
+    /// comments. Below an own-line comment (`after_comment`) the gap to
+    /// ask about is the one under that comment, as in a statement body;
+    /// the gap above the comment is the comment's own.
+    fn commented_item_break(
+        &self,
+        items: &[ruby_prism::Node<'_>],
+        i: usize,
+        after_comment: bool,
+        gaps: ItemGaps,
+    ) -> Doc {
+        let line = self.line_of(items[i].location().start_offset());
+        if after_comment {
+            if line > 0 && self.source_line_is_blank(line - 1) {
+                Doc::blank_line()
+            } else {
+                Doc::hardline()
+            }
+        } else if i > 0 {
+            self.item_break(&items[i - 1], &items[i], true, gaps)
+        } else {
+            Doc::hardline()
+        }
+    }
+
+    /// `leaves`, the documents of `items`, comma-separated with
+    /// [`item_break`](Self::item_break) after each comma.
+    fn join_items(
+        &self,
+        items: &[ruby_prism::Node<'_>],
+        leaves: Vec<Doc>,
+        broken: bool,
+        gaps: ItemGaps,
+    ) -> Doc {
+        let mut out = Doc::nil();
+        for (i, leaf) in leaves.into_iter().enumerate() {
+            if i > 0 {
+                out = out.append(Doc::text(",")).append(self.item_break(
+                    &items[i - 1],
+                    &items[i],
+                    broken,
+                    gaps,
+                ));
+            }
+            out = out.append(leaf);
+        }
+        out
     }
 
     /// A comment that sits on a line of its own. An embedded document
@@ -1043,6 +1142,64 @@ impl Formatter {
         doc.append(inner.indent(nest))
     }
 
+    /// Whether `node` is a `class`, `module`, `class <<` or block `def`
+    /// with nothing between its header and its `end`, not even a comment:
+    /// the definitions [`definition_doc`](Self::definition_doc) writes as
+    /// `header; end`.
+    pub(super) fn is_empty_definition(&self, node: &ruby_prism::Node<'_>) -> bool {
+        let empty = match node {
+            ruby_prism::Node::ClassNode { .. } => {
+                node.as_class_node().is_some_and(|n| n.body().is_none())
+            }
+            ruby_prism::Node::ModuleNode { .. } => {
+                node.as_module_node().is_some_and(|n| n.body().is_none())
+            }
+            ruby_prism::Node::SingletonClassNode { .. } => node
+                .as_singleton_class_node()
+                .is_some_and(|n| n.body().is_none()),
+            ruby_prism::Node::DefNode { .. } => node
+                .as_def_node()
+                .is_some_and(|n| n.body().is_none() && n.end_keyword_loc().is_some()),
+            _ => false,
+        };
+        let location = node.location();
+        let first = self
+            .comments
+            .partition_point(|c| c.start < location.start_offset());
+        empty
+            && self
+                .comments
+                .get(first)
+                .is_none_or(|c| c.start >= location.end_offset())
+    }
+
+    /// A definition's header, body and `end`. An empty one
+    /// ([`is_empty_definition`](Self::is_empty_definition)) is `header;
+    /// end` on one line while that fits, which is how `class Error <
+    /// StandardError; end` is usually written and what
+    /// Style/EmptyMethod asks of a `def`; anything else, and an empty one
+    /// that does not fit, is [`keyword_body_doc`](Self::keyword_body_doc)'s
+    /// lines.
+    pub(super) fn definition_doc(
+        &mut self,
+        empty: bool,
+        header: Doc,
+        header_line: usize,
+        body: Option<ruby_prism::Node<'_>>,
+        end_offset: Option<usize>,
+    ) -> Doc {
+        if !empty {
+            return self.keyword_body_doc(header, header_line, body, end_offset);
+        }
+        // Built by hand rather than by `keyword_body_doc`, which would take
+        // a comment on the header's line as the header's own: written on
+        // one line, that is the comment after `end`, and it belongs to the
+        // statement, whichever shape is chosen.
+        let one_line = header.clone().append(Doc::text("; end"));
+        let lines = header.append(Doc::hardline()).append(Doc::text("end"));
+        Doc::if_break(lines, one_line).group()
+    }
+
     /// [`Formatter::clause_body_doc`] closed off with `end` on its own
     /// line: the shape `class`/`module`/`def`/`do...end`/`for` share.
     pub(super) fn keyword_body_doc(
@@ -1236,10 +1393,11 @@ impl Formatter {
         open: &str,
         items: &[ruby_prism::Node<'_>],
         close: &str,
+        gaps: ItemGaps,
     ) -> Doc {
         let nest_width = self.indent_str.len();
         self.indent += 1;
-        let body = self.expanded_items_doc(items);
+        let body = self.expanded_items_doc(items, gaps);
         self.indent -= 1;
         Doc::text(open)
             .append(Doc::hardline().append(body).indent(nest_width))
@@ -1265,6 +1423,7 @@ impl Formatter {
         items: &[ruby_prism::Node<'_>],
         close: &str,
         (opening_end, closing_start): (usize, usize),
+        gaps: ItemGaps,
     ) -> Doc {
         let nest_width = self.indent_str.len();
         // `foo( # why`: nothing to attach it to but the list itself. A
@@ -1287,11 +1446,12 @@ impl Formatter {
         let mut body = Doc::nil();
         let last = items.len().saturating_sub(1);
         for (i, item) in items.iter().enumerate() {
-            if let Some(leading) = self.leading_comments_doc(item.location().start_offset(), i > 0)
-            {
+            let leading = self.leading_comments_doc(item.location().start_offset(), i > 0);
+            let item_break = self.commented_item_break(items, i, leading.is_some(), gaps);
+            if let Some(leading) = leading {
                 body = body.append(leading);
             }
-            body = body.append(Doc::hardline()).append(self.node_doc(item));
+            body = body.append(item_break).append(self.node_doc(item));
             if i != last {
                 body = body.append(Doc::text(","));
             }
@@ -1327,7 +1487,7 @@ impl Formatter {
     /// no flat form, so the expanded shape, with each comment kept next to
     /// the argument it was written against -- above it on its own line, or
     /// after it on the line it ends.
-    fn commented_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+    fn commented_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>], gaps: ItemGaps) -> Doc {
         self.indent += 1;
         let mut first = Doc::nil();
         let mut rest = Doc::nil();
@@ -1335,12 +1495,12 @@ impl Formatter {
         for (i, item) in items.iter().enumerate() {
             let mut piece = Doc::nil();
             if i > 0 {
-                if let Some(leading) =
-                    self.leading_comments_doc(item.location().start_offset(), true)
-                {
+                let leading = self.leading_comments_doc(item.location().start_offset(), true);
+                let item_break = self.commented_item_break(items, i, leading.is_some(), gaps);
+                if let Some(leading) = leading {
                     piece = piece.append(leading);
                 }
-                piece = piece.append(Doc::hardline());
+                piece = piece.append(item_break);
             }
             piece = piece.append(self.node_doc(item));
             if i != last {
@@ -1364,9 +1524,9 @@ impl Formatter {
     }
 
     /// `items` one per line, comma-separated.
-    fn expanded_items_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+    fn expanded_items_doc(&mut self, items: &[ruby_prism::Node<'_>], gaps: ItemGaps) -> Doc {
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
-        Doc::join(leaves, Doc::text(",").append(Doc::hardline()))
+        self.join_items(items, leaves, true, gaps)
     }
 
     /// The expanded shape of a bare comma-joined list: the first item
@@ -1374,24 +1534,34 @@ impl Formatter {
     /// own at one indent. Ruby has no paren-less way to put the first
     /// argument on a new line, and Tuxedo does not rewrite command style
     /// into a parenthesized call.
-    fn expanded_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+    fn expanded_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>], gaps: ItemGaps) -> Doc {
         self.indent += 1;
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         self.indent -= 1;
-        Self::bare_args_body_doc(leaves, Doc::hardline(), self.indent_str.len())
+        self.bare_args_body_doc(items, leaves, true, gaps)
     }
 
-    /// `a, b, c` for a bare comma-joined list, with `separator` after each
-    /// comma: the first item carries no line point in front of it (it
+    /// `a, b, c` for a bare comma-joined list, `leaves` being the
+    /// documents of `items`, joined as [`join_items`](Self::join_items)
+    /// joins them: the first item carries no line point in front of it (it
     /// continues whatever line it started on) and is left outside the
     /// `indent`, so a collection of its own that wraps is indented from the
     /// statement, not from the column the list starts at.
-    fn bare_args_body_doc(leaves: Vec<Doc>, separator: Doc, nest_width: usize) -> Doc {
+    fn bare_args_body_doc(
+        &self,
+        items: &[ruby_prism::Node<'_>],
+        leaves: Vec<Doc>,
+        broken: bool,
+        gaps: ItemGaps,
+    ) -> Doc {
         let mut leaves = leaves.into_iter();
         let first = leaves.next().unwrap_or_else(Doc::nil);
-        let rest =
-            Doc::concat(leaves.map(|leaf| Doc::text(",").append(separator.clone()).append(leaf)));
-        first.append(rest.indent(nest_width))
+        let rest = Doc::concat(leaves.enumerate().map(|(i, leaf)| {
+            Doc::text(",")
+                .append(self.item_break(&items[i], &items[i + 1], broken, gaps))
+                .append(leaf)
+        }));
+        first.append(rest.indent(self.indent_str.len()))
     }
 
     /// Renders a call's argument list, including a block-pass argument
@@ -1461,14 +1631,15 @@ impl Formatter {
                 "(",
                 Doc::softline(),
                 &items,
-                Doc::softline(),
                 ")",
                 span,
+                ItemGaps::BetweenKeywordPairs,
             );
         }
 
         if !parenthesized && items.len() > 1 && !self.single_line {
-            return Doc::text(" ").append(self.bare_args_doc(&items));
+            return Doc::text(" ")
+                .append(self.bare_args_doc(&items, ItemGaps::BetweenKeywordPairs));
         }
 
         // A single bare argument, an empty `()`, or a list being forced
@@ -1497,7 +1668,7 @@ impl Formatter {
     /// same two-step `bracketed_items_doc` takes, and for the same reason:
     /// such an item is still an opaque text leaf that the printer would
     /// measure as one long line.
-    fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>]) -> Doc {
+    fn bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>], gaps: ItemGaps) -> Doc {
         // Only a comment *between* arguments needs this shape; one inside
         // an argument belongs to that argument, which lays it out itself.
         if items.windows(2).any(|pair| {
@@ -1506,15 +1677,15 @@ impl Formatter {
                 pair[1].location().start_offset(),
             )
         }) {
-            return self.commented_bare_args_doc(items);
+            return self.commented_bare_args_doc(items, gaps);
         }
         let snap = self.render_snapshot();
         let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
-            return self.expanded_bare_args_doc(items);
+            return self.expanded_bare_args_doc(items, gaps);
         }
-        Self::bare_args_body_doc(leaves, Doc::line(), self.indent_str.len()).group()
+        self.bare_args_body_doc(items, leaves, false, gaps).group()
     }
 
     /// True if a string-ish literal's opening delimiter marks a heredoc

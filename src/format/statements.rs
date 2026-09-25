@@ -6,7 +6,7 @@
 //! hole). Blank lines between statements are kept, at most one in a row,
 //! and one is added where RuboCop's layout cops require it: around method,
 //! class and module definitions, access modifiers and `attr_*` calls, and
-//! after a guard clause (`wants_forced_blank_line`).
+//! after a guard clause or a run of them (`wants_forced_blank_line`).
 
 use super::Formatter;
 use super::doc::Doc;
@@ -151,7 +151,9 @@ impl Formatter {
         prev: &ruby_prism::Node<'_>,
         current: &ruby_prism::Node<'_>,
     ) -> bool {
-        if is_guard_clause(prev) {
+        // A run of guards reads as one block: the cop wants the blank line
+        // after the last of them, not between them.
+        if is_guard_clause(prev) && !is_guard_clause(current) {
             return true;
         }
 
@@ -163,10 +165,15 @@ impl Formatter {
             return true;
         }
 
-        // rubocop's AllowAdjacentOneLineDefs exception doesn't apply here:
-        // Tuxedo always expands a def's body onto multiple lines (even an
-        // endless method's), so there's no such thing as an adjacent
-        // one-line def pair in its own output to exempt.
+        // Empty definitions come out as `class A < E; end`, and a run of
+        // them is a list: EmptyLineBetweenDefs's AllowAdjacentOneLineDefs
+        // (on by default) accepts them on consecutive lines. One whose
+        // header is too long for the line is written out on two, and is
+        // then left next to its neighbour all the same.
+        if self.is_empty_definition(prev) && self.is_empty_definition(current) {
+            return false;
+        }
+
         if is_def_like(prev) || is_def_like(current) {
             return true;
         }
@@ -254,6 +261,18 @@ impl Formatter {
                 .as_ref()
                 .is_some_and(|prev| self.wants_forced_blank_line(prev, &stmt));
             let mut force_blank_pending = force_blank;
+            // A comment written directly under a def's `end` belongs to it
+            // (the `# rubocop:enable` closing a pair opened above the def)
+            // when the author's own blank line further down separates it
+            // from what follows: that gap is the one EmptyLineBetweenDefs
+            // asks for, and forcing another above the comment would cut it
+            // off from the `end`.
+            if force_blank
+                && prev_stmt.as_ref().is_some_and(is_def_like)
+                && prev_end_line.is_some_and(|end| self.comments_below_have_gap(end, start_line))
+            {
+                force_blank_pending = false;
+            }
 
             while self.comment_cursor < self.comments.len() {
                 let comment_line = self.line_of(self.comments[self.comment_cursor].start);
@@ -366,6 +385,26 @@ impl Formatter {
             doc = doc.append(if out { piece.dedent(nest) } else { piece });
         }
         doc
+    }
+
+    /// Whether the pending comments between the line a statement ends on,
+    /// `end_line`, and the line the next one starts on start directly
+    /// under `end_line` and have a blank line somewhere below them: under
+    /// one of the comments, or between the last of them and the statement.
+    fn comments_below_have_gap(&self, end_line: usize, start_line: usize) -> bool {
+        let mut previous_end = end_line;
+        for comment in &self.comments[self.comment_cursor..] {
+            let line = self.line_of(comment.start);
+            if line >= start_line {
+                break;
+            }
+            if line > previous_end + 1 {
+                return previous_end != end_line;
+            }
+            // An embedded document spans lines.
+            previous_end = line + comment.text.trim_end().matches('\n').count();
+        }
+        previous_end != end_line && start_line > previous_end + 1
     }
 
     /// `alias new_name old_name` (bare or symbol-style method names --

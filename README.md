@@ -129,9 +129,49 @@ ROLES = [
 ]
 ```
 
-Tuxedo does not change one construct into another. An endless method
-(`def name = expr`) stays endless while it fits on the line and expands to
-the block form when it does not; a block `def` is never made endless.
+Tuxedo keeps the form you wrote, with four exceptions. Each one produces
+the same program, and the safety check (see [Safety](#safety)) confirms it
+on every file:
+
+- **A modifier `if`/`unless` that does not fit on one line becomes a block
+  `if`/`unless`.** Breaking a modifier's condition would leave a line
+  ending in `&&` or `(`, and the reader could not tell where the body stops
+  and the condition starts. A block `if` is never turned into a modifier,
+  and a modifier that fits stays one. `while`/`until` modifiers and
+  `rescue` modifiers stay modifiers, because their block forms mean
+  something different.
+
+  ```ruby
+  return if policy.is_a?(SignaturePolicy) && expected.is_a?(SignaturePolicy) &&
+            policy.identifier == expected.identifier &&
+            policy.digest_value == expected.digest_value
+
+  # becomes
+
+  if policy.is_a?(SignaturePolicy) &&
+      expected.is_a?(SignaturePolicy) &&
+      policy.identifier == expected.identifier &&
+      policy.digest_value == expected.digest_value
+    return
+  end
+  ```
+
+- **The `then` form of a block `if` is written out**: `if a then b end`
+  becomes three lines. A `when` or `in` branch written `when 1 then :a`
+  stays on its line while it fits and has one statement. One that
+  outgrows the line, or gains a second statement, is written out on its
+  own, and the other branches of the `case` stay as they are. A branch
+  written out is never joined onto its `when` line.
+- **An endless method (`def name = expr`) that does not fit becomes a block
+  `def`.** One that fits stays endless, and a block `def` is never made
+  endless.
+- **An empty `class`, `module` or `def` is written on one line**, however it
+  was written, while that fits: `class NotFound < Error; end`,
+  `def reset; end`. That is how an error class is usually declared, and it
+  is what RuboCop's `Style/EmptyMethod` asks of a `def`. A run of them
+  stays on consecutive lines. Adding the first method rewrites the header
+  line, which costs one line in that diff. One with a comment inside keeps
+  its two lines.
 
 ## Configuration
 

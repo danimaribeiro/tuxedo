@@ -9,8 +9,8 @@
 //! fits on its line or breaks before every `.`/`&.`, each link one indent
 //! in from the statement.
 
-use super::Formatter;
 use super::doc::Doc;
+use super::{Formatter, ItemGaps};
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
@@ -25,6 +25,19 @@ fn is_plain_method_call(call: &ruby_prism::CallNode<'_>) -> bool {
         .next()
         .is_some_and(|c| c.is_alphanumeric() || c == '_');
     is_identifier_call && !is_index && !call.is_attribute_write()
+}
+
+/// True for an index read in a chain (`doc.xpath(q)[i].text`): `[]` in
+/// its bracket spelling, with arguments and nothing after them. It is a
+/// link of the chain as `.fetch(i)` would be, and rides on the line of the
+/// link before it, since Ruby reads a line that starts with `[` as a new
+/// array.
+fn is_index_link(call: &ruby_prism::CallNode<'_>) -> bool {
+    call.name().as_slice() == b"[]"
+        && call.call_operator_loc().is_none()
+        && call.opening_loc().is_some()
+        && call.arguments().is_some()
+        && call.block().is_none()
 }
 
 /// True if `call`'s block can sit inside a chain link: a `{ }` block whose
@@ -81,10 +94,11 @@ fn collect_chain<'a>(
     let mut base = node.receiver()?;
 
     while let Some(call) = base.as_call_node() {
-        if !is_plain_method_call(&call)
-            || !block_can_join(&call, has_comment)
-            || is_scope_call(&call)
-        {
+        let joins = is_index_link(&call)
+            || (is_plain_method_call(&call)
+                && block_can_join(&call, has_comment)
+                && !is_scope_call(&call));
+        if !joins {
             break;
         }
         match call.receiver() {
@@ -149,6 +163,24 @@ impl CallHead {
     }
 }
 
+/// A value with brackets of its own to break inside: a call with a
+/// parenthesized argument list, or an array or hash literal.
+fn breaks_in_own_brackets(node: &ruby_prism::Node<'_>) -> bool {
+    match node {
+        ruby_prism::Node::CallNode { .. } => node.as_call_node().is_some_and(|call| {
+            call.opening_loc()
+                .is_some_and(|open| open.as_slice() == b"(")
+                && call.arguments().is_some()
+        }),
+        ruby_prism::Node::ArrayNode { .. } => node
+            .as_array_node()
+            .and_then(|array| array.opening_loc())
+            .is_some_and(|open| open.as_slice() == b"["),
+        ruby_prism::Node::HashNode { .. } => true,
+        _ => false,
+    }
+}
+
 /// A call's real `{ }` / `do...end` block, as opposed to a block-pass
 /// argument (`&:sym`), which Prism stores in the same slot but which
 /// belongs inside the argument list.
@@ -189,19 +221,23 @@ impl Formatter {
         // what surrounds it. It stays one leaf, and the enclosing operator
         // or argument list takes the break. A comment between links has
         // to sit on a line of its own, so it still breaks them.
-        let carries_work =
-            |call: &ruby_prism::CallNode<'_>| call.arguments().is_some() || call.block().is_some();
+        // An index is not counted: `params[:user][:name].strip` is one
+        // `.` link, with nothing to break between.
+        let carries_work = |call: &ruby_prism::CallNode<'_>| {
+            !is_index_link(call) && (call.arguments().is_some() || call.block().is_some())
+        };
         let commented = links.iter().chain(std::iter::once(node)).any(|link| {
-            link.receiver().is_some_and(|receiver| {
-                link.call_operator_loc()
-                    .or_else(|| link.message_loc())
-                    .is_some_and(|next| {
-                        self.has_pending_comment_in(
-                            receiver.location().end_offset(),
-                            next.start_offset(),
-                        )
-                    })
-            })
+            !is_index_link(link)
+                && link.receiver().is_some_and(|receiver| {
+                    link.call_operator_loc()
+                        .or_else(|| link.message_loc())
+                        .is_some_and(|next| {
+                            self.has_pending_comment_in(
+                                receiver.location().end_offset(),
+                                next.start_offset(),
+                            )
+                        })
+                })
         });
         let scoped_head = base
             .as_call_node()
@@ -240,6 +276,14 @@ impl Formatter {
         // second's.
         let mut segments: Vec<(Option<Doc>, Doc)> = Vec::new();
         for (at, link) in links.iter().chain(std::iter::once(node)).enumerate() {
+            if is_index_link(link) {
+                let index = self.index_link_doc(link);
+                match segments.last_mut() {
+                    Some((_, last)) => *last = last.clone().append(index),
+                    None => run.leaves.push(index),
+                }
+                continue;
+            }
             let gap = self.link_gap_comments_doc(link);
             let args = self.call_args_doc(link, link.opening_loc().is_some());
             let mut segment = Doc::text(call_operator(link))
@@ -275,7 +319,39 @@ impl Formatter {
             };
             gap.unwrap_or_else(Doc::nil).append(line).append(segment)
         }));
-        Some(base_doc.append(links_doc.indent(nest_width).group()))
+        // The base is inside the group, so the question is whether the
+        // whole chain fits, not whether what follows the base does. A base
+        // that has to expand (`[...].map { }.join`) then breaks the links as
+        // a receiver's arguments would (`Set.new(...).map { }.join`), and
+        // lengthening one element of it cannot flip every link between the
+        // two shapes. A base that is multi-line at any width (`end.keys`
+        // after an `if`, a `do...end` block) has no shape to flip between,
+        // and the links go on its last line while they fit there.
+        if base_doc.breaks() {
+            return Some(base_doc.append(links_doc.indent(nest_width).group()));
+        }
+        Some(base_doc.append(links_doc.indent(nest_width)).group())
+    }
+
+    /// The `[args]` of an index link, expanded like any bracketed list when
+    /// it is too long.
+    fn index_link_doc(&mut self, link: &ruby_prism::CallNode<'_>) -> Doc {
+        let args: Vec<_> = link
+            .arguments()
+            .map(|a| a.arguments().iter().collect())
+            .unwrap_or_default();
+        let span = link
+            .opening_loc()
+            .zip(link.closing_loc())
+            .map(|(open, close)| (open.end_offset(), close.start_offset()));
+        self.bracketed_items_doc(
+            "[",
+            Doc::softline(),
+            &args,
+            "]",
+            span,
+            ItemGaps::BetweenKeywordPairs,
+        )
     }
 
     /// The comments between `link`'s receiver and the `.` that reaches
@@ -422,8 +498,14 @@ impl Formatter {
             && let (Some(open), Some(close)) = (node.opening_loc(), node.closing_loc())
         {
             let span = Some((open.end_offset(), close.start_offset()));
-            let list =
-                self.bracketed_items_doc("[", Doc::softline(), &args, Doc::softline(), "]", span);
+            let list = self.bracketed_items_doc(
+                "[",
+                Doc::softline(),
+                &args,
+                "]",
+                span,
+                ItemGaps::BetweenKeywordPairs,
+            );
             run.leaves.push(list);
             return self.end_run(run);
         }
@@ -573,6 +655,29 @@ impl Formatter {
         operands.push(arg);
 
         let condition = std::mem::take(&mut self.condition_spine);
+
+        // `errors << PolicyError.new(...)` appends one value the way
+        // `error = PolicyError.new(...)` assigns one, and is laid out the
+        // same way: `errors << PolicyError.new(` stays on the line and the
+        // value breaks inside its own brackets, moving under the `<<` only
+        // when even that head does not fit. Broken after the operator
+        // instead, the statement would change shape whenever its argument
+        // happened to span lines.
+        if name_str == "<<"
+            && !condition
+            && let [target, value] = operands.as_slice()
+            && breaks_in_own_brackets(value)
+            && !self.has_pending_comment_in(
+                target.location().end_offset(),
+                value.location().start_offset(),
+            )
+        {
+            let mut run = self.begin_run();
+            self.run_node(&mut run, target);
+            self.run_assigned_value(&mut run, "<<", value);
+            return self.end_run(run);
+        }
+
         let (leaves, gaps) = self.operand_docs(&operands);
         self.infix_doc(leaves, gaps, name_str, condition, false)
     }

@@ -105,3 +105,37 @@ def maintain
     end
   end
 end
+
+it "keeps an index read on the line of the link before it" do
+  digest_value = document
+    .xpath(".//ds:Reference", HankoXml::NS)[reference_index]
+    .at_xpath("./ds:DigestValue", HankoXml::NS)
+    .text
+  same_value = document
+    .xpath(".//ds:Reference", HankoXml::NS)
+    .fetch(reference_index)
+    .at_xpath("./ds:DigestValue", HankoXml::NS)
+    .text
+  name = params[:user][:name].strip
+end
+
+module Signer
+  LEAVES = [ds_X509Data_ds_X509Certificate, ds_X509Data_ds_X509SubjectName, ds_X509Data_ds_X509IssuerSerial, leaf]
+    .map { |path| "./#{path}" }
+    .join(" | ")
+    .freeze
+  LONGER_LEAVES = [
+    ds_X509Data_ds_X509Certificate,
+    ds_X509Data_ds_X509SubjectName,
+    ds_X509Data_ds_X509IssuerSerial,
+    another_leaf
+  ]
+    .map { |path| "./#{path}" }
+    .join(" | ")
+    .freeze
+  UNITS = if custom_units?
+    custom_units
+  else
+    default_units
+  end.keys.map { |name| INVERTED_UNITS[name] }.sort
+end
