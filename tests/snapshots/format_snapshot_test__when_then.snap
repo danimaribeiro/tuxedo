@@ -1,0 +1,18 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+case key
+when :organization_identifier then "the branch below is written with `then` but does not fit on the line"
+when :organization_display_name
+  lookup_table_for_organizations.fetch(value).display_name_for_locale(current_locale, fallback: true)
+when :two_statements
+  a
+  b
+when :written_out
+  :c
+when :block_construct
+  if a
+    b
+  end
+end

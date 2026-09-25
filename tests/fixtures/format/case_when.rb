@@ -20,3 +20,29 @@ when :hash, :array, :str, :sym, :int, :float, :true, :false, :nil, :const # rubo
 when :send
   1
 end
+
+def coerce_signature_policy(value)
+  case value
+  when SignaturePolicy then value
+  when Hash then SignaturePolicy.new(**value)
+  when :implied, "implied" then SignaturePolicy.implied # both spellings
+  when nil
+    nil
+  when String then SignaturePolicy.parse(value)
+    # A comment below a one-line branch stays with it.
+  else
+    raise ArgumentError, "cannot coerce #{value.class}"
+  end
+end
+
+case key
+when :organization_identifier
+  "written out by the author, so it stays written out"
+when :organization_display_name
+  lookup_table_for_organizations.fetch(value).display_name_for_locale(current_locale, fallback: true)
+end
+
+case shape
+in { type: :circle, radius: } then Math::PI * radius**2
+in [width, height] then width * height
+end

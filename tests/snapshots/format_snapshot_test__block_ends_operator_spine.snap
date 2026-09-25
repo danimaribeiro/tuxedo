@@ -36,8 +36,7 @@ class Command
     not_debugging?(instance) &&
       (error.message =~ /wrong number of arguments/ || error.message =~ /given \d*, expected \d*/) &&
       case foo
-      when 1
-        2
+      when 1 then 2
       end
   end
 end

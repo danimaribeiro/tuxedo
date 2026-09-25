@@ -156,11 +156,12 @@ on every file:
   end
   ```
 
-- **The `then` form of `if`, `when` and `in` is always written out**, with
-  the body on its own line, even when every branch would fit:
-  `when 1 then :a` becomes `when 1` followed by `:a` one indent in. Adding
-  a second statement to a branch then adds a line and leaves the others
-  alone.
+- **The `then` form of a block `if` is written out**: `if a then b end`
+  becomes three lines. A `when` or `in` branch written `when 1 then :a`
+  stays on its line while it fits and has one statement. One that
+  outgrows the line, or gains a second statement, is written out on its
+  own, and the other branches of the `case` stay as they are. A branch
+  written out is never joined onto its `when` line.
 - **An endless method (`def name = expr`) that does not fit becomes a block
   `def`.** One that fits stays endless, and a block `def` is never made
   endless.

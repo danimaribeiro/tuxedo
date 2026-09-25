@@ -1,5 +1,5 @@
 RuboCop offenses: rails
-generated: 2026-09-25T00:43:05Z
+generated: 2026-09-25T00:55:40Z
 baseline/tuxedo columns: rubocop with only its shipped defaults (scripts/lint-baseline.rubocop.yml pins the target Ruby)
 refused: 0 files; the tuxedo column covers every file.
 project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-formatted copy
@@ -7,7 +7,7 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
 #    Cop                                             baseline     tuxedo      delta  project-cfg
 --   ---                                             --------     ------      -----  -----------
 1    Layout/ArgumentAlignment                             858       4133      +3275            0
-2    Metrics/MethodLength                                4119       4484       +365            0
+2    Metrics/MethodLength                                4119       4472       +353            0
 3    Layout/MultilineMethodCallIndentation *              195        393       +198            0
 4    Layout/CaseIndentation                                21        162       +141            0
 5    Layout/EndAlignment                                  198        290        +92            4
@@ -270,7 +270,7 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
 262  Layout/IndentationConsistency                       6085         13      -6072            0
 263  Style/StringLiterals                              106303        402    -105901       105302
 
-     TOTAL                                             169830      42707    -127123       108999
+     TOTAL                                             169830      42695    -127135       108999
 
 * deliberate: decided, still counted
     Layout/MultilineMethodCallIndentation: chains indent one level from the statement, not aligned to the receiver (see format-verify.rubocop.yml)
@@ -278,4 +278,4 @@ project-cfg column: rubocop with rails's own .rubocop.yml, run on the tuxedo-for
     Style/MultilineTernaryOperator: breaks an over-long ternary after `?` and `:` rather than rewriting it as if/else, a change of construct
     Layout/HeredocIndentation: leaves `<<-` alone: its body whitespace is part of the string, so `<<~` is a change of value
 
-introduced by tuxedo (delta above 0): 15 cops (+4121) not decided, 3 cops (+281) deliberate
+introduced by tuxedo (delta above 0): 15 cops (+4109) not decided, 3 cops (+281) deliberate

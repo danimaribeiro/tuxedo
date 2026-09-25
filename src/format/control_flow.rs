@@ -7,9 +7,9 @@
 //! The form a conditional was written in is kept, with two exceptions. A
 //! modifier `if`/`unless` that does not fit on one line becomes a block
 //! `if`/`unless` (see `conditional_modifier_doc`); a block `if` is never
-//! made a modifier. And the `then` form is always written out on its
-//! lines: `if a then b end`, `when 1 then :a` and `in 1 then :a` put the
-//! body on a line of its own. A ternary stays a ternary, and a
+//! made a modifier. And `if a then b end` is written out on its lines.
+//! A `when 1 then :a` or `in 1 then :a` branch stays on its line while it
+//! fits (`then_clause_doc`). A ternary stays a ternary, and a
 //! `while`/`until`/`rescue` modifier stays a modifier.
 //!
 //! Clauses (`elsif`, `else`, `when`, `in`, `rescue`, `ensure`) sit at the
@@ -17,6 +17,7 @@
 //! indent in; a `when` is not indented from its `case`.
 
 use super::Formatter;
+use super::defs::holds_block_construct;
 use super::doc::Doc;
 
 impl Formatter {
@@ -667,7 +668,8 @@ impl Formatter {
             .map_or(node.keyword_loc().end_offset(), |c| {
                 c.location().end_offset()
             });
-        self.clause_doc(header, header_end, node.statements(), closer)
+        let then = node.then_keyword_loc().map(|l| l.start_offset());
+        self.clause_doc(header, header_end, then, node.statements(), closer)
     }
 
     /// One `in pattern` clause of a `case/in`. Prism models a guard
@@ -686,18 +688,27 @@ impl Formatter {
             None => self.node_doc(&pattern),
         });
         let header_end = pattern.location().end_offset();
-        self.clause_doc(header, header_end, node.statements(), closer)
+        let then = node.then_loc().map(|l| l.start_offset());
+        self.clause_doc(header, header_end, then, node.statements(), closer)
     }
 
     /// A `when`/`in` clause: header and body, and nothing to close it --
     /// the `case` above supplies the separator before whatever follows.
+    /// `then` is where the clause's `then` keyword starts, if it has one.
     fn clause_doc(
         &mut self,
         header: Doc,
         header_end: usize,
+        then: Option<usize>,
         statements: Option<ruby_prism::StatementsNode<'_>>,
         closer: Option<usize>,
     ) -> Doc {
+        if !self.single_line
+            && let Some(then) = then
+            && let Some(doc) = self.then_clause_doc(header.clone(), then, &statements, closer)
+        {
+            return doc;
+        }
         let body = statements.map(|s| s.as_node());
         if self.single_line {
             if body.is_none() {
@@ -709,6 +720,71 @@ impl Formatter {
         }
         let header_line = self.line_of(header_end.saturating_sub(1));
         self.clause_body_doc(header, header_line, body, closer)
+    }
+
+    /// A clause written `when 1 then :a`, kept on its line while it fits
+    /// and written out as any other clause when it does not. Each clause
+    /// decides for itself: one that outgrows the line expands without
+    /// reflowing the rest of the `case`, which is what makes the form
+    /// worth keeping for a dispatch table.
+    ///
+    /// `None` when the clause was not written that way: a body that does
+    /// not start on the `then` line, more than one statement, a comment
+    /// inside the body, or a body with no one-line shape (a heredoc, a
+    /// block construct).
+    ///
+    /// A comment after the body stays after it in both shapes: it is
+    /// about the body, and taking it as the header's would leave it on
+    /// the `when` line once the clause expands.
+    fn then_clause_doc(
+        &mut self,
+        header: Doc,
+        then: usize,
+        statements: &Option<ruby_prism::StatementsNode<'_>>,
+        closer: Option<usize>,
+    ) -> Option<Doc> {
+        let body: Vec<_> = statements.as_ref()?.body().iter().collect();
+        let [stmt] = body.as_slice() else {
+            return None;
+        };
+        let location = stmt.location();
+        if self.line_of(location.start_offset()) != self.line_of(then)
+            || self.has_pending_comment_in(then, location.end_offset())
+            || holds_block_construct(stmt)
+        {
+            return None;
+        }
+
+        let snap = self.render_snapshot();
+        let heredocs = self.pending_heredocs.len();
+        let was_single_line = std::mem::replace(&mut self.single_line, true);
+        let flat = self.node_doc(stmt);
+        self.single_line = was_single_line;
+        if flat.breaks() || self.pending_heredocs.len() != heredocs {
+            self.restore_render_snapshot(snap);
+            return None;
+        }
+        self.rewind_render_snapshot(snap);
+
+        let nest = self.indent_str.len();
+        self.indent += 1;
+        let body_doc = self.node_doc(stmt);
+        self.indent -= 1;
+        let one_line = header.clone().append(Doc::text(" then ")).append(flat);
+        let lines = header.append(Doc::hardline().append(body_doc).indent(nest));
+        let mut doc = Doc::if_break(lines, one_line).group();
+
+        let end_line = self.line_of(location.end_offset().saturating_sub(1));
+        if let Some(comment) = self.trailing_comment_doc(end_line) {
+            doc = doc.append(comment);
+        }
+        self.indent += 1;
+        let below = closer.and_then(|offset| self.comments_before_doc(offset, true));
+        self.indent -= 1;
+        if let Some(below) = below {
+            doc = doc.append(below.indent(nest));
+        }
+        Some(doc)
     }
 
     /// `predicate ? true_branch : false_branch`, as one group: an overlong

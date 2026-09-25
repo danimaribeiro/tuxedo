@@ -22,8 +22,7 @@ foo {
 }
 foo {
   x = case y
-  when 1
-    :one
+  when 1 then :one
   end
 }
 foo {
