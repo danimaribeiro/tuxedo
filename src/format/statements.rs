@@ -165,10 +165,15 @@ impl Formatter {
             return true;
         }
 
-        // rubocop's AllowAdjacentOneLineDefs exception doesn't apply here:
-        // Tuxedo always expands a def's body onto multiple lines (even an
-        // endless method's), so there's no such thing as an adjacent
-        // one-line def pair in its own output to exempt.
+        // Empty definitions come out as `class A < E; end`, and a run of
+        // them is a list: EmptyLineBetweenDefs's AllowAdjacentOneLineDefs
+        // (on by default) accepts them on consecutive lines. One whose
+        // header is too long for the line is written out on two, and is
+        // then left next to its neighbour all the same.
+        if self.is_empty_definition(prev) && self.is_empty_definition(current) {
+            return false;
+        }
+
         if is_def_like(prev) || is_def_like(current) {
             return true;
         }

@@ -88,5 +88,3 @@ Layout/MultilineArrayBraceLayout	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's ow
 # attached on purpose, the way renaming or dropping the last value never
 # reflows the first.
 Layout/FirstArrayElementLineBreak	0	=\s*(?!["'\[({])\S.*,$	a bare assignment RHS's first value stays on the line the assignment began on, like a bare command argument list's does	ruby-spec
-# --- Comments that move on purpose ---
-Comments	0	trailing of `end`: 	`def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct	rails

@@ -1142,6 +1142,64 @@ impl Formatter {
         doc.append(inner.indent(nest))
     }
 
+    /// Whether `node` is a `class`, `module`, `class <<` or block `def`
+    /// with nothing between its header and its `end`, not even a comment:
+    /// the definitions [`definition_doc`](Self::definition_doc) writes as
+    /// `header; end`.
+    pub(super) fn is_empty_definition(&self, node: &ruby_prism::Node<'_>) -> bool {
+        let empty = match node {
+            ruby_prism::Node::ClassNode { .. } => {
+                node.as_class_node().is_some_and(|n| n.body().is_none())
+            }
+            ruby_prism::Node::ModuleNode { .. } => {
+                node.as_module_node().is_some_and(|n| n.body().is_none())
+            }
+            ruby_prism::Node::SingletonClassNode { .. } => node
+                .as_singleton_class_node()
+                .is_some_and(|n| n.body().is_none()),
+            ruby_prism::Node::DefNode { .. } => node
+                .as_def_node()
+                .is_some_and(|n| n.body().is_none() && n.end_keyword_loc().is_some()),
+            _ => false,
+        };
+        let location = node.location();
+        let first = self
+            .comments
+            .partition_point(|c| c.start < location.start_offset());
+        empty
+            && self
+                .comments
+                .get(first)
+                .is_none_or(|c| c.start >= location.end_offset())
+    }
+
+    /// A definition's header, body and `end`. An empty one
+    /// ([`is_empty_definition`](Self::is_empty_definition)) is `header;
+    /// end` on one line while that fits, which is how `class Error <
+    /// StandardError; end` is usually written and what
+    /// Style/EmptyMethod asks of a `def`; anything else, and an empty one
+    /// that does not fit, is [`keyword_body_doc`](Self::keyword_body_doc)'s
+    /// lines.
+    pub(super) fn definition_doc(
+        &mut self,
+        empty: bool,
+        header: Doc,
+        header_line: usize,
+        body: Option<ruby_prism::Node<'_>>,
+        end_offset: Option<usize>,
+    ) -> Doc {
+        if !empty {
+            return self.keyword_body_doc(header, header_line, body, end_offset);
+        }
+        // Built by hand rather than by `keyword_body_doc`, which would take
+        // a comment on the header's line as the header's own: written on
+        // one line, that is the comment after `end`, and it belongs to the
+        // statement, whichever shape is chosen.
+        let one_line = header.clone().append(Doc::text("; end"));
+        let lines = header.append(Doc::hardline()).append(Doc::text("end"));
+        Doc::if_break(lines, one_line).group()
+    }
+
     /// [`Formatter::clause_body_doc`] closed off with `end` on its own
     /// line: the shape `class`/`module`/`def`/`do...end`/`for` share.
     pub(super) fn keyword_body_doc(

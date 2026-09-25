@@ -1,7 +1,7 @@
 //! Method definitions, parameters, blocks and lambdas.
 //!
 //! A `def` with a body is always written out on its own lines, even a
-//! one-liner; an endless `def x = y` stays endless while it fits and
+//! one-liner, and one with no body is `def x; end` while that fits; an endless `def x = y` stays endless while it fits and
 //! expands to the block form when it does not. A `{ }` block stays on one
 //! line while it fits and holds a single statement with no construct of
 //! its own (`holds_block_construct`); otherwise it expands the way
@@ -109,7 +109,9 @@ impl Formatter {
     /// `def`'s level.
     ///
     /// Tuxedo always expands a method body, even a one-liner's: `def x; y;
-    /// end` becomes three lines. An endless definition (`def x = y`) is the
+    /// end` becomes three lines. A method with no body at all is the
+    /// other way round: `def x; end` on one line while it fits, which
+    /// is what Style/EmptyMethod asks for. An endless definition (`def x = y`) is the
     /// author's choice of construct and stays one when it fits; it expands
     /// to the block form when it does not. A block `def` is never made
     /// endless. The exception is `single_line`, where an
@@ -184,7 +186,8 @@ impl Formatter {
             }
             self.restore_render_snapshot(snap);
         }
-        self.keyword_body_doc(header, header_line, node.body(), end_offset)
+        let empty = self.is_empty_definition(&node.as_node());
+        self.definition_doc(empty, header, header_line, node.body(), end_offset)
     }
 
     pub(super) fn fmt_required_parameter_node(

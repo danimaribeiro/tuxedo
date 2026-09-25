@@ -10,8 +10,7 @@ queries.map! { |query|
   end
 }
 Class.new {
-  def create_table(name)
-  end
+  def create_table(name); end
 }
 Class.new {
   def self.a

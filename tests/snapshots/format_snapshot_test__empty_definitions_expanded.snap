@@ -1,0 +1,8 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+class Error < StandardError; end
+class Other < Error; end
+def noop; end
+def self.noop(a, b); end

@@ -129,7 +129,7 @@ ROLES = [
 ]
 ```
 
-Tuxedo keeps the form you wrote, with three exceptions. Each one produces
+Tuxedo keeps the form you wrote, with four exceptions. Each one produces
 the same program, and the safety check (see [Safety](#safety)) confirms it
 on every file:
 
@@ -164,6 +164,13 @@ on every file:
 - **An endless method (`def name = expr`) that does not fit becomes a block
   `def`.** One that fits stays endless, and a block `def` is never made
   endless.
+- **An empty `class`, `module` or `def` is written on one line**, however it
+  was written, while that fits: `class NotFound < Error; end`,
+  `def reset; end`. That is how an error class is usually declared, and it
+  is what RuboCop's `Style/EmptyMethod` asks of a `def`. A run of them
+  stays on consecutive lines. Adding the first method rewrites the header
+  line, which costs one line in that diff. One with a comment inside keeps
+  its two lines.
 
 ## Configuration
 
