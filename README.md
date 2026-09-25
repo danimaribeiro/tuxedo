@@ -25,7 +25,7 @@ projects (Rails, Thor, ruby/spec, Discourse and Homebrew, 22,779 files) no file
 was refused for a changed meaning, none was broken, and none changed on a
 second pass.
 
-Tuxedo is at version 0.0.1: expect the layout, and the options that tune it,
+Tuxedo is at version 0.0.2: expect the layout, and the options that tune it,
 to keep moving.
 
 ## Installation

@@ -90,7 +90,7 @@ tuxedo format .</pre>
         <p>Tuxedo is not on crates.io: the name <code>tuxedo</code> there belongs to an unrelated crate, so <code>cargo install tuxedo</code> installs someone else's project. To build from source, clone the <a href="https://github.com/danimaribeiro/tuxedo">repository</a> and run <code>cargo build --release</code>.</p>
 
         <h3>A platform without a prebuilt binary</h3>
-        <p>On macOS, Windows, arm64 Linux and musl (Alpine), 0.0.1 has no prebuilt binary: <code>gem install tuxedo-r</code> succeeds, but running <code>tuxedo</code> reports that it cannot find the executable. Build Tuxedo from source, then set <code>TUXEDO_INSTALL_DIR</code> to the directory holding the <code>tuxedo</code> executable, and the gem's shim runs that one instead:</p>
+        <p>On macOS, Windows, arm64 Linux and musl (Alpine), 0.0.2 has no prebuilt binary: <code>gem install tuxedo-r</code> succeeds, but running <code>tuxedo</code> reports that it cannot find the executable. Build Tuxedo from source, then set <code>TUXEDO_INSTALL_DIR</code> to the directory holding the <code>tuxedo</code> executable, and the gem's shim runs that one instead:</p>
 <pre>export TUXEDO_INSTALL_DIR=/path/to/tuxedo/target/release
 bundle exec tuxedo format --check .</pre>
       </section>
@@ -101,7 +101,7 @@ bundle exec tuxedo format --check .</pre>
 tuxedo format --check .         # list files that would change; exit 1 if any
 tuxedo format --diff app/       # print a unified diff instead of writing
 cat a.rb | tuxedo format        # format stdin to stdout</pre>
-        <p>Tuxedo is at version 0.0.1: expect the layout, and the options that tune it, to keep moving between releases. Pin the version in your <code>Gemfile.lock</code> so a formatter upgrade is a deliberate commit, not a surprise in CI.</p>
+        <p>Tuxedo is at version 0.0.2: expect the layout, and the options that tune it, to keep moving between releases. Pin the version in your <code>Gemfile.lock</code> so a formatter upgrade is a deliberate commit, not a surprise in CI.</p>
       </section>
 
       <section id="command-line">
