@@ -27,6 +27,24 @@ def guard_example
   do_stuff
 end
 
+def guard_run
+  return 1 unless x
+  return 2 unless y
+  if z
+    raise "z"
+  end
+
+  do_stuff
+end
+
+def guard_run_spaced
+  return 1 unless x
+
+  return 2 unless y
+
+  do_stuff
+end
+
 # vim: set fileencoding=big5:
 
 puts 1

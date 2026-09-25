@@ -6,7 +6,7 @@
 //! hole). Blank lines between statements are kept, at most one in a row,
 //! and one is added where RuboCop's layout cops require it: around method,
 //! class and module definitions, access modifiers and `attr_*` calls, and
-//! after a guard clause (`wants_forced_blank_line`).
+//! after a guard clause or a run of them (`wants_forced_blank_line`).
 
 use super::Formatter;
 use super::doc::Doc;
@@ -151,7 +151,9 @@ impl Formatter {
         prev: &ruby_prism::Node<'_>,
         current: &ruby_prism::Node<'_>,
     ) -> bool {
-        if is_guard_clause(prev) {
+        // A run of guards reads as one block: the cop wants the blank line
+        // after the last of them, not between them.
+        if is_guard_clause(prev) && !is_guard_clause(current) {
             return true;
         }
 
