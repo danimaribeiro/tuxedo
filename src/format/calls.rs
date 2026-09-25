@@ -9,8 +9,8 @@
 //! fits on its line or breaks before every `.`/`&.`, each link one indent
 //! in from the statement.
 
-use super::Formatter;
 use super::doc::Doc;
+use super::{Formatter, ItemGaps};
 
 /// True for a call that can be a link in a `.method` chain: a plain
 /// identifier-style call (not `[]`/`[]=`, not an attribute write, not a
@@ -422,8 +422,14 @@ impl Formatter {
             && let (Some(open), Some(close)) = (node.opening_loc(), node.closing_loc())
         {
             let span = Some((open.end_offset(), close.start_offset()));
-            let list =
-                self.bracketed_items_doc("[", Doc::softline(), &args, Doc::softline(), "]", span);
+            let list = self.bracketed_items_doc(
+                "[",
+                Doc::softline(),
+                &args,
+                "]",
+                span,
+                ItemGaps::BetweenKeywordPairs,
+            );
             run.leaves.push(list);
             return self.end_run(run);
         }

@@ -4,11 +4,13 @@
 //!
 //! A bracketed collection either fits on one line or puts every element on
 //! a line of its own, one indent in, with the closing bracket back on a
-//! line of its own and no trailing comma: never bin-packed (`bracketed_items_doc` in `mod.rs`). A `%w`
-//! list keeps the percent syntax and delimiters it was written with.
+//! line of its own and no trailing comma: never bin-packed (`bracketed_items_doc` in `mod.rs`). A
+//! blank line the author left between two elements stays when the
+//! collection expands, and goes when it fits (`item_break`). A `%w` list
+//! keeps the percent syntax and delimiters it was written with.
 
 use super::doc::Doc;
-use super::{Formatter, bytes_doc, is_indivisible};
+use super::{Formatter, ItemGaps, bytes_doc, is_indivisible};
 use crate::config::HashBraceSpace;
 
 impl Formatter {
@@ -66,7 +68,7 @@ impl Formatter {
                 && !self.single_line
                 && elements.last().is_some_and(is_indivisible)
             {
-                return self.bare_args_doc(&elements);
+                return self.bare_args_doc(&elements, ItemGaps::All);
             }
             let mut run = self.begin_run();
             for (i, element) in elements.iter().enumerate() {
@@ -95,7 +97,7 @@ impl Formatter {
             .filter(|last| last.as_keyword_hash_node().is_some())
             .map(|last| last.location().start_offset());
         let doc =
-            self.bracketed_items_doc("[", Doc::softline(), &elements, Doc::softline(), "]", span);
+            self.bracketed_items_doc("[", Doc::softline(), &elements, "]", span, ItemGaps::All);
         self.array_keyword_hash = was;
         doc
     }
@@ -190,9 +192,10 @@ impl Formatter {
         let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
-            return self.expanded_items_doc(elements);
+            return self.expanded_items_doc(elements, ItemGaps::All);
         }
-        Doc::join(leaves, Doc::text(",").append(Doc::line())).group()
+        self.join_items(elements, leaves, false, ItemGaps::All)
+            .group()
     }
 
     /// Renders a run of `key => value` / `key: value` pairs, optionally
@@ -216,7 +219,7 @@ impl Formatter {
                 HashBraceSpace::Space => Doc::line,
                 HashBraceSpace::NoSpace => Doc::softline,
             };
-            return self.bracketed_items_doc("{", inner(), elements, inner(), "}", braces);
+            return self.bracketed_items_doc("{", inner(), elements, "}", braces, ItemGaps::All);
         }
 
         // Bare keyword args at a call site with no braces of their own.
@@ -228,9 +231,9 @@ impl Formatter {
         let leaves: Vec<Doc> = elements.iter().map(|e| self.node_doc(e)).collect();
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
-            return self.expanded_items_doc(elements);
+            return self.expanded_items_doc(elements, ItemGaps::All);
         }
-        let body = Doc::join(leaves, Doc::text(",").append(Doc::line()));
+        let body = self.join_items(elements, leaves, false, ItemGaps::All);
         body.indent(self.indent_str.len()).group()
     }
 
