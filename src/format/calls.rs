@@ -27,6 +27,19 @@ fn is_plain_method_call(call: &ruby_prism::CallNode<'_>) -> bool {
     is_identifier_call && !is_index && !call.is_attribute_write()
 }
 
+/// True for an index read in a chain (`doc.xpath(q)[i].text`): `[]` in
+/// its bracket spelling, with arguments and nothing after them. It is a
+/// link of the chain as `.fetch(i)` would be, and rides on the line of the
+/// link before it, since Ruby reads a line that starts with `[` as a new
+/// array.
+fn is_index_link(call: &ruby_prism::CallNode<'_>) -> bool {
+    call.name().as_slice() == b"[]"
+        && call.call_operator_loc().is_none()
+        && call.opening_loc().is_some()
+        && call.arguments().is_some()
+        && call.block().is_none()
+}
+
 /// True if `call`'s block can sit inside a chain link: a `{ }` block whose
 /// body is at most one statement and holds nothing that lays out its own
 /// lines, so it stays on its link's line. A `do...end` block, a body of
@@ -81,10 +94,11 @@ fn collect_chain<'a>(
     let mut base = node.receiver()?;
 
     while let Some(call) = base.as_call_node() {
-        if !is_plain_method_call(&call)
-            || !block_can_join(&call, has_comment)
-            || is_scope_call(&call)
-        {
+        let joins = is_index_link(&call)
+            || (is_plain_method_call(&call)
+                && block_can_join(&call, has_comment)
+                && !is_scope_call(&call));
+        if !joins {
             break;
         }
         match call.receiver() {
@@ -189,19 +203,23 @@ impl Formatter {
         // what surrounds it. It stays one leaf, and the enclosing operator
         // or argument list takes the break. A comment between links has
         // to sit on a line of its own, so it still breaks them.
-        let carries_work =
-            |call: &ruby_prism::CallNode<'_>| call.arguments().is_some() || call.block().is_some();
+        // An index is not counted: `params[:user][:name].strip` is one
+        // `.` link, with nothing to break between.
+        let carries_work = |call: &ruby_prism::CallNode<'_>| {
+            !is_index_link(call) && (call.arguments().is_some() || call.block().is_some())
+        };
         let commented = links.iter().chain(std::iter::once(node)).any(|link| {
-            link.receiver().is_some_and(|receiver| {
-                link.call_operator_loc()
-                    .or_else(|| link.message_loc())
-                    .is_some_and(|next| {
-                        self.has_pending_comment_in(
-                            receiver.location().end_offset(),
-                            next.start_offset(),
-                        )
-                    })
-            })
+            !is_index_link(link)
+                && link.receiver().is_some_and(|receiver| {
+                    link.call_operator_loc()
+                        .or_else(|| link.message_loc())
+                        .is_some_and(|next| {
+                            self.has_pending_comment_in(
+                                receiver.location().end_offset(),
+                                next.start_offset(),
+                            )
+                        })
+                })
         });
         let scoped_head = base
             .as_call_node()
@@ -240,6 +258,14 @@ impl Formatter {
         // second's.
         let mut segments: Vec<(Option<Doc>, Doc)> = Vec::new();
         for (at, link) in links.iter().chain(std::iter::once(node)).enumerate() {
+            if is_index_link(link) {
+                let index = self.index_link_doc(link);
+                match segments.last_mut() {
+                    Some((_, last)) => *last = last.clone().append(index),
+                    None => run.leaves.push(index),
+                }
+                continue;
+            }
             let gap = self.link_gap_comments_doc(link);
             let args = self.call_args_doc(link, link.opening_loc().is_some());
             let mut segment = Doc::text(call_operator(link))
@@ -276,6 +302,27 @@ impl Formatter {
             gap.unwrap_or_else(Doc::nil).append(line).append(segment)
         }));
         Some(base_doc.append(links_doc.indent(nest_width).group()))
+    }
+
+    /// The `[args]` of an index link, expanded like any bracketed list when
+    /// it is too long.
+    fn index_link_doc(&mut self, link: &ruby_prism::CallNode<'_>) -> Doc {
+        let args: Vec<_> = link
+            .arguments()
+            .map(|a| a.arguments().iter().collect())
+            .unwrap_or_default();
+        let span = link
+            .opening_loc()
+            .zip(link.closing_loc())
+            .map(|(open, close)| (open.end_offset(), close.start_offset()));
+        self.bracketed_items_doc(
+            "[",
+            Doc::softline(),
+            &args,
+            "]",
+            span,
+            ItemGaps::BetweenKeywordPairs,
+        )
     }
 
     /// The comments between `link`'s receiver and the `.` that reaches
