@@ -1456,18 +1456,10 @@ impl Formatter {
                 body = body.append(Doc::text(","));
             }
 
-            // A trailing comment belongs to this item if it is on the
-            // line the item ends on and before the next item starts
-            // (`1, 2, # two` is about `2`).
-            let item_end_line = self.line_of(item.location().end_offset().saturating_sub(1));
             let next_start = items
                 .get(i + 1)
                 .map_or(closing_start, |next| next.location().start_offset());
-            let is_trailing = self
-                .comments
-                .get(self.comment_cursor)
-                .is_some_and(|c| c.start < next_start && self.line_of(c.start) == item_end_line);
-            if is_trailing && let Some(trailing) = self.trailing_comment_doc(item_end_line) {
+            if let Some(trailing) = self.item_trailing_comment_doc(item, next_start) {
                 body = body.append(trailing);
             }
         }
@@ -1481,6 +1473,27 @@ impl Formatter {
             .append(body.indent(nest_width))
             .append(Doc::hardline())
             .append(Doc::text(close))
+    }
+
+    /// The trailing comment of one item in a comma-separated list: the
+    /// pending comment on the line the item ends on, if it starts before
+    /// `next_start`, where the next item (or the closing bracket) begins.
+    /// The line alone does not decide it: in `a, b, # about b` both items
+    /// end on the comment's line, and the comment is `b`'s.
+    fn item_trailing_comment_doc(
+        &mut self,
+        item: &ruby_prism::Node<'_>,
+        next_start: usize,
+    ) -> Option<Doc> {
+        if self
+            .comments
+            .get(self.comment_cursor)
+            .is_none_or(|c| c.start >= next_start)
+        {
+            return None;
+        }
+        let item_end_line = self.line_of(item.location().end_offset().saturating_sub(1));
+        self.trailing_comment_doc(item_end_line)
     }
 
     /// A bare command argument list with a comment between its arguments:
@@ -1506,8 +1519,10 @@ impl Formatter {
             if i != last {
                 piece = piece.append(Doc::text(","));
             }
-            let item_end_line = self.line_of(item.location().end_offset().saturating_sub(1));
-            if let Some(trailing) = self.trailing_comment_doc(item_end_line) {
+            let next_start = items
+                .get(i + 1)
+                .map_or(usize::MAX, |next| next.location().start_offset());
+            if let Some(trailing) = self.item_trailing_comment_doc(item, next_start) {
                 piece = piece.append(trailing);
             }
             if i == 0 {
