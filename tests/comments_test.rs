@@ -65,6 +65,15 @@ fn comment_inside_a_list_forces_it_open() {
 }
 
 #[test]
+fn trailing_comment_in_a_bare_argument_list_stays_with_its_argument() {
+    assert_unchanged("foo a,\n  b, # about b\n  c\n");
+    assert_unchanged("foo a, # about a\n  b,\n  c # about c\n");
+    // Two arguments on the comment's line: the comment is the second's.
+    let output = tuxedo::format("foo a, b, # about b\n  c\n").unwrap();
+    assert_eq!(output, "foo a,\n  b, # about b\n  c\n");
+}
+
+#[test]
 fn a_list_without_comments_still_collapses() {
     let output = tuxedo::format("foo(\n  1,\n  2\n) # after\n").unwrap();
     assert_eq!(output, "foo(1, 2) # after\n");
