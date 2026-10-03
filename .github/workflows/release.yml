@@ -54,17 +54,45 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     needs: check-version
-    runs-on: ${{ matrix.os }}
-    # Only x86_64 Linux is built, to keep CI minutes low.
-    # Tuxedo::R::NativePlatforms lists every platform the gem can package.
+    # Every target cross-compiles from one Linux runner with cargo-zigbuild,
+    # macOS included: zig links Mach-O without an Apple SDK and gives the
+    # arm64 binary the ad-hoc signature Apple Silicon requires. The gnu
+    # targets link against glibc 2.28 (the `.2.28` suffix), so the binary
+    # runs on Debian 10, Ubuntu 20.04 and RHEL 8, not only on whatever glibc
+    # the runner has.
+    #
+    # Windows is not here: ruby-prism-sys's bindings do not build against
+    # zig's Windows headers. Tuxedo::R::NativePlatforms lists every platform
+    # the gem can package.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            zig_target: x86_64-unknown-linux-gnu.2.28
             gem_platform: x86_64-linux
-            use_cross: true
+            run: ""
+          - target: aarch64-unknown-linux-gnu
+            zig_target: aarch64-unknown-linux-gnu.2.28
+            gem_platform: aarch64-linux
+            run: qemu-aarch64 -L /usr/aarch64-linux-gnu
+          - target: x86_64-unknown-linux-musl
+            zig_target: x86_64-unknown-linux-musl
+            gem_platform: x86_64-linux-musl
+            run: ""
+          - target: aarch64-unknown-linux-musl
+            zig_target: aarch64-unknown-linux-musl
+            gem_platform: aarch64-linux-musl
+            run: qemu-aarch64
+          - target: aarch64-apple-darwin
+            zig_target: aarch64-apple-darwin
+            gem_platform: arm64-darwin
+            run: none
+          - target: x86_64-apple-darwin
+            zig_target: x86_64-apple-darwin
+            gem_platform: x86_64-darwin
+            run: none
     steps:
       - uses: actions/checkout@v4
 
@@ -72,41 +100,38 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Build (native)
-        if: ${{ !matrix.use_cross }}
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install cargo-zigbuild
+        run: pip install cargo-zigbuild==0.23.4 ziglang==0.16.0
 
-      - name: Build (cross)
-        if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }}
+      - name: Build
+        run: cargo zigbuild --release --target ${{ matrix.zig_target }}
 
       - name: Stage binary
-        shell: bash
         run: |
           set -eu
           mkdir -p staging
-          bin_name=tuxedo
-          case "${{ matrix.target }}" in
-            *windows*) bin_name=tuxedo.exe ;;
-          esac
-          cp "target/${{ matrix.target }}/release/$bin_name" "staging/$bin_name"
-          chmod +x "staging/$bin_name"
+          cp "target/${{ matrix.target }}/release/tuxedo" staging/tuxedo
+          chmod +x staging/tuxedo
 
-      # Only where the runner can execute what it just built.
+      - name: Install qemu
+        if: startsWith(matrix.run, 'qemu')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user libc6-arm64-cross
+
+      # Natively or under qemu; the runner cannot execute a macOS binary.
       - name: Confirm the binary reports the same version
-        if: ${{ !matrix.use_cross }}
-        shell: bash
+        if: matrix.run != 'none'
         run: |
           set -eu
-          bin="$(find staging -type f)"
-          reported="$("$bin" --version | awk '{print $NF}')"
+          reported="$(${{ matrix.run }} staging/tuxedo --version | awk '{print $NF}')"
           cargo_version="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
           if [ "$reported" != "$cargo_version" ]; then
-            echo "::error::$bin reports version $reported, Cargo.toml says $cargo_version"
+            echo "::error::staging/tuxedo reports version $reported, Cargo.toml says $cargo_version"
             exit 1
           fi
 
@@ -151,8 +176,8 @@ jobs:
         run: |
           cd ruby
           bundle exec rake gem:ruby
-          for platform in x86_64-linux; do
-            bundle exec rake "gem:${platform}"
+          for dir in exe/*/; do
+            bundle exec rake "gem:$(basename "$dir")"
           done
 
       - uses: actions/upload-artifact@v4
