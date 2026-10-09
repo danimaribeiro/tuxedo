@@ -197,6 +197,28 @@ impl Doc {
         )
     }
 
+    /// `fits` if `tail` fits on a line that starts at the indent in force
+    /// where this document begins, `otherwise` if not.
+    ///
+    /// For text that will follow a closing bracket when the bracketed
+    /// list before it expands: the closer goes back to that indent, so
+    /// whether the text fits after it does not depend on how long the
+    /// list's elements are.
+    pub(super) fn fits_at_indent_or(tail: &str, fits: Doc, otherwise: Doc) -> Self {
+        let tail_width = tail.width();
+        let breaks = fits.breaks || otherwise.breaks;
+        Doc::new(
+            RcDoc::nesting(move |indent| {
+                if indent + tail_width <= RENDER_WIDTH.with(Cell::get) {
+                    fits.doc.clone()
+                } else {
+                    otherwise.doc.clone()
+                }
+            }),
+            breaks,
+        )
+    }
+
     /// The documents one after another.
     pub(super) fn concat(docs: impl IntoIterator<Item = Doc>) -> Self {
         docs.into_iter().fold(Doc::nil(), Doc::append)
