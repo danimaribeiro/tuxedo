@@ -7,7 +7,9 @@
 //! is for method chains: a chain in which at least two links carry
 //! arguments or a block is one group (`try_build_chain_doc`), so it either
 //! fits on its line or breaks before every `.`/`&.`, each link one indent
-//! in from the statement.
+//! in from the statement. A chain on an array or hash literal has a third
+//! shape: the literal expands and the chain stays on its closing bracket's
+//! line, taken whenever the chain fits there.
 
 use super::doc::Doc;
 use super::{Formatter, ItemGaps};
@@ -181,6 +183,23 @@ fn breaks_in_own_brackets(node: &ruby_prism::Node<'_>) -> bool {
     }
 }
 
+/// A collection literal with brackets of its own: an array in any
+/// spelling (`[`, `%w[`, `%i(`) or a hash.
+///
+/// A call's argument list is not one. Expanding `receive(:readline)` so
+/// that `.with(...).and_return(...)` can stay on the `)` line puts one
+/// short argument on a line of its own; a call base breaks the links
+/// instead, as a receiver's arguments do.
+fn is_collection_literal(node: &ruby_prism::Node<'_>) -> bool {
+    match node {
+        ruby_prism::Node::ArrayNode { .. } => node
+            .as_array_node()
+            .is_some_and(|array| array.opening_loc().is_some()),
+        ruby_prism::Node::HashNode { .. } => true,
+        _ => false,
+    }
+}
+
 /// A call's real `{ }` / `do...end` block, as opposed to a block-pass
 /// argument (`&:sym`), which Prism stores in the same slot but which
 /// belongs inside the argument list.
@@ -263,6 +282,7 @@ impl Formatter {
             1
         };
 
+        let leading_index = links.first().is_some_and(is_index_link);
         let mut run = self.begin_run();
         self.run_node(&mut run, &base);
         // Every link sits one indent level deeper than the statement once
@@ -319,18 +339,40 @@ impl Formatter {
             };
             gap.unwrap_or_else(Doc::nil).append(line).append(segment)
         }));
-        // The base is inside the group, so the question is whether the
-        // whole chain fits, not whether what follows the base does. A base
-        // that has to expand (`[...].map { }.join`) then breaks the links as
-        // a receiver's arguments would (`Set.new(...).map { }.join`), and
-        // lengthening one element of it cannot flip every link between the
-        // two shapes. A base that is multi-line at any width (`end.keys`
-        // after an `if`, a `do...end` block) has no shape to flip between,
-        // and the links go on its last line while they fit there.
+        let links_doc = links_doc.indent(nest_width);
+        // A base that is multi-line at any width (`end.keys` after an `if`,
+        // a `do...end` block) has no shape to flip between, and the links
+        // go on its last line while they fit there.
         if base_doc.breaks() {
-            return Some(base_doc.append(links_doc.indent(nest_width).group()));
+            return Some(base_doc.append(links_doc.group()));
         }
-        Some(base_doc.append(links_doc.indent(nest_width)).group())
+        // Otherwise the base is inside the group, so the question is
+        // whether the whole chain fits, not whether what follows the base
+        // does: a base that has to expand breaks the links as a receiver's
+        // arguments would (`Set.new(...).map { }.join`).
+        let broken = base_doc.clone().append(links_doc.clone()).group();
+        // A collection literal (`[...]`, `%w[...]`, `{...}`) can expand
+        // instead, leaving the chain on the closer's line. The closer goes
+        // back to the statement's indent however long the elements are, so
+        // whether the chain fits there is decided by the chain alone, and
+        // lengthening an element cannot flip the links between the two
+        // shapes.
+        let closer_base = is_collection_literal(&base) && !leading_index && !links_doc.breaks();
+        if closer_base {
+            // Flat text rather than a group, so that the base's own group
+            // measures the chain with it and expands when the two do not
+            // fit on one line, instead of staying flat and pushing the
+            // chain onto lines of its own.
+            let links = links_doc.clone().group().flat();
+            // Every closer (`]`, `)`, `}`) is one column wide.
+            let tail = format!("]{}", links.render(0));
+            return Some(Doc::fits_at_indent_or(
+                &tail,
+                base_doc.append(links),
+                broken,
+            ));
+        }
+        Some(broken)
     }
 
     /// The `[args]` of an index link, expanded like any bracketed list when

@@ -120,17 +120,27 @@ it "keeps an index read on the line of the link before it" do
 end
 
 module Signer
-  LEAVES = [ds_X509Data_ds_X509Certificate, ds_X509Data_ds_X509SubjectName, ds_X509Data_ds_X509IssuerSerial, leaf]
-    .map { |path| "./#{path}" }
-    .join(" | ")
-    .freeze
+  LEAVES = [
+    ds_X509Data_ds_X509Certificate,
+    ds_X509Data_ds_X509SubjectName,
+    ds_X509Data_ds_X509IssuerSerial,
+    leaf
+  ].map { |path| "./#{path}" }.join(" | ").freeze
   LONGER_LEAVES = [
     ds_X509Data_ds_X509Certificate,
     ds_X509Data_ds_X509SubjectName,
     ds_X509Data_ds_X509IssuerSerial,
     another_leaf
-  ]
-    .map { |path| "./#{path}" }
+  ].map { |path| "./#{path}" }.join(" | ").freeze
+  KEY_DERIVED_LEAVES = %w[
+    ds:X509Data/ds:X509Certificate
+    ds:X509Data/ds:X509SubjectName
+    ds:X509Data/ds:X509IssuerSerial
+    ds:X509Data/ds:X509SKI
+    ds:KeyValue
+  ].map { |path| "./#{path}" }.join(" | ").freeze
+  SHORT_LEAVES = [a, b]
+    .map { |path| "./#{path} and a block body long enough that the chain cannot fit after the closer" }
     .join(" | ")
     .freeze
   UNITS = if custom_units?
