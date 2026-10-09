@@ -853,16 +853,8 @@ impl Formatter {
         Self::bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
-        let block_tail = operands.last().is_some_and(|last| {
-            last.as_begin_node().is_some()
-                || last
-                    .as_if_node()
-                    .is_some_and(|n| n.if_keyword_loc().is_some())
-                || last.as_unless_node().is_some()
-                || last.as_case_node().is_some()
-                || last.as_case_match_node().is_some()
-        });
-        let (leaves, gaps) = self.operand_docs(&operands);
+        let block_tail = operands.last().is_some_and(ends_in_block);
+        let (leaves, gaps) = self.operand_docs(&operands, condition);
         self.infix_doc(leaves, gaps, op_str, condition, block_tail)
     }
 
@@ -892,6 +884,50 @@ impl Formatter {
             None => out.push(node),
         }
     }
+}
+
+/// True if `node`, as the last operand of an `&&`/`||` spine, ends in a
+/// body of its own: a `begin`, a block `if`/`unless`/`case`, a call that
+/// takes a block (`list.any? do |x| ... end`), or a parenthesized or
+/// negated operand or a spine of another operator whose own last operand
+/// does. Such an
+/// operand is what `block_operand_doc` keeps on the operator's line while
+/// it fits, and gives a line of its own when it does not.
+fn ends_in_block(node: &ruby_prism::Node<'_>) -> bool {
+    if node.as_begin_node().is_some()
+        || node
+            .as_if_node()
+            .is_some_and(|n| n.if_keyword_loc().is_some() && n.end_keyword_loc().is_some())
+        || node
+            .as_unless_node()
+            .is_some_and(|n| n.end_keyword_loc().is_some())
+        || node.as_case_node().is_some()
+        || node.as_case_match_node().is_some()
+    {
+        return true;
+    }
+    if let Some(call) = node.as_call_node() {
+        if call.name().as_slice() == b"!" && call.arguments().is_none() {
+            return call.receiver().is_some_and(|r| ends_in_block(&r));
+        }
+        return call.block().is_some_and(|b| b.as_block_node().is_some());
+    }
+    if let Some(parens) = node.as_parentheses_node() {
+        let body = parens.body().and_then(|b| b.as_statements_node());
+        return body.is_some_and(|s| {
+            let mut stmts = s.body().iter();
+            stmts
+                .next()
+                .is_some_and(|only| stmts.next().is_none() && ends_in_block(&only))
+        });
+    }
+    if let Some(and) = node.as_and_node() {
+        return ends_in_block(&and.right());
+    }
+    if let Some(or) = node.as_or_node() {
+        return ends_in_block(&or.right());
+    }
+    false
 }
 
 /// The pattern, keyword and condition of `in pattern if cond`, which prism

@@ -720,7 +720,7 @@ impl Formatter {
             return self.end_run(run);
         }
 
-        let (leaves, gaps) = self.operand_docs(&operands);
+        let (leaves, gaps) = self.operand_docs(&operands, condition);
         self.infix_doc(leaves, gaps, name_str, condition, false)
     }
 
@@ -862,16 +862,25 @@ impl Formatter {
     /// line. No line point: a jump with more than one value is rare enough
     /// that a wrapped shape has never been needed, and `arg_list_doc`'s is
     /// not it -- these take no parentheses.
+    ///
+    /// A single `return` value that wraps (`return a ||\n b`, `return
+    /// Loader\n .new(...)`) continues two levels in, the way a block
+    /// condition does: `Layout/MultilineOperationIndentation` and
+    /// `Layout/MultilineMethodCallIndentation` give `return` the same
+    /// doubled indent as `if`/`while`, and `break`/`next` the ordinary one.
     fn jump_doc(&mut self, keyword: &str, arguments: Option<ruby_prism::ArgumentsNode<'_>>) -> Doc {
         let mut run = self.begin_run();
         self.run_text(&mut run, keyword);
         if let Some(arguments) = arguments {
+            let single = arguments.arguments().iter().count() == 1;
             self.run_text(&mut run, " ");
             for (i, arg) in arguments.arguments().iter().enumerate() {
                 if i > 0 {
                     self.run_text(&mut run, ", ");
                 }
+                self.condition_spine = keyword == "return" && single;
                 self.run_node(&mut run, &arg);
+                self.condition_spine = false;
             }
         }
         self.end_run(run)

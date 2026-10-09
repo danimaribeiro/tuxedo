@@ -17,14 +17,16 @@ impl Formatter {
     pub(super) fn fmt_parentheses_node(&mut self, node: &ruby_prism::ParenthesesNode<'_>) -> Doc {
         // Held to one line, unless a comment sits inside: a `#` comment runs
         // to the end of its line, so there is no one-line shape for it. A
-        // single expression holding a `{ }` block that has to expand is
-        // laid out like any other, since flattening it would join the
-        // block's body with semicolons at whatever width.
+        // single expression holding a construct with no one-line spelling
+        // -- a `begin`/`rescue`, an `if`/`else`, a `{ }` block that has to
+        // expand -- is laid out like any other, since flattening it would
+        // join its parts with semicolons at whatever width.
         let (start, end) = (node.location().start_offset(), node.location().end_offset());
         let expands = node.body().is_some_and(|body| {
             body.as_statements_node()
                 .is_some_and(|s| s.body().iter().count() == 1)
-                && super::defs::holds_expanding_brace_block(&body)
+                && (super::defs::holds_block_construct(&body)
+                    || super::defs::holds_expanding_brace_block(&body))
         });
         let commented = !self.single_line && (expands || self.has_pending_comment_in(start, end));
         // Anything written after the last statement -- a trailing comment,
@@ -473,17 +475,28 @@ impl Formatter {
                     // continuation sits at a column belonging to the
                     // string rather than to the expression.
                     //
+                    // The exception is a hole the author already wrote
+                    // across lines around a construct with no one-line
+                    // spelling (`#{reqs.map do |r| ... end.join}` with two
+                    // statements in the block, an `if`/`else`): flat, it
+                    // comes out joined with semicolons. It keeps its lines
+                    // instead, laid out like the code it is.
+                    //
                     // Literals inside the hole keep their quotes: a `"` in
                     // one would nest a double-quoted string in a
                     // double-quoted one, legal but harder to read than the
                     // `'` the author used.
-                    let was_single_line = std::mem::replace(&mut self.single_line, true);
+                    let loc = statements.location();
+                    let keeps_lines = self.line_of(loc.start_offset())
+                        != self.line_of(loc.end_offset().saturating_sub(1))
+                        && super::defs::holds_block_construct(&statements.as_node());
+                    let was_single_line = std::mem::replace(&mut self.single_line, !keeps_lines);
                     let was_quote_style =
                         std::mem::replace(&mut self.quote_style, QuoteStyle::Preserve);
                     let inner = self.fmt_statements_node(&statements);
                     self.quote_style = was_quote_style;
                     self.single_line = was_single_line;
-                    doc = doc.append(inner.flat());
+                    doc = doc.append(if keeps_lines { inner } else { inner.flat() });
                 }
                 doc = doc.append(Doc::text("}"));
             } else {

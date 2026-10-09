@@ -1895,11 +1895,31 @@ impl Formatter {
     /// Built one operand at a time because the comment cursor only moves
     /// forward: a gap's comments are claimed after the operand before it
     /// has claimed its own, and before the operand after it does.
-    fn operand_docs(&mut self, operands: &[ruby_prism::Node<'_>]) -> (Vec<Doc>, Vec<Option<Doc>>) {
+    ///
+    /// In a block condition (`condition`), an operand that is an infix
+    /// spine of its own (`a == b` in `if a == b && c == d`) takes the
+    /// condition's indent too, so its continuation is not drawn in the
+    /// column of the body below:
+    ///
+    /// ```ruby
+    /// if previous.fetch("formula") ==
+    ///     bottle_hash.fetch("formula") &&
+    ///     previous.fetch("bottle") ==
+    ///         bottle_hash.fetch("bottle")
+    ///   next
+    /// end
+    /// ```
+    fn operand_docs(
+        &mut self,
+        operands: &[ruby_prism::Node<'_>],
+        condition: bool,
+    ) -> (Vec<Doc>, Vec<Option<Doc>>) {
         let mut leaves = Vec::with_capacity(operands.len());
         let mut gaps = Vec::with_capacity(operands.len());
         for (i, operand) in operands.iter().enumerate() {
+            self.condition_spine = condition && is_infix_spine(operand);
             leaves.push(self.node_doc(operand));
+            self.condition_spine = false;
             if let Some(next) = operands.get(i + 1) {
                 gaps.push(self.gap_comments_doc(
                     operand.location().end_offset(),
@@ -1962,7 +1982,13 @@ impl Formatter {
         condition: bool,
         block_tail: bool,
     ) -> Doc {
-        if gaps.iter().any(Option::is_some) {
+        // A block condition with a multi-line operand after the first puts
+        // every operand on its own line: joined onto the operands before
+        // it, the operand's lines would sit in the column of the body the
+        // condition guards. A multi-line first operand starts the line, so
+        // where its lines go does not depend on the ones after it.
+        if gaps.iter().any(Option::is_some) || (condition && leaves.iter().skip(1).any(Doc::breaks))
+        {
             let levels = if condition { 2 } else { 1 };
             let mut leaves = leaves.into_iter();
             let first = leaves.next().unwrap_or_else(Doc::nil);
@@ -2079,6 +2105,26 @@ impl Formatter {
             .append(rest.indent(levels * self.indent_str.len()))
             .group()
     }
+}
+
+/// True for a node laid out as an infix spine: `a && b`, `a or b`, or an
+/// operator call written without a dot (`a == b`, `a + b`).
+fn is_infix_spine(node: &ruby_prism::Node<'_>) -> bool {
+    if node.as_and_node().is_some() || node.as_or_node().is_some() {
+        return true;
+    }
+    node.as_call_node().is_some_and(|call| {
+        let name = call.name().as_slice();
+        call.call_operator_loc().is_none()
+            && call.receiver().is_some()
+            && call.block().is_none()
+            && call
+                .arguments()
+                .is_some_and(|a| a.arguments().iter().count() == 1)
+            && name
+                .first()
+                .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'[')
+    })
 }
 
 /// `Doc::text` from a span of the source.
