@@ -9,37 +9,34 @@ Running tuxedo format...
 [2/4] Idempotence check (format twice)...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
-  52233 total, 9 displaced (each one is listed below as accepted or UNEXPLAINED)
+  52233 total, 4 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2118  Layout/LineLength [Safe Correctable]
-  126   Layout/EndAlignment [Safe Correctable]
+  2061  Layout/LineLength [Safe Correctable]
+  180   Layout/IndentationWidth [Safe Correctable]
+  172   Layout/ElseAlignment [Safe Correctable]
   72    Layout/MultilineMethodCallIndentation [Safe Correctable]
-  45    Layout/TrailingWhitespace [Safe Correctable]
+  59    Layout/EndAlignment [Safe Correctable]
+  41    Layout/TrailingWhitespace [Safe Correctable]
   32    Layout/EmptyComment [Safe Correctable]
   13    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
   12    Layout/FirstHashElementIndentation [Safe Correctable]
-  12    Layout/IndentationWidth [Safe Correctable]
-  11    Layout/MultilineOperationIndentation [Safe Correctable]
-  6     Layout/BlockAlignment [Safe Correctable]
-  4     Layout/ElseAlignment [Safe Correctable]
+  6     Layout/MultilineOperationIndentation [Safe Correctable]
+  5     Layout/BlockAlignment [Safe Correctable]
   4     Layout/LeadingCommentSpace [Safe Correctable]
-  2     Layout/BeginEndAlignment [Safe Correctable]
-  2     Layout/FirstArgumentIndentation [Safe Correctable]
-  2     Layout/RescueEnsureAlignment [Safe Correctable]
   1     Layout/ArgumentAlignment [Safe Correctable]
   1     Layout/EmptyLineAfterGuardClause [Safe Correctable]
   1     Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
   1     Layout/SpaceBeforeComment [Safe Correctable]
-  1     Layout/SpaceBeforeSemicolon [Safe Correctable]
 
 Accepted (scripts/verify-accepted.tsv) and unexplained:
-  accepted    3  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
+  accepted  172  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
   accepted   30  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
-  accepted  118  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
-  accepted    7  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
+  accepted   59  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
+  accepted  180  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
   accepted    4  Layout/MultilineOperationIndentation     the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition
+  accepted   39  Layout/TrailingWhitespace                a heredoc body is data, trailing spaces included
   UNEXPLAINED .devcontainer/scripts/start.rb:11 Layout/ArgumentAlignment: Use one level of indentation for arguments following the first line of a multi-line method call.
   UNEXPLAINED app/controllers/admin/badges_controller.rb:86 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
   UNEXPLAINED app/controllers/admin/badges_controller.rb:89 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
@@ -57,8 +54,6 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED app/controllers/session_controller.rb:659 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
   UNEXPLAINED app/controllers/tag_localizations_controller.rb:15 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
   UNEXPLAINED app/controllers/tag_localizations_controller.rb:20 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/tags_controller.rb:571 Layout/IndentationWidth: Use 2 (not -10) spaces for indentation.
-  UNEXPLAINED app/controllers/tags_controller.rb:573 Layout/EndAlignment: `end` at 573, 8 is not aligned with `if` at 570, 20.
   UNEXPLAINED app/controllers/user_badges_controller.rb:89 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
   UNEXPLAINED app/controllers/users_controller.rb:370 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
   UNEXPLAINED app/controllers/users_controller.rb:635 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
@@ -70,7 +65,6 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED app/models/category_user.rb:29 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/category_user.rb:30 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/category_user.rb:31 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED app/models/category_user.rb:32 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/category_user.rb:38 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/category_user.rb:39 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/category_user.rb:40 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
@@ -79,51 +73,21 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED app/models/group_category_notification_default.rb:25 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:26 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:27 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED app/models/group_category_notification_default.rb:28 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:34 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:35 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:36 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/group_category_notification_default.rb:37 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/homepage_site_setting.rb:17 Layout/BlockAlignment: `end` at 17, 4 is not aligned with `DiscoursePluginRegistry.homepage_options.map do |option|` at 15, 10 or `} + DiscoursePluginRegistry.homepage_options.map do |option|` at 15, 6.
-  UNEXPLAINED app/models/site.rb:67 Layout/EndAlignment: `end` at 67, 9 is not aligned with `if` at 65, 55.
-  UNEXPLAINED app/models/site.rb:67 Layout/EndAlignment: `end` at 67, 48 is not aligned with `if` at 63, 6.
-  UNEXPLAINED app/models/site.rb:230 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:231 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:232 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:233 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
+  UNEXPLAINED app/models/site.rb:236 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
+  UNEXPLAINED app/models/site.rb:237 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
+  UNEXPLAINED app/models/site.rb:238 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
+  UNEXPLAINED app/models/site.rb:239 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
   UNEXPLAINED app/models/tag_user.rb:56 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/tag_user.rb:57 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/tag_user.rb:58 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED app/models/tag_user.rb:59 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED app/models/tag_user.rb:60 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED app/services/post_alerter.rb:462 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED app/services/user_api_key/device_auth/grant.rb:16 Layout/IndentationWidth: Use 2 (not -16) spaces for indentation.
-  UNEXPLAINED app/services/user_api_key/device_auth/grant.rb:17 Layout/ElseAlignment: Align `else` with `if`.
-  UNEXPLAINED app/services/user_api_key/device_auth/grant.rb:19 Layout/EndAlignment: `end` at 19, 6 is not aligned with `if` at 15, 24.
   UNEXPLAINED config/environment.rb:13 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED db/migrate/20240610150449_limit_tag_group_name_length.rb:6 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED db/migrate/20250304074934_backfill_api_key_scope_modes.rb:16 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED db/migrate/20250304074934_backfill_api_key_scope_modes.rb:23 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED db/migrate/20250626090725_add_my_messages_link_to_sidebar.rb:29 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED db/migrate/20250626090725_add_my_messages_link_to_sidebar.rb:32 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED db/migrate/20250626090725_add_my_messages_link_to_sidebar.rb:33 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/discourse_connect_base.rb:93 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/discourse_connect_base.rb:95 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/discourse_connect_base.rb:109 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/discourse_connect_base.rb:111 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/discourse_mcp/oauth.rb:160 Layout/BlockAlignment: `end` at 160, 8 is not aligned with `redirect_uris.all? do |value|` at 158, 56 or `!metadata.key?("client_secret_expires_at") && redirect_uris.all? do |value|` at 158, 10.
-  UNEXPLAINED lib/discourse_updates.rb:38 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED lib/onebox/helpers.rb:24 Layout/RescueEnsureAlignment: `rescue` at 24, 9 is not aligned with `response = (begin` at 20, 6.
-  UNEXPLAINED lib/onebox/helpers.rb:24 Layout/BeginEndAlignment: `end` at 24, 36 is not aligned with `response = (begin; fetch_response(` at 20, 6.
-  UNEXPLAINED lib/onebox/helpers.rb:43 Layout/RescueEnsureAlignment: `rescue` at 43, 15 is not aligned with `response = (begin` at 39, 12.
-  UNEXPLAINED lib/onebox/helpers.rb:43 Layout/BeginEndAlignment: `end` at 43, 42 is not aligned with `response = (begin; fetch_response(` at 39, 12.
-  UNEXPLAINED lib/search.rb:195 Layout/SpaceBeforeSemicolon: Space found before semicolon.
-  UNEXPLAINED lib/statistics.rb:192 Layout/TrailingWhitespace: Trailing whitespace detected.
   UNEXPLAINED lib/tasks/plugin.rake:269 Layout/BlockAlignment: `end` at 269, 2 is not aligned with `Dir` at 264, 13 or `.select do |plugin, plugin_dir, plugin_git_dir|` at 267, 4.
-  UNEXPLAINED lib/tasks/posts.rake:428 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/tasks/posts.rake:430 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/tasks/posts.rake:441 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED lib/tasks/posts.rake:443 Layout/TrailingWhitespace: Trailing whitespace detected.
   UNEXPLAINED plugins/chat/lib/chat/user_notifications_extension.rb:52 Layout/TrailingWhitespace: Trailing whitespace detected.
   UNEXPLAINED plugins/chat/lib/chat/user_notifications_extension.rb:53 Layout/TrailingWhitespace: Trailing whitespace detected.
   UNEXPLAINED plugins/discourse-ai/app/controllers/discourse_ai/translation/translation_controller.rb:29 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
@@ -131,43 +95,12 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:113 Layout/BlockAlignment: `end` at 113, 6 is not aligned with `AiAgent` at 107, 16 or `.sort_by do |id, name, description|` at 111, 8.
   UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:369 Layout/SpaceBeforeComment: Put a space before an end-of-line comment.
   UNEXPLAINED plugins/discourse-ai/app/models/llm_credit_allocation.rb:143 Layout/EmptyLinesAroundAccessModifier: Keep a blank line before and after `private`.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20250122131007_matryoshka_dimensions_support.rb:10 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20250122131007_matryoshka_dimensions_support.rb:11 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20251016143343_remove_ai_problem_check_trackers_without_targets.rb:9 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20251016143343_remove_ai_problem_check_trackers_without_targets.rb:10 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20251017150024_delete_ai_problem_check_trackers.rb:8 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/db/migrate/20251122000000_backfill_ai_api_request_stats.rb:56 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/admin_dashboard/ask_ai.rb:38 Layout/IndentationWidth: Use 2 (not -23) spaces for indentation.
-  UNEXPLAINED plugins/discourse-ai/lib/admin_dashboard/ask_ai.rb:39 Layout/EndAlignment: `end` at 39, 10 is not aligned with `if` at 37, 35.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/discover.rb:48 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/discover.rb:67 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/discover.rb:68 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/discover.rb:69 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/discover.rb:70 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/smart_dates.rb:14 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/smart_dates.rb:17 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/smart_dates.rb:22 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/summarizer.rb:27 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/tutor.rb:18 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/agents/tutor.rb:25 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/ai_helper/assistant.rb:176 Layout/FirstArgumentIndentation: Indent the first argument one step more than the start of the previous line.
   UNEXPLAINED plugins/discourse-ai/lib/ai_moderation/spam_scanner.rb:122 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED plugins/discourse-ai/lib/ai_moderation/spam_scanner.rb:123 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED plugins/discourse-ai/lib/ai_moderation/spam_scanner.rb:124 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED plugins/discourse-ai/lib/ai_moderation/spam_scanner.rb:125 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED plugins/discourse-ai/lib/ai_moderation/spam_scanner.rb:126 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
   UNEXPLAINED plugins/discourse-ai/lib/completions/xml_tool_processor.rb:185 Layout/BlockAlignment: `end` at 185, 12 is not aligned with `params` at 175, 24 or `.each_with_object({}) do |(name, value), hash|` at 183, 14.
-  UNEXPLAINED plugins/discourse-ai/lib/summarization/strategies/chat_messages.rb:36 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/lib/utils/search.rb:133 Layout/IndentationWidth: Use 2 (not -7) spaces for indentation.
-  UNEXPLAINED plugins/discourse-ai/lib/utils/search.rb:134 Layout/EndAlignment: `end` at 134, 14 is not aligned with `if` at 132, 23.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/lib/holidays/date_calculator/lunar_date.rb:348 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/lib/holidays/date_calculator/lunar_date.rb:356 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/lib/holidays/date_calculator/lunar_date.rb:357 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/lib/holidays/date_calculator/lunar_date.rb:358 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/test/holidays/definition/generator/test_module.rb:113 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-events/vendor/holidays/test/holidays/definition/generator/test_module.rb:148 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-gamification/lib/discourse_gamification/scorables/solutions.rb:32 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-gamification/lib/discourse_gamification/scorables/solutions.rb:34 Layout/TrailingWhitespace: Trailing whitespace detected.
   UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:55 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
   UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:117 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
   UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:133 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
@@ -175,15 +108,10 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED plugins/discourse-patreon/spec/requests/patreon_webhook_controller_spec.rb:118 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
   UNEXPLAINED plugins/discourse-patreon/spec/requests/patreon_webhook_controller_spec.rb:181 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
   UNEXPLAINED plugins/discourse-patreon/spec/requests/patreon_webhook_controller_spec.rb:182 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
-  UNEXPLAINED plugins/discourse-reactions/app/services/discourse_reactions/reaction_like_synchronizer.rb:360 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-reactions/lib/discourse_reactions/reactions_serializer_helpers.rb:253 Layout/FirstArgumentIndentation: Indent the first argument one step more than the start of the previous line.
   UNEXPLAINED plugins/discourse-rss-polling/app/controllers/discourse_rss_polling/feed_settings_controller.rb:31 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
   UNEXPLAINED plugins/discourse-rss-polling/app/controllers/discourse_rss_polling/feed_settings_controller.rb:33 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED plugins/discourse-solved/plugin.rb:220 Layout/IndentationWidth: Use 2 (not -8) spaces for indentation.
-  UNEXPLAINED plugins/discourse-solved/plugin.rb:227 Layout/EndAlignment: `end` at 227, 10 is not aligned with `if` at 219, 20.
   UNEXPLAINED plugins/discourse-solved/spec/services/discourse_solved/accept_answer_spec.rb:136 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
   UNEXPLAINED plugins/discourse-solved/spec/services/discourse_solved/accept_answer_spec.rb:137 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
-  UNEXPLAINED plugins/discourse-workflows/lib/discourse_workflows/nodes/schedule/v1.rb:167 Layout/EndAlignment: `end` at 167, 19 is not aligned with `if` at 160, 44.
   UNEXPLAINED script/bulk_import/base.rb:1429 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `until` statement spanning multiple lines.
   UNEXPLAINED spec/import_export/importer_spec.rb:86 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
   UNEXPLAINED spec/import_export/importer_spec.rb:87 Layout/MultilineMethodCallIndentation: Use 2 (not 4) spaces for indenting an expression spanning multiple lines.
@@ -225,17 +153,11 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   UNEXPLAINED spec/system/header_spec.rb:218 Layout/LeadingCommentSpace: Missing space after `#`.
   UNEXPLAINED spec/system/header_spec.rb:229 Layout/LeadingCommentSpace: Missing space after `#`.
   UNEXPLAINED spec/system/header_spec.rb:245 Layout/LeadingCommentSpace: Missing space after `#`.
-  UNEXPLAINED spec/system/theme_qunit_spec.rb:9 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED app/models/report.rb:451 Comments: leading of `if`: # For this report we intentionally do not want to count mobi
-  UNEXPLAINED app/models/topic_tracking_state.rb:486 Comments: leading of `if`: # If we're only gathering topics with unread posts, we've al
-  UNEXPLAINED app/models/topic_tracking_state.rb:487 Comments: leading of `if`: # (topic_users.last_read_post_number < topics.highest_post_n
-  UNEXPLAINED app/models/topic_tracking_state.rb:488 Comments: leading of `if`: # attempts to exclude rows where (topic_users.last_read_post
   UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:406 Comments: leading of `Class`: # we need a new copy so we don't leak information
   UNEXPLAINED plugins/discourse-events/spec/jobs/regular/discourse_post_event/bulk_invite_spec.rb:184 Comments: leading of `<quote>`: # rubocop:disable Layout/LineLength
-  UNEXPLAINED plugins/discourse-post-voting/extensions/topic_view_extension.rb:63 Comments: leading of `if`: # Lower boundary window
   UNEXPLAINED plugins/discourse-subscriptions/app/services/discourse_subscriptions/campaign.rb:162 Comments: trailing of `]`: # Discourse only makes single-line item charges
   UNEXPLAINED spec/jobs/pull_hotlinked_images_spec.rb:184 Comments: trailing of `}`: # We alread have the upload
-offenses: 348 listed, 186 unexplained layout, 9 unexplained comments, 0 stale
+offenses: 600 listed, 116 unexplained layout, 4 unexplained comments, 0 stale
 
 ======================================================================
   discourse
@@ -243,11 +165,11 @@ offenses: 348 listed, 186 unexplained layout, 9 unexplained comments, 0 stale
   meaning     0 files refused: formatting would have changed the AST
   parse       12373 ok, 0 BROKEN by tuxedo (1 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    52233 total, 9 displaced
-  layout      2466 offenses across 20 distinct cops
-  linelength: 2118 over 120, 2056 unsplittable, 62 breakable
+  comments    52233 total, 4 displaced
+  layout      2661 offenses across 16 distinct cops
+  linelength: 2061 over 120, 2056 unsplittable, 5 breakable
 ----------------------------------------------------------------------
-  UNEXPLAINED 248 layout (LineLength breakable included), 9 comments; 0 stale rules
+  UNEXPLAINED 121 layout (LineLength breakable included), 4 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/discourse/verify for inspection.

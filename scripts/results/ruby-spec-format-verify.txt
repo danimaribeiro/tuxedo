@@ -31,7 +31,7 @@ Running tuxedo format...
 Accepted (scripts/verify-accepted.tsv) and unexplained:
   accepted    8  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
   accepted    3  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
-  accepted    1  Layout/EmptyLineAfterGuardClause         an if/else where every branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after
+  accepted    1  Layout/EmptyLineAfterGuardClause         an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after
   accepted    2  Layout/EmptyLineAfterMagicComment        a magic comment naming a non-UTF-8 encoding means the file itself isn't UTF-8, and tuxedo refuses to touch a file it can't safely read
   accepted    1  Layout/EmptyLinesAroundAccessModifier    a bare access modifier that is the whole body of a single-line block has no line to put a blank line around
   accepted   12  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
