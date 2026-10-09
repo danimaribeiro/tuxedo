@@ -644,23 +644,45 @@ impl Formatter {
         // The values are one collection: all on the `when` line, or one per
         // line at the body's indent. Held to one line, there is no line
         // point to take.
-        let separator = if self.single_line {
-            Doc::text(", ")
-        } else {
-            Doc::text(",").append(Doc::line())
-        };
-        let mut values = Doc::nil();
-        for (i, condition) in node.conditions().iter().enumerate() {
-            if i > 0 {
-                values = values.append(separator.clone());
+        //
+        // A comment among them (`when "cps", # why`, or on a line of its
+        // own above a value) has no flat shape: the values go one per line,
+        // each comment where it was written. One above the first value
+        // puts that value on a line of its own too.
+        let conditions: Vec<_> = node.conditions().iter().collect();
+        let lead = conditions
+            .first()
+            .and_then(|first| self.leading_comments_doc(first.location().start_offset(), false));
+        let (leaves, gaps) = self.operand_docs(&conditions, false);
+        let nest = self.indent_str.len();
+        let header = if lead.is_some() || gaps.iter().any(Option::is_some) {
+            let mut leaves = leaves.into_iter();
+            let mut values = leaves.next().unwrap_or_else(Doc::nil);
+            for (leaf, gap) in leaves.zip(gaps) {
+                values = values
+                    .append(Doc::text(","))
+                    .append(gap.unwrap_or_else(Doc::nil))
+                    .append(Doc::hardline())
+                    .append(leaf);
             }
-            values = values.append(self.node_doc(&condition));
-        }
-        let header = Doc::text("when ").append(if self.single_line {
-            values
+            match lead {
+                Some(lead) => Doc::text("when")
+                    .append(lead.append(Doc::hardline()).append(values).indent(nest)),
+                None => Doc::text("when ").append(values.indent(nest)),
+            }
         } else {
-            values.indent(self.indent_str.len()).group()
-        });
+            let separator = if self.single_line {
+                Doc::text(", ")
+            } else {
+                Doc::text(",").append(Doc::line())
+            };
+            let values = Doc::join(leaves, separator);
+            Doc::text("when ").append(if self.single_line {
+                values
+            } else {
+                values.indent(nest).group()
+            })
+        };
         let header_end = node
             .conditions()
             .iter()

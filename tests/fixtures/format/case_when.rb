@@ -46,3 +46,18 @@ case shape
 in { type: :circle, radius: } then Math::PI * radius**2
 in [width, height] then width * height
 end
+
+# A comment among the values of a `when` puts them one per line, each comment
+# where it was written.
+case path
+when "cps", # Common Package Specification database
+  "pkgconfig", # pkg-config database
+  /^gio/
+  :mkpath
+when
+  # Check for `http://` GitHub homepage URLs.
+  %r{^http://github\.com/},
+  # Savannah has full SSL/TLS support.
+  %r{^http://savannah\.nongnu\.org/}
+  :secure
+end

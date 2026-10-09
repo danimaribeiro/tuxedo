@@ -75,3 +75,15 @@ end
 # vim: set fileencoding=big5:
 
 puts 1
+
+# A Sorbet signature stays on the line above what it describes; the blank line
+# a definition wants goes above the signature.
+class Signed
+  sig { returns(T::Boolean) }
+  def blank? = empty?
+
+  sig { returns(Integer) }
+  def size
+    0
+  end
+end

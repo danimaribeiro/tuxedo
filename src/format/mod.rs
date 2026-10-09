@@ -1333,23 +1333,37 @@ impl Formatter {
     ) {
         // `X = # :nodoc:` and the value on the next line: the comment is
         // about the assignment, and the value it would otherwise be nested
-        // in has to stay under it.
+        // in has to stay under it. Comments on lines of their own between
+        // the `=` and the value stay above the value, at its indent.
         let value_start = value.location().start_offset();
         if !self.single_line
             && let Some(comment) = self.comments.get(self.comment_cursor)
             && comment.start < value_start
             && self.line_of(comment.start) < self.line_of(value_start)
-            && let Some(trailing) = self.trailing_comment_doc(self.line_of(comment.start))
         {
-            let value_doc = self.node_doc(value);
-            self.run_text(run, format!(" {op}"));
-            run.leaves.push(trailing);
-            run.leaves.push(
-                Doc::hardline()
-                    .append(value_doc)
-                    .indent(self.indent_str.len()),
-            );
-            return;
+            let comment_line = self.line_of(comment.start);
+            let after_code = !self.source[self.line_starts[comment_line]..comment.start]
+                .trim()
+                .is_empty();
+            let trailing = if after_code {
+                self.trailing_comment_doc(comment_line)
+            } else {
+                None
+            };
+            let above = self.leading_comments_doc(value_start, false);
+            if trailing.is_some() || above.is_some() {
+                let value_doc = self.node_doc(value);
+                self.run_text(run, format!(" {op}"));
+                run.leaves.push(trailing.unwrap_or_else(Doc::nil));
+                run.leaves.push(
+                    above
+                        .unwrap_or_else(Doc::nil)
+                        .append(Doc::hardline())
+                        .append(value_doc)
+                        .indent(self.indent_str.len()),
+                );
+                return;
+            }
         }
         let value_doc = self.node_doc(value);
         let one_line = self.line_of(value.location().start_offset())

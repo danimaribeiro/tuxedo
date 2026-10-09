@@ -41,6 +41,18 @@ fn is_access_modifier_call(node: &ruby_prism::Node<'_>) -> bool {
     })
 }
 
+/// A Sorbet signature, `sig { ... }`: it belongs to the definition under it
+/// the way a doc comment does, and no layout cop asks for a line between
+/// the two.
+fn is_sig_call(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node().is_some_and(|call| {
+        call.receiver().is_none()
+            && call.arguments().is_none()
+            && call.block().is_some_and(|b| b.as_block_node().is_some())
+            && call.name().as_slice() == b"sig"
+    })
+}
+
 /// A bare `attr_accessor`/`attr_reader`/`attr_writer`/`attr` call.
 /// Layout/EmptyLinesAroundAttributeAccessor wants a blank line around a
 /// *run* of these (not between two consecutive ones).
@@ -154,6 +166,11 @@ impl Formatter {
         prev: &ruby_prism::Node<'_>,
         current: &ruby_prism::Node<'_>,
     ) -> bool {
+        // The blank line a definition wants goes above its signature.
+        if is_sig_call(prev) {
+            return false;
+        }
+
         // A run of guards reads as one block: the cop wants the blank line
         // after the last of them, not between them.
         if is_guard_clause(prev) && !is_guard_clause(current) {
