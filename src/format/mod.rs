@@ -2137,20 +2137,31 @@ impl Formatter {
     }
 }
 
-/// True for a node laid out as an infix spine: `a && b`, `a or b`, or an
-/// operator call written without a dot (`a == b`, `a + b`).
+/// True for a node laid out as an infix spine that continues at a
+/// condition's doubled indent: `a && b`, `a or b`, or an operator call
+/// written without a dot (`a == b`, `a + b`).
+///
+/// Not an operator call whose right side is a `{ }` or `[ ]` literal
+/// (`a != { x: 1 }`): RuboCop reads that one as a call with an argument
+/// list, and Layout/ArgumentAlignment wants the single step.
 fn is_infix_spine(node: &ruby_prism::Node<'_>) -> bool {
     if node.as_and_node().is_some() || node.as_or_node().is_some() {
         return true;
     }
     node.as_call_node().is_some_and(|call| {
         let name = call.name().as_slice();
+        let args: Vec<_> = call
+            .arguments()
+            .map(|a| a.arguments().iter().collect())
+            .unwrap_or_default();
+        let [arg] = args.as_slice() else {
+            return false;
+        };
         call.call_operator_loc().is_none()
             && call.receiver().is_some()
             && call.block().is_none()
-            && call
-                .arguments()
-                .is_some_and(|a| a.arguments().iter().count() == 1)
+            && arg.as_hash_node().is_none()
+            && arg.as_array_node().is_none()
             && name
                 .first()
                 .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'[')

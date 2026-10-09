@@ -440,6 +440,7 @@ impl Formatter {
             .map(|exception| self.node_doc(&exception))
             .collect();
         let bare = exceptions.is_empty();
+        let several = exceptions.len() > 1;
         let mut list = Doc::join(exceptions, separator);
         if let Some(reference) = node.reference() {
             list = list
@@ -448,7 +449,10 @@ impl Formatter {
         }
         let header = if bare && node.reference().is_none() {
             Doc::text("rescue")
-        } else if single_line {
+        } else if single_line || !several {
+            // One class has no line point of its own; one that lays out
+            // its own lines (`rescue -> { ... }.call`) closes them at the
+            // `rescue`'s indent.
             Doc::text("rescue ").append(list)
         } else {
             Doc::text("rescue ").append(list.indent(self.indent_str.len()).group())

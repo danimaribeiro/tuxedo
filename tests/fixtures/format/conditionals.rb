@@ -41,3 +41,12 @@ def consistent?(previous, bottle_hash)
     true
   end
 end
+
+# Compared against a hash literal, the literal takes the single step RuboCop
+# gives an argument list.
+if Rails.env.development? &&
+    !GlobalSetting.try(:use_smtp_environment_in_development) &&
+    ActionMailer::Base.smtp_settings.slice(:address, :port, :domain) !=
+      { address: "localhost", port: ENV["DISCOURSE_LOCAL_EMAIL_PORT"] || 1025 }
+  fail "use a local mail server"
+end
