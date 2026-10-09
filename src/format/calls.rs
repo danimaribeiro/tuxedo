@@ -200,6 +200,12 @@ fn is_collection_literal(node: &ruby_prism::Node<'_>) -> bool {
     }
 }
 
+/// `"a" "b"`, adjacent string literals Ruby joins into one string.
+fn is_implicit_concat(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_interpolated_string_node()
+        .is_some_and(|s| s.opening_loc().is_none() && s.parts().iter().count() > 1)
+}
+
 /// A call's real `{ }` / `do...end` block, as opposed to a block-pass
 /// argument (`&:sym`), which Prism stores in the same slot but which
 /// belongs inside the argument list.
@@ -721,6 +727,25 @@ impl Formatter {
         }
 
         let (leaves, gaps) = self.operand_docs(&operands, condition);
+
+        // `"a %<x>s " \` + newline + `"b" % { x: 1 }`: the operator ends the
+        // continuation line of the string, one level in, so what follows it
+        // continues from there. Left at the statement's level, an expanded
+        // hash would close left of the line that opened it.
+        if let [string, _] = operands.as_slice()
+            && is_implicit_concat(string)
+            && gaps.iter().all(Option::is_none)
+            && leaves[0].breaks()
+        {
+            let mut leaves = leaves.into_iter();
+            let string = leaves.next().unwrap_or_else(Doc::nil);
+            let value = leaves.next().unwrap_or_else(Doc::nil);
+            return string.append(
+                Doc::text(format!(" {name_str} "))
+                    .append(value)
+                    .indent(self.indent_str.len()),
+            );
+        }
         self.infix_doc(leaves, gaps, name_str, condition, false)
     }
 

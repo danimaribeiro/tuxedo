@@ -426,17 +426,33 @@ impl Formatter {
         closer: Option<usize>,
     ) -> Doc {
         let single_line = self.single_line;
-        let mut header = Doc::text("rescue");
-        for (i, exception) in node.exceptions().iter().enumerate() {
-            header = header
-                .append(Doc::text(if i == 0 { " " } else { ", " }))
-                .append(self.node_doc(&exception));
-        }
+        // The exception classes are one collection, like a `when`'s values:
+        // all on the `rescue` line, or one per line at one indent, the
+        // `=> e` staying with the last.
+        let separator = if single_line {
+            Doc::text(", ")
+        } else {
+            Doc::text(",").append(Doc::line())
+        };
+        let exceptions: Vec<Doc> = node
+            .exceptions()
+            .iter()
+            .map(|exception| self.node_doc(&exception))
+            .collect();
+        let bare = exceptions.is_empty();
+        let mut list = Doc::join(exceptions, separator);
         if let Some(reference) = node.reference() {
-            header = header
-                .append(Doc::text(" => "))
+            list = list
+                .append(Doc::text(if bare { "=> " } else { " => " }))
                 .append(self.node_doc(&reference));
         }
+        let header = if bare && node.reference().is_none() {
+            Doc::text("rescue")
+        } else if single_line {
+            Doc::text("rescue ").append(list)
+        } else {
+            Doc::text("rescue ").append(list.indent(self.indent_str.len()).group())
+        };
 
         let body = node.statements().map(|s| s.as_node());
         let mut doc = if single_line {

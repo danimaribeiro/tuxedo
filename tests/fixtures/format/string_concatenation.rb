@@ -39,3 +39,13 @@ name = "#{config.table_name_prefix}" \
 raise ArgumentError,
   "Cannot specify :compressor option when using" \
     " default serializer and cache format version is < 7.1"
+
+# What follows an operator at the end of a continued string continues from
+# that line's indent.
+message = "Mismatch between cputypes >> 0x%08<fat_cputype>x and 0x%08<macho_cputype>x\n" \
+  "and/or cpusubtypes >> 0x%08<fat_cpusubtype>x and 0x%08<macho_cpusubtype>x" % {
+    fat_cputype: fat_cputype,
+    macho_cputype: macho_cputype,
+    fat_cpusubtype: fat_cpusubtype,
+    macho_cpusubtype: macho_cpusubtype
+  }

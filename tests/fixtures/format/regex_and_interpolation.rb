@@ -26,3 +26,7 @@ output << "#{type.capitalize}: #{reqs.map do |requirement|
   end
   install_status(label, installed: requirement.satisfied?)
 end.join(", ")}\n"
+
+checkboxes << "#{failed_updates.map do |name, status|
+  "  - Resource `#{name}` failed to auto-update (#{status})."
+end.join("\n")}\n"

@@ -487,16 +487,27 @@ impl Formatter {
                     // double-quoted one, legal but harder to read than the
                     // `'` the author used.
                     let loc = statements.location();
-                    let keeps_lines = self.line_of(loc.start_offset())
-                        != self.line_of(loc.end_offset().saturating_sub(1))
-                        && super::defs::holds_block_construct(&statements.as_node());
-                    let was_single_line = std::mem::replace(&mut self.single_line, !keeps_lines);
+                    let multiline = self.line_of(loc.start_offset())
+                        != self.line_of(loc.end_offset().saturating_sub(1));
                     let was_quote_style =
                         std::mem::replace(&mut self.quote_style, QuoteStyle::Preserve);
-                    let inner = self.fmt_statements_node(&statements);
-                    self.quote_style = was_quote_style;
+                    let snap = self.render_snapshot();
+                    let was_single_line = std::mem::replace(&mut self.single_line, true);
+                    let mut inner = self.fmt_statements_node(&statements);
                     self.single_line = was_single_line;
-                    doc = doc.append(if keeps_lines { inner } else { inner.flat() });
+                    // A `do ... end` in there has lines whatever it is
+                    // asked: held flat, its body loses its indent.
+                    let keeps_lines = multiline
+                        && (inner.breaks()
+                            || super::defs::holds_block_construct(&statements.as_node()));
+                    if keeps_lines {
+                        self.restore_render_snapshot(snap);
+                        inner = self.fmt_statements_node(&statements);
+                    } else {
+                        inner = inner.flat();
+                    }
+                    self.quote_style = was_quote_style;
+                    doc = doc.append(inner);
                 }
                 doc = doc.append(Doc::text("}"));
             } else {
