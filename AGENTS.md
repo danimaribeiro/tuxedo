@@ -109,6 +109,14 @@ branch, format `test-projects/rails` and `test-projects/thor` with each, `diff -
 the two trees and read every hunk. Show before and after in the PR, run
 `format-verify.sh` on both, and commit the updated `scripts/results/*.txt` with it.
 
+The corpus scripts are the heaviest thing in the repo, and running them carelessly
+has frozen the machine. Run **one at a time**: chain projects in a single
+sequential loop, never as parallel background jobs, and not beside a release
+build. The scripts take a lock and refuse a second run with exit 3; wait for the
+first, never delete the lock to get past it. `discourse` takes about fifteen
+minutes. Before calling a run stuck, check whether its children are using CPU
+(`pstree -ap <pid>`, `ps`); kill a hung run before starting another.
+
 ## Where to pick up work next
 
 `gh issue list`. Issue numbers follow the order of work, so the next thing is

@@ -34,6 +34,13 @@ The scripts need `ruby` and `rubocop` on `PATH`. If the shell has neither,
 they are under mise: `mise exec ruby -- scripts/format-verify.sh rails`, or
 put `~/.local/share/mise/installs/ruby/<version>/bin` first on `PATH`.
 
+`format-verify.sh`, `lint-baseline.sh` and `format-compare.sh` source
+`corpus-guard.sh`, which keeps a run from taking the machine down with it:
+only one corpus run at a time (a second exits 3 and names the run holding
+`test-projects/.corpus-run.lock`), low CPU and IO priority, and half the
+cores for tuxedo's threads and rubocop's workers. `CORPUS_JOBS=<n>` sets that
+count; `format-compare.sh`'s speedup is measured with both tools held to it.
+
 Each script writes its own working copy under `test-projects/<project>/` and
 regenerates it fresh on every run — those are scratch space, safe to delete.
 `scripts/results/` is the opposite: it's committed, so a script's numbers

@@ -66,6 +66,8 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="$ROOT/test-projects/$PROJECT"
+# shellcheck source=corpus-guard.sh
+source "$ROOT/scripts/corpus-guard.sh"
 SRC="$BASE/source"
 OUT="$BASE/verify"
 RESULTS_DIR="$ROOT/scripts/results"
@@ -115,7 +117,7 @@ cp -r "$SRC" "$OUT"
 echo "Running tuxedo format..."
 format_err="$(mktemp)"
 # Exits 2 when any file was refused; that is what the next section counts.
-"$TUXEDO_BIN" format --quiet "$OUT" >/dev/null 2>"$format_err" || true
+"$TUXEDO_BIN" format --quiet --jobs "$CORPUS_JOBS" "$OUT" >/dev/null 2>"$format_err" || true
 
 # --- 0. Meaning (AST equivalence) -------------------------------------
 echo
@@ -170,7 +172,7 @@ TWICE="$BASE/verify-twice"
 rm -rf "$TWICE"
 cp -r "$OUT" "$TWICE"
 # Exit status and stderr were already accounted for in the first pass.
-"$TUXEDO_BIN" format --quiet "$TWICE" >/dev/null 2>&1 || true
+"$TUXEDO_BIN" format --quiet --jobs "$CORPUS_JOBS" "$TWICE" >/dev/null 2>&1 || true
 unstable=0
 while IFS= read -r -d '' file; do
   rel="${file#"$OUT"/}"
