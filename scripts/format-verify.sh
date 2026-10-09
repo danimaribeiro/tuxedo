@@ -93,10 +93,15 @@ exec > >(tee "$REPORT")
 # every Rakefile, Gemfile, .rake task, .gemspec and config.ru tuxedo
 # rewrites unmeasured, and those are the least test-covered files in a
 # project.
+#
+# The list goes to a file that the loops below read, not into `< <(...)`:
+# bash 5.3 can block waiting on a process substitution that is itself
+# blocked writing into the full pipe the loop has not yet read, and a
+# project's file list (discourse's, for one) is longer than a pipe buffer.
 ruby_files() {
   find "$1" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
     -o -name '*.ru' -o -name 'Rakefile' -o -name 'Gemfile' \) \
-    -print0 | sort -z
+    -print0 | sort -z >"$2"
 }
 
 echo "Building tuxedo (release)..."
@@ -127,6 +132,11 @@ if [ "$meaning_changed" -gt 0 ]; then
 fi
 rm -f "$format_err"
 
+src_files="$(mktemp)"
+out_files="$(mktemp)"
+ruby_files "$SRC" "$src_files"
+ruby_files "$OUT" "$out_files"
+
 # --- 1. Parse check ---------------------------------------------------
 echo
 echo "[1/4] Parse check (ruby -c)..."
@@ -151,7 +161,7 @@ while IFS= read -r -d '' file; do
     # `|| true`: head closing the pipe early trips pipefail otherwise.
     ruby -c "$OUT/$rel" 2>&1 | head -2 | sed 's/^/          /' || true
   fi
-done < <(ruby_files "$SRC")
+done <"$src_files"
 
 # --- 2. Idempotence ---------------------------------------------------
 echo
@@ -178,7 +188,7 @@ while IFS= read -r -d '' file; do
     diff -u "$OUT/$rel" "$TWICE/$rel" 2>&1 | tail -n +3 | head -8 | sed 's/^/          /' || true
     unstable=$((unstable + 1))
   fi
-done < <(ruby_files "$OUT")
+done <"$out_files"
 rm -rf "$TWICE"
 
 # --- 3. Comment placement ---------------------------------------------
@@ -205,7 +215,7 @@ if command -v rubocop >/dev/null 2>&1; then
     if ruby -c "$OUT/$rel" >/dev/null 2>&1; then
       printf '%s\n' "$OUT/$rel" >>"$parsing_files"
     fi
-  done < <(ruby_files "$OUT")
+  done <"$out_files"
 
   rubocop_out="$(mktemp)"
   # The same run twice over, in two shapes: `offenses` for the per-cop
@@ -271,7 +281,7 @@ unexplained_comments="$(sed -nE 's/.* ([0-9]+) unexplained comments.*/\1/p' <<<"
 stale_rules="$(sed -nE 's/.* ([0-9]+) stale.*/\1/p' <<<"$offense_summary")"
 breakable="$(sed -nE 's/.* ([0-9]+) breakable.*/\1/p' <<<"${linelength_summary:-}")"
 unexplained_layout=$(( ${unexplained_layout:-0} + ${breakable:-0} ))
-rm -f "$classified" "$comments_out" "$emacs_out"
+rm -f "$classified" "$comments_out" "$emacs_out" "$src_files" "$out_files"
 
 # --- Summary -----------------------------------------------------------
 echo
