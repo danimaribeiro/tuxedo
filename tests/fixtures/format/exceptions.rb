@@ -50,3 +50,14 @@ end
 begin
 rescue
 end
+
+# An exception list that does not fit goes one class per line, at one indent,
+# the `=> e` staying with the last.
+begin
+  Formulary.from_rack(rack)
+rescue FormulaUnreadableError,
+  FormulaClassUnavailableError,
+  TapFormulaUnreadableError,
+  TapFormulaClassUnavailableError => e
+  formula_unavailable_exceptions << e
+end

@@ -164,12 +164,21 @@ impl Formatter {
         let header_line = self.line_of(header_end);
         let end_offset = node.end_keyword_loc().map(|l| l.start_offset());
 
+        // A comment at the end of a one-line endless definition (`def x? =
+        // y # :nodoc:`) goes with it: after the body in the endless shape,
+        // on the header line in the block shape, which claims it the way it
+        // claims any comment there. Written on any other line, a comment has
+        // no place in the endless shape and the definition takes the block
+        // form.
+        let one_line = header_line == self.line_of(node.location().end_offset().saturating_sub(1));
+        let comment_end = if one_line {
+            node.location().end_offset()
+        } else {
+            self.end_of_line_after(node.location().end_offset())
+        };
         if node.equal_loc().is_some()
             && let Some(body) = node.body()
-            && !self.has_pending_comment_in(
-                body.location().start_offset(),
-                self.end_of_line_after(node.location().end_offset()),
-            )
+            && !self.has_pending_comment_in(body.location().start_offset(), comment_end)
         {
             // Both shapes are built and the printer picks by width: the
             // endless one when it fits, the block form when it does not.
@@ -179,9 +188,13 @@ impl Formatter {
             let flat = self.node_doc(&body);
             self.single_line = was_single_line;
             if !flat.breaks() {
+                let trailing = self.trailing_comment_doc(header_line);
                 self.rewind_render_snapshot(snap);
                 let block = self.keyword_body_doc(header.clone(), header_line, Some(body), None);
-                let endless = header.append(Doc::text(" = ")).append(flat);
+                let endless = header
+                    .append(Doc::text(" = "))
+                    .append(flat)
+                    .append(trailing.unwrap_or_else(Doc::nil));
                 return Doc::if_break(block, endless).group();
             }
             self.restore_render_snapshot(snap);

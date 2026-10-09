@@ -104,6 +104,23 @@ fn a_vim_modeline_encoding_directive_is_a_magic_comment() {
 }
 
 #[test]
+fn a_sorbet_sigil_is_a_magic_comment_only_above_the_code() {
+    assert_eq!(
+        format("# frozen_string_literal: true\n# typed: true\n# Shortcuts.\nmodule T\nend\n"),
+        "# frozen_string_literal: true\n# typed: true\n\n# Shortcuts.\nmodule T; end\n"
+    );
+    assert_unchanged("x = 1\n# typed: true\ny = 2\n");
+}
+
+#[test]
+fn a_comment_loses_the_whitespace_at_the_end_of_its_line() {
+    assert_eq!(
+        format("x = 1 # a  \n# \n#\t\ny = 2\n"),
+        "x = 1 # a\n#\n#\ny = 2\n"
+    );
+}
+
+#[test]
 fn a_trailing_comment_on_a_semicolon_joined_line_stays_on_the_last_statement() {
     assert_eq!(
         format("io.getch; io.pos.should == 1 # why\n"),

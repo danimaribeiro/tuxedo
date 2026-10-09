@@ -58,3 +58,9 @@ end
 
 io.getch
 io.pos.should == 1 # trails the second statement, not the first
+
+# Comments between `=` and the value stay above the value.
+USER_AGENT =
+  # Don't update this beyond 10.15.7 until Safari
+  # actually updates theirs.
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"

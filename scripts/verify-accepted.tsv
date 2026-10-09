@@ -25,14 +25,15 @@
 #
 # --- A keyword used as a value ---
 # `x || if c ... end`, `(class << x ... end)`, `meta = class << x`,
-# `defined?(while x ... end)`: RuboCop has no style that puts `else`/`end` at
+# `defined?(while x ... end)`, `return case x`, `super(t) or if c`,
+# `fixed: if c`, `"#{if c`: RuboCop has no style that puts `else`/`end` at
 # the statement's indent, and tuxedo keeps them there (see
 # format-verify.rubocop.yml). Covers the alignment and indentation cops that
 # follow from it. (`when` and `begin`/`end` have the same disagreement and no
 # instance on rails; add one when a project has it.)
-Layout/IndentationWidth	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword	rails
-Layout/EndAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its `end` at the statement's indent	rails
-Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
+Layout/IndentationWidth	12	(\|\||&&|<<|=|\(|#\{|\b(?:or|and|return|super)|\w:)\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword	rails
+Layout/EndAlignment	12	(\|\||&&|<<|=|\(|#\{|\b(?:or|and|return|super)|\w:)\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps its `end` at the statement's indent	rails
+Layout/ElseAlignment	12	(\|\||&&|<<|=|\(|#\{|\b(?:or|and|return|super)|\w:)\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
 # `method_name = def some_method\nend`: same disagreement, `def`'s own
 # alignment cop.
 # --- Text that is not the formatter's ---
@@ -43,6 +44,8 @@ Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|cl
 Layout/EmptyLineAfterMagicComment	1	coding:\s*(?!utf|us-ascii|ascii)\S+	a magic comment naming a non-UTF-8 encoding means the file itself isn't UTF-8, and tuxedo refuses to touch a file it can't safely read	ruby-spec
 Layout/SpaceInsidePercentLiteralDelimiters	0	%x\(	the content of `%x( )` is a shell command, copied verbatim	rails
 Layout/ExtraSpacing	0	@heredoc	the body of a heredoc is data, not code	rails
+Layout/SpaceAroundOperators	0	@heredoc	a heredoc body, its `#{}` holes included, is copied verbatim	homebrew
+Layout/TrailingWhitespace	0	@heredoc	a heredoc body is data, trailing spaces included	homebrew
 Layout/EmptyComment	0	^\s*#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails
 # --- Layouts that follow from block indentation ---
 Layout/HashAlignment	3	\byield\s+\w+:	the keys of a braceless hash after `yield` continue at a fixed indent from the statement, not under the first key	rails
@@ -59,14 +62,21 @@ Layout/MultilineOperationIndentation	1	\b(while|until)\b[^\n]*(!=|==|[<>+\-*\/]=
 # statements). RuboCop's no-space-inside-pipes style reads the semicolon as
 # part of the parameter list it doesn't want touched.
 Layout/SpaceAroundBlockParameters	0	\|;\s	a block-local variable list is spaced like every other separator, not held to the no-space-inside-pipes style	ruby-spec
-# `if cond\n  break\nelse\n  break\nend`: every branch is a jump statement, so
-# nothing here falls through either way, but it is still a real two-way
-# branch (property 1 forbids treating one arm as more "guarded" than the
-# other) -- Tuxedo's guard clause is the narrower, single-branch case.
-Layout/EmptyLineAfterGuardClause	4	\bif\b[^\n]*\n\s*(break|next|return|redo|retry)\b[^\n]*\n\s*else\b[^\n]*\n\s*(break|next|return|redo|retry)\b	an if/else where every branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after	ruby-spec
+# `if cond\n  break\nelse\n  break\nend`, `if c\n  raise X\nelsif d\n  ...`:
+# the first branch is a jump, but the `if` is still a real branch (property 1
+# forbids treating one arm as more "guarded" than the other), and RuboCop's
+# cop looks only at the first. Tuxedo's guard clause is the narrower,
+# single-branch case.
+Layout/EmptyLineAfterGuardClause	8	\bif\b[^\n]*\n\s*(break|next|return|redo|retry|raise|fail)\b[^\n]*\n\s*(else|elsif)\b	an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after	ruby-spec
 # `module_eval { module_function }`: the access modifier is the sole
 # statement of a one-line block, which has no line of its own to put a
 # blank line before or after.
+# `class Rest < Base\n  # ----\n  private`: a comment above the modifier that
+# opens a class body stays attached to it. RuboCop skips comments when it
+# looks for the blank line above a modifier, but excuses a modifier that
+# opens a body only when the line right above it is the `class` line; the
+# one shape it accepts is a blank line between the comment and the modifier.
+Layout/EmptyLinesAroundAccessModifier	2	^\s*(class|module)\b[^\n]*\n\s*#[^\n]*\n\s*(private|protected|public|module_function)\s*$	a comment above the access modifier that opens a class body stays attached to it, rather than being cut off by a blank line	homebrew
 Layout/EmptyLinesAroundAccessModifier	0	\{\s*(private|protected|public|module_function)\s*\}	a bare access modifier that is the whole body of a single-line block has no line to put a blank line around	ruby-spec
 # `%w(a b\` + a literal newline + `c d)`: the word list's own backslash
 # continuation puts real source lines between the array's opening `%w(` and

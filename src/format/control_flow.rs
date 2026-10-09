@@ -426,17 +426,37 @@ impl Formatter {
         closer: Option<usize>,
     ) -> Doc {
         let single_line = self.single_line;
-        let mut header = Doc::text("rescue");
-        for (i, exception) in node.exceptions().iter().enumerate() {
-            header = header
-                .append(Doc::text(if i == 0 { " " } else { ", " }))
-                .append(self.node_doc(&exception));
-        }
+        // The exception classes are one collection, like a `when`'s values:
+        // all on the `rescue` line, or one per line at one indent, the
+        // `=> e` staying with the last.
+        let separator = if single_line {
+            Doc::text(", ")
+        } else {
+            Doc::text(",").append(Doc::line())
+        };
+        let exceptions: Vec<Doc> = node
+            .exceptions()
+            .iter()
+            .map(|exception| self.node_doc(&exception))
+            .collect();
+        let bare = exceptions.is_empty();
+        let several = exceptions.len() > 1;
+        let mut list = Doc::join(exceptions, separator);
         if let Some(reference) = node.reference() {
-            header = header
-                .append(Doc::text(" => "))
+            list = list
+                .append(Doc::text(if bare { "=> " } else { " => " }))
                 .append(self.node_doc(&reference));
         }
+        let header = if bare && node.reference().is_none() {
+            Doc::text("rescue")
+        } else if single_line || !several {
+            // One class has no line point of its own; one that lays out
+            // its own lines (`rescue -> { ... }.call`) closes them at the
+            // `rescue`'s indent.
+            Doc::text("rescue ").append(list)
+        } else {
+            Doc::text("rescue ").append(list.indent(self.indent_str.len()).group())
+        };
 
         let body = node.statements().map(|s| s.as_node());
         let mut doc = if single_line {
@@ -644,23 +664,45 @@ impl Formatter {
         // The values are one collection: all on the `when` line, or one per
         // line at the body's indent. Held to one line, there is no line
         // point to take.
-        let separator = if self.single_line {
-            Doc::text(", ")
-        } else {
-            Doc::text(",").append(Doc::line())
-        };
-        let mut values = Doc::nil();
-        for (i, condition) in node.conditions().iter().enumerate() {
-            if i > 0 {
-                values = values.append(separator.clone());
+        //
+        // A comment among them (`when "cps", # why`, or on a line of its
+        // own above a value) has no flat shape: the values go one per line,
+        // each comment where it was written. One above the first value
+        // puts that value on a line of its own too.
+        let conditions: Vec<_> = node.conditions().iter().collect();
+        let lead = conditions
+            .first()
+            .and_then(|first| self.leading_comments_doc(first.location().start_offset(), false));
+        let (leaves, gaps) = self.operand_docs(&conditions, false);
+        let nest = self.indent_str.len();
+        let header = if lead.is_some() || gaps.iter().any(Option::is_some) {
+            let mut leaves = leaves.into_iter();
+            let mut values = leaves.next().unwrap_or_else(Doc::nil);
+            for (leaf, gap) in leaves.zip(gaps) {
+                values = values
+                    .append(Doc::text(","))
+                    .append(gap.unwrap_or_else(Doc::nil))
+                    .append(Doc::hardline())
+                    .append(leaf);
             }
-            values = values.append(self.node_doc(&condition));
-        }
-        let header = Doc::text("when ").append(if self.single_line {
-            values
+            match lead {
+                Some(lead) => Doc::text("when")
+                    .append(lead.append(Doc::hardline()).append(values).indent(nest)),
+                None => Doc::text("when ").append(values.indent(nest)),
+            }
         } else {
-            values.indent(self.indent_str.len()).group()
-        });
+            let separator = if self.single_line {
+                Doc::text(", ")
+            } else {
+                Doc::text(",").append(Doc::line())
+            };
+            let values = Doc::join(leaves, separator);
+            Doc::text("when ").append(if self.single_line {
+                values
+            } else {
+                values.indent(nest).group()
+            })
+        };
         let header_end = node
             .conditions()
             .iter()
@@ -853,16 +895,8 @@ impl Formatter {
         Self::bool_operands(left, op_str, &mut operands);
         operands.push(right);
 
-        let block_tail = operands.last().is_some_and(|last| {
-            last.as_begin_node().is_some()
-                || last
-                    .as_if_node()
-                    .is_some_and(|n| n.if_keyword_loc().is_some())
-                || last.as_unless_node().is_some()
-                || last.as_case_node().is_some()
-                || last.as_case_match_node().is_some()
-        });
-        let (leaves, gaps) = self.operand_docs(&operands);
+        let block_tail = operands.last().is_some_and(ends_in_block);
+        let (leaves, gaps) = self.operand_docs(&operands, condition);
         self.infix_doc(leaves, gaps, op_str, condition, block_tail)
     }
 
@@ -892,6 +926,50 @@ impl Formatter {
             None => out.push(node),
         }
     }
+}
+
+/// True if `node`, as the last operand of an `&&`/`||` spine, ends in a
+/// body of its own: a `begin`, a block `if`/`unless`/`case`, a call that
+/// takes a block (`list.any? do |x| ... end`), or a parenthesized or
+/// negated operand or a spine of another operator whose own last operand
+/// does. Such an
+/// operand is what `block_operand_doc` keeps on the operator's line while
+/// it fits, and gives a line of its own when it does not.
+fn ends_in_block(node: &ruby_prism::Node<'_>) -> bool {
+    if node.as_begin_node().is_some()
+        || node
+            .as_if_node()
+            .is_some_and(|n| n.if_keyword_loc().is_some() && n.end_keyword_loc().is_some())
+        || node
+            .as_unless_node()
+            .is_some_and(|n| n.end_keyword_loc().is_some())
+        || node.as_case_node().is_some()
+        || node.as_case_match_node().is_some()
+    {
+        return true;
+    }
+    if let Some(call) = node.as_call_node() {
+        if call.name().as_slice() == b"!" && call.arguments().is_none() {
+            return call.receiver().is_some_and(|r| ends_in_block(&r));
+        }
+        return call.block().is_some_and(|b| b.as_block_node().is_some());
+    }
+    if let Some(parens) = node.as_parentheses_node() {
+        let body = parens.body().and_then(|b| b.as_statements_node());
+        return body.is_some_and(|s| {
+            let mut stmts = s.body().iter();
+            stmts
+                .next()
+                .is_some_and(|only| stmts.next().is_none() && ends_in_block(&only))
+        });
+    }
+    if let Some(and) = node.as_and_node() {
+        return ends_in_block(&and.right());
+    }
+    if let Some(or) = node.as_or_node() {
+        return ends_in_block(&or.right());
+    }
+    false
 }
 
 /// The pattern, keyword and condition of `in pattern if cond`, which prism

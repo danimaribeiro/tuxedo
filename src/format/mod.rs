@@ -510,12 +510,18 @@ struct Formatter {
     /// on -- so `foo { bar } # why` had the body's only statement claim a
     /// comment written about the whole call.
     comment_limit: Option<usize>,
-    /// Set while a block condition is being built, and taken by the first
-    /// infix spine that comes of it -- the one whose line points are the
-    /// condition's own. A spine nested inside a bracketed construct in the
-    /// condition is not it: an argument list and a block body carry their
-    /// own indentation and must not be shifted.
+    /// Set while a block condition or a `return` value is being built, and
+    /// taken by the first infix spine that comes of it -- the one whose
+    /// line points are the condition's own -- which hands it on to each of
+    /// its operands that is a spine itself (`operand_docs`). A spine
+    /// nested inside a bracketed construct in the condition is not it: an
+    /// argument list and a block body carry their own indentation and must
+    /// not be shifted.
     condition_spine: bool,
+    /// Where the file's first line of code starts. Only a comment above it
+    /// can be a magic comment: the same text further down is a comment
+    /// like any other.
+    code_start: usize,
     /// Where the `when`/`in` clause about to be rendered stops: the start
     /// of the next clause, the `else`, or the `end`. Set by the enclosing
     /// `case` right before it visits each clause, which has no other way
@@ -655,6 +661,11 @@ impl Formatter {
             array_keyword_hash: None,
             comment_limit: None,
             condition_spine: false,
+            code_start: parsed
+                .node()
+                .as_program_node()
+                .and_then(|p| p.statements().body().iter().next())
+                .map_or(source.len(), |first| first.location().start_offset()),
             clause_closer: None,
         }
     }
@@ -938,7 +949,12 @@ impl Formatter {
         Self::format_comment(text).into_owned()
     }
 
+    /// A `#` comment as written, with a space after the `#` when there is
+    /// none (`#why` becomes `# why`) and no whitespace at the end of the
+    /// line, which nobody can see and which Layout/TrailingWhitespace
+    /// flags.
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
+        let text = text.trim_end_matches([' ', '\t']);
         if text.starts_with('#')
             && text.len() > 1
             && !text[1..].starts_with(char::is_whitespace)
@@ -1317,23 +1333,37 @@ impl Formatter {
     ) {
         // `X = # :nodoc:` and the value on the next line: the comment is
         // about the assignment, and the value it would otherwise be nested
-        // in has to stay under it.
+        // in has to stay under it. Comments on lines of their own between
+        // the `=` and the value stay above the value, at its indent.
         let value_start = value.location().start_offset();
         if !self.single_line
             && let Some(comment) = self.comments.get(self.comment_cursor)
             && comment.start < value_start
             && self.line_of(comment.start) < self.line_of(value_start)
-            && let Some(trailing) = self.trailing_comment_doc(self.line_of(comment.start))
         {
-            let value_doc = self.node_doc(value);
-            self.run_text(run, format!(" {op}"));
-            run.leaves.push(trailing);
-            run.leaves.push(
-                Doc::hardline()
-                    .append(value_doc)
-                    .indent(self.indent_str.len()),
-            );
-            return;
+            let comment_line = self.line_of(comment.start);
+            let after_code = !self.source[self.line_starts[comment_line]..comment.start]
+                .trim()
+                .is_empty();
+            let trailing = if after_code {
+                self.trailing_comment_doc(comment_line)
+            } else {
+                None
+            };
+            let above = self.leading_comments_doc(value_start, false);
+            if trailing.is_some() || above.is_some() {
+                let value_doc = self.node_doc(value);
+                self.run_text(run, format!(" {op}"));
+                run.leaves.push(trailing.unwrap_or_else(Doc::nil));
+                run.leaves.push(
+                    above
+                        .unwrap_or_else(Doc::nil)
+                        .append(Doc::hardline())
+                        .append(value_doc)
+                        .indent(self.indent_str.len()),
+                );
+                return;
+            }
         }
         let value_doc = self.node_doc(value);
         let one_line = self.line_of(value.location().start_offset())
@@ -1895,11 +1925,31 @@ impl Formatter {
     /// Built one operand at a time because the comment cursor only moves
     /// forward: a gap's comments are claimed after the operand before it
     /// has claimed its own, and before the operand after it does.
-    fn operand_docs(&mut self, operands: &[ruby_prism::Node<'_>]) -> (Vec<Doc>, Vec<Option<Doc>>) {
+    ///
+    /// In a block condition (`condition`), an operand that is an infix
+    /// spine of its own (`a == b` in `if a == b && c == d`) takes the
+    /// condition's indent too, so its continuation is not drawn in the
+    /// column of the body below:
+    ///
+    /// ```ruby
+    /// if previous.fetch("formula") ==
+    ///     bottle_hash.fetch("formula") &&
+    ///     previous.fetch("bottle") ==
+    ///         bottle_hash.fetch("bottle")
+    ///   next
+    /// end
+    /// ```
+    fn operand_docs(
+        &mut self,
+        operands: &[ruby_prism::Node<'_>],
+        condition: bool,
+    ) -> (Vec<Doc>, Vec<Option<Doc>>) {
         let mut leaves = Vec::with_capacity(operands.len());
         let mut gaps = Vec::with_capacity(operands.len());
         for (i, operand) in operands.iter().enumerate() {
+            self.condition_spine = condition && is_infix_spine(operand);
             leaves.push(self.node_doc(operand));
+            self.condition_spine = false;
             if let Some(next) = operands.get(i + 1) {
                 gaps.push(self.gap_comments_doc(
                     operand.location().end_offset(),
@@ -1962,7 +2012,13 @@ impl Formatter {
         condition: bool,
         block_tail: bool,
     ) -> Doc {
-        if gaps.iter().any(Option::is_some) {
+        // A block condition with a multi-line operand after the first puts
+        // every operand on its own line: joined onto the operands before
+        // it, the operand's lines would sit in the column of the body the
+        // condition guards. A multi-line first operand starts the line, so
+        // where its lines go does not depend on the ones after it.
+        if gaps.iter().any(Option::is_some) || (condition && leaves.iter().skip(1).any(Doc::breaks))
+        {
             let levels = if condition { 2 } else { 1 };
             let mut leaves = leaves.into_iter();
             let first = leaves.next().unwrap_or_else(Doc::nil);
@@ -2079,6 +2135,37 @@ impl Formatter {
             .append(rest.indent(levels * self.indent_str.len()))
             .group()
     }
+}
+
+/// True for a node laid out as an infix spine that continues at a
+/// condition's doubled indent: `a && b`, `a or b`, or an operator call
+/// written without a dot (`a == b`, `a + b`).
+///
+/// Not an operator call whose right side is a `{ }` or `[ ]` literal
+/// (`a != { x: 1 }`): RuboCop reads that one as a call with an argument
+/// list, and Layout/ArgumentAlignment wants the single step.
+fn is_infix_spine(node: &ruby_prism::Node<'_>) -> bool {
+    if node.as_and_node().is_some() || node.as_or_node().is_some() {
+        return true;
+    }
+    node.as_call_node().is_some_and(|call| {
+        let name = call.name().as_slice();
+        let args: Vec<_> = call
+            .arguments()
+            .map(|a| a.arguments().iter().collect())
+            .unwrap_or_default();
+        let [arg] = args.as_slice() else {
+            return false;
+        };
+        call.call_operator_loc().is_none()
+            && call.receiver().is_some()
+            && call.block().is_none()
+            && arg.as_hash_node().is_none()
+            && arg.as_array_node().is_none()
+            && name
+                .first()
+                .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'[')
+    })
 }
 
 /// `Doc::text` from a span of the source.

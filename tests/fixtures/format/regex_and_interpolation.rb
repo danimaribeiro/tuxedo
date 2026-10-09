@@ -15,3 +15,18 @@ summary = "#{queries.size} instead of #{count} queries were executed#{queries.em
 if /#{f(1, 2)}/
   y
 end
+
+# A hole the author wrote across lines around a construct that has no one-line
+# spelling keeps its lines; flat, its statements would be joined with `;`.
+output << "#{type.capitalize}: #{reqs.map do |requirement|
+  label = if requirement.optional?
+    requirement.name
+  else
+    requirement.display_s
+  end
+  install_status(label, installed: requirement.satisfied?)
+end.join(", ")}\n"
+
+checkboxes << "#{failed_updates.map do |name, status|
+  "  - Resource `#{name}` failed to auto-update (#{status})."
+end.join("\n")}\n"

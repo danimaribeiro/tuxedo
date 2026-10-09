@@ -13,3 +13,13 @@ def self.===(other)
     (defined?(Rack::Utils::ParameterTypeError) && Rack::Utils::ParameterTypeError === other ||
       defined?(Rack::Utils::InvalidParameterError) && Rack::Utils::InvalidParameterError === other)
 end
+
+# A body holding a construct with no one-line spelling expands rather than
+# joining its parts with `;`.
+def inside_repository?(file_path, api_path)
+  file_path.ascend.none?(repository_path) && !(api_path && begin
+    file_path.expand_path.ascend.any?(api_path)
+  rescue Errno::ENOENT
+    false
+  end)
+end

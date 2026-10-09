@@ -81,7 +81,11 @@ if offenses_path
     rel = rel.sub(%r{\A#{Regexp.escape(dir)}/}, "")
     path = File.join(dir, rel)
     lines = lines_of[path]
-    window = ->(before) { lines[[lineno - 1 - before, 0].max..(lineno - 1)].join("\n") }
+    # An alignment offense names the line of what it wanted the closer
+    # under (`end` at 120, 12 is not aligned with `case` at 115, 19), which
+    # may sit any distance above: the rule's window ends there instead.
+    anchor = message[/ is not aligned with .* at (\d+), \d+\.?\z/, 1]&.to_i || lineno
+    window = ->(before) { lines[[anchor - 1 - before, 0].max..(anchor - 1)].join("\n") }
     findings << Finding.new("#{rel}:#{lineno}", cop, message, path, lineno, window)
   end
 end
