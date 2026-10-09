@@ -510,12 +510,18 @@ struct Formatter {
     /// on -- so `foo { bar } # why` had the body's only statement claim a
     /// comment written about the whole call.
     comment_limit: Option<usize>,
-    /// Set while a block condition is being built, and taken by the first
-    /// infix spine that comes of it -- the one whose line points are the
-    /// condition's own. A spine nested inside a bracketed construct in the
-    /// condition is not it: an argument list and a block body carry their
-    /// own indentation and must not be shifted.
+    /// Set while a block condition or a `return` value is being built, and
+    /// taken by the first infix spine that comes of it -- the one whose
+    /// line points are the condition's own -- which hands it on to each of
+    /// its operands that is a spine itself (`operand_docs`). A spine
+    /// nested inside a bracketed construct in the condition is not it: an
+    /// argument list and a block body carry their own indentation and must
+    /// not be shifted.
     condition_spine: bool,
+    /// Where the file's first line of code starts. Only a comment above it
+    /// can be a magic comment: the same text further down is a comment
+    /// like any other.
+    code_start: usize,
     /// Where the `when`/`in` clause about to be rendered stops: the start
     /// of the next clause, the `else`, or the `end`. Set by the enclosing
     /// `case` right before it visits each clause, which has no other way
@@ -655,6 +661,11 @@ impl Formatter {
             array_keyword_hash: None,
             comment_limit: None,
             condition_spine: false,
+            code_start: parsed
+                .node()
+                .as_program_node()
+                .and_then(|p| p.statements().body().iter().next())
+                .map_or(source.len(), |first| first.location().start_offset()),
             clause_closer: None,
         }
     }
@@ -938,7 +949,12 @@ impl Formatter {
         Self::format_comment(text).into_owned()
     }
 
+    /// A `#` comment as written, with a space after the `#` when there is
+    /// none (`#why` becomes `# why`) and no whitespace at the end of the
+    /// line, which nobody can see and which Layout/TrailingWhitespace
+    /// flags.
     fn format_comment(text: &str) -> std::borrow::Cow<'_, str> {
+        let text = text.trim_end_matches([' ', '\t']);
         if text.starts_with('#')
             && text.len() > 1
             && !text[1..].starts_with(char::is_whitespace)

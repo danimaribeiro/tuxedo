@@ -55,7 +55,7 @@ fn is_attr_accessor_call(node: &ruby_prism::Node<'_>) -> bool {
 }
 
 /// A magic comment (`# frozen_string_literal: true`, `# encoding: utf-8`,
-/// ...) -- Layout/EmptyLineAfterMagicComment wants a blank line separating
+/// Sorbet's `# typed: true`, ...) -- Layout/EmptyLineAfterMagicComment wants a blank line separating
 /// the last of a run of these from whatever follows, since they're
 /// interpreter directives rather than documentation for the code below.
 ///
@@ -64,7 +64,12 @@ fn is_attr_accessor_call(node: &ruby_prism::Node<'_>) -> bool {
 /// and Emacs (`-*- ... -*-`) forms below -- editors read the rest of the
 /// `key=value` list too, but only the encoding keys change how the parser
 /// itself reads the file.
-fn is_magic_comment(text: &str) -> bool {
+///
+/// Most of these are read only above the first line of code (`in_header`);
+/// further down the same text is an ordinary comment. `warn_indent` and
+/// `shareable_constant_value` are the exceptions: Ruby honors them anywhere,
+/// from that line on.
+fn is_magic_comment(text: &str, in_header: bool) -> bool {
     let inner = text.trim_start_matches('#').trim();
 
     if let Some(rest) = inner
@@ -72,10 +77,11 @@ fn is_magic_comment(text: &str) -> bool {
         .or_else(|| inner.strip_prefix("vi:"))
     {
         let rest = rest.strip_prefix("set ").unwrap_or(rest);
-        return rest
-            .split([':', ' ', ','])
-            .filter_map(|pair| pair.split_once('='))
-            .any(|(key, _)| matches!(key.trim(), "fileencoding" | "encoding"));
+        return in_header
+            && rest
+                .split([':', ' ', ','])
+                .filter_map(|pair| pair.split_once('='))
+                .any(|(key, _)| matches!(key.trim(), "fileencoding" | "encoding"));
     }
 
     let inner = inner.strip_prefix("-*-").map(str::trim).unwrap_or(inner);
@@ -83,14 +89,11 @@ fn is_magic_comment(text: &str) -> bool {
     let Some((key, _)) = inner.split_once(':') else {
         return false;
     };
-    matches!(
-        key.trim(),
-        "encoding"
-            | "coding"
-            | "frozen_string_literal"
-            | "warn_indent"
-            | "shareable_constant_value"
-    )
+    match key.trim() {
+        "warn_indent" | "shareable_constant_value" => true,
+        "encoding" | "coding" | "frozen_string_literal" | "rbs_inline" | "typed" => in_header,
+        _ => false,
+    }
 }
 
 /// A modifier or plain block-form `if`/`unless` (no `elsif`/`else`) whose
@@ -291,7 +294,10 @@ impl Formatter {
                     region_end = end;
                     continue;
                 }
-                let is_magic = is_magic_comment(&self.comments[self.comment_cursor].text);
+                let is_magic = is_magic_comment(
+                    &self.comments[self.comment_cursor].text,
+                    self.comments[self.comment_cursor].start < self.code_start,
+                );
                 let blank = prev_end_line.is_some_and(|prev| comment_line > prev + 1)
                     || force_blank_pending
                     || (pending_blank_after_magic && !is_magic);
