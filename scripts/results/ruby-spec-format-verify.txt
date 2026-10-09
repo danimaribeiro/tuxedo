@@ -9,7 +9,7 @@ Running tuxedo format...
 [2/4] Idempotence check (format twice)...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
-  4067 total, 1 displaced (each one is listed below as accepted or UNEXPLAINED)
+  4067 total, 0 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
@@ -21,7 +21,6 @@ Running tuxedo format...
   3    Layout/EmptyComment [Safe Correctable]
   3    Layout/FirstArrayElementLineBreak [Safe Correctable]
   2    Layout/EmptyLineAfterMagicComment [Safe Correctable]
-  1    Layout/DefEndAlignment [Safe Correctable]
   1    Layout/EmptyLineAfterGuardClause [Safe Correctable]
   1    Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
   1    Layout/FirstArgumentIndentation [Safe Correctable]
@@ -30,8 +29,6 @@ Running tuxedo format...
   1    Layout/MultilineOperationIndentation [Safe Correctable]
 
 Accepted (scripts/verify-accepted.tsv) and unexplained:
-  accepted    1  Comments                                 `def x; end # c` and `class X; end # c` expand, and the comment stays with the line that names the construct
-  accepted    1  Layout/DefEndAlignment                   a `def` used as a value keeps its `end` at the statement's indent
   accepted    8  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
   accepted    3  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
   accepted    1  Layout/EmptyLineAfterGuardClause         an if/else where every branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after
@@ -46,7 +43,7 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   accepted    1  Layout/MultilineArrayLineBreaks          a percent-literal's own backslash continuation, not the array after it, is what RuboCop's line count sees
   accepted    1  Layout/MultilineOperationIndentation     a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses
   accepted    7  Layout/SpaceAroundBlockParameters        a block-local variable list is spaced like every other separator, not held to the no-space-inside-pipes style
-offenses: 74 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
+offenses: 73 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
 
 ======================================================================
   ruby-spec
@@ -54,8 +51,8 @@ offenses: 74 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
   meaning     0 files refused: formatting would have changed the AST
   parse       4441 ok, 0 BROKEN by tuxedo (2 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    4067 total, 1 displaced
-  layout      405 offenses across 15 distinct cops
+  comments    4067 total, 0 displaced
+  layout      404 offenses across 14 distinct cops
   linelength: 331 over 120, 331 unsplittable, 0 breakable
 ----------------------------------------------------------------------
   UNEXPLAINED 0 layout (LineLength breakable included), 0 comments; 0 stale rules

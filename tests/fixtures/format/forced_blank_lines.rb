@@ -63,6 +63,15 @@ def guard_run_spaced
   do_stuff
 end
 
+def guard_then_redo
+  [1, 2].each do |x|
+    break if done?
+
+    redo if x == 3
+    work(x)
+  end
+end
+
 # vim: set fileencoding=big5:
 
 puts 1

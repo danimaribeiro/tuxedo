@@ -94,11 +94,13 @@ fn is_magic_comment(text: &str) -> bool {
 }
 
 /// A modifier or plain block-form `if`/`unless` (no `elsif`/`else`) whose
-/// entire body is a single "jump" statement (`return`/`next`/`break`/
-/// `redo`/`retry`, or a bare `raise`/`fail`) -- the shape
-/// Layout/EmptyLineAfterGuardClause wants a blank line after. An
-/// `elsif`/`else` chain disqualifies it: that's a real branch, not a
-/// short-circuit guard.
+/// entire body is a single "jump" statement (`return`/`next`/`break`, or a
+/// bare `raise`/`fail`) -- the shape Layout/EmptyLineAfterGuardClause wants
+/// a blank line after. An `elsif`/`else` chain disqualifies it: that's a
+/// real branch, not a short-circuit guard. `redo` and `retry` are left out
+/// because the cop leaves them out: counting `redo if x` as a guard would
+/// fold it into the run after `break if y`, and the cop then wants the
+/// blank line between the two that the run suppresses.
 fn is_guard_clause(node: &ruby_prism::Node<'_>) -> bool {
     let statements = if let Some(if_node) = node.as_if_node() {
         if if_node.subsequent().is_some() {
@@ -127,8 +129,6 @@ fn is_guard_clause(node: &ruby_prism::Node<'_>) -> bool {
         ruby_prism::Node::ReturnNode { .. }
             | ruby_prism::Node::NextNode { .. }
             | ruby_prism::Node::BreakNode { .. }
-            | ruby_prism::Node::RedoNode { .. }
-            | ruby_prism::Node::RetryNode { .. }
     ) || only.as_call_node().is_some_and(|call| {
         call.receiver().is_none()
             && matches!(
