@@ -35,7 +35,6 @@ Layout/EndAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|cla
 Layout/ElseAlignment	12	(\|\||&&|<<|=|\()\s*(if|unless|case|begin|while|until|class <<)(?!\w)	a keyword used as a value keeps `else`/`elsif` at the statement's indent	rails
 # `method_name = def some_method\nend`: same disagreement, `def`'s own
 # alignment cop.
-Layout/DefEndAlignment	4	(\|\||&&|<<|=|\()\s*def\b	a `def` used as a value keeps its `end` at the statement's indent	ruby-spec
 # --- Text that is not the formatter's ---
 # `# encoding: big5`, `# -*- encoding: iso-8859-9 -*-`: the file itself isn't
 # valid UTF-8, so tuxedo refuses it and copies it through untouched --

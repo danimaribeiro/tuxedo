@@ -47,6 +47,8 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="$ROOT/test-projects/$PROJECT"
+# shellcheck source=corpus-guard.sh
+source "$ROOT/scripts/corpus-guard.sh"
 SRC="$BASE/source"
 RESULTS_DIR="$ROOT/scripts/results"
 REPORT="$RESULTS_DIR/$PROJECT-lint-baseline.txt"
@@ -100,7 +102,7 @@ fi
 # it exit 2 and is left exactly as the source had it. The run goes on with
 # the rest, and the report says how many were left out.
 FORMAT_ERR="$(mktemp)"
-"$TUXEDO_BIN" format --quiet "${CONFIG_ARGS[@]}" "$BASE/tuxedo" >/dev/null 2>"$FORMAT_ERR" || true
+"$TUXEDO_BIN" format --quiet --jobs "$CORPUS_JOBS" "${CONFIG_ARGS[@]}" "$BASE/tuxedo" >/dev/null 2>"$FORMAT_ERR" || true
 REFUSED="$(grep -c 'formatting would change what this code does' "$FORMAT_ERR" || true)"
 if [ "$REFUSED" -gt 0 ]; then
   echo "warning: tuxedo refused $REFUSED file(s); they are unformatted in the tuxedo column:" >&2

@@ -39,6 +39,8 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="$ROOT/test-projects/$PROJECT"
+# shellcheck source=corpus-guard.sh
+source "$ROOT/scripts/corpus-guard.sh"
 SRC="$BASE/source"
 RESULTS_DIR="$ROOT/scripts/results"
 REPORT="$RESULTS_DIR/$PROJECT-format-compare.txt"
@@ -75,7 +77,7 @@ echo "Running tuxedo format..."
 # tuxedo's stderr goes to a file rather than into the `time` capture, which
 # would otherwise fold its error lines into $tuxedo_time.
 tuxedo_err="$(mktemp)"
-tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet "$BASE/tuxedo" >/dev/null 2>"$tuxedo_err" || true; } 2>&1 )
+tuxedo_time=$( { time "$TUXEDO_BIN" format --quiet --jobs "$CORPUS_JOBS" "$BASE/tuxedo" >/dev/null 2>"$tuxedo_err" || true; } 2>&1 )
 unformattable="$(grep -c '^error: ' "$tuxedo_err" || true)"
 rm -f "$tuxedo_err"
 
