@@ -93,6 +93,33 @@ impl Formatter {
                 .append(Doc::hardline())
                 .append(Doc::text(")"));
         }
+        // `(if cond` ... `end)` keeps the construct's header on the `(` line
+        // while it fits there. When it does not (`x[name] = (if A::B::C.
+        // values.include?(`), the construct goes on lines of its own, one
+        // level in, between `(` and `)`, the way the source writes it.
+        if expands
+            && !comment_before_close
+            && let Some(body) = node.body()
+        {
+            let body_start = body.location().start_offset();
+            let head_end = self.end_of_line_after(body_start + 1);
+            let head = format!("({}", self.source[body_start..head_end].trim_end());
+            let snap = self.render_snapshot();
+            let stay = self.node_doc(&body);
+            self.rewind_render_snapshot(snap);
+            self.indent += 1;
+            let moved = self.node_doc(&body);
+            self.indent -= 1;
+            let nest = self.indent_str.len();
+            return Doc::stay_or_move(
+                &head,
+                Doc::text("(").append(stay).append(Doc::text(")")),
+                Doc::text("(")
+                    .append(Doc::hardline().append(moved).indent(nest))
+                    .append(Doc::hardline())
+                    .append(Doc::text(")")),
+            );
+        }
         let inner = match node.body() {
             Some(body) => {
                 let was_single_line =

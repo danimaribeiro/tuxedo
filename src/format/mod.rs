@@ -412,9 +412,10 @@ fn is_indivisible(node: &ruby_prism::Node<'_>) -> bool {
         || node.as_self_node().is_some()
 }
 
-/// Where the head of `Path::To.method(` ends -- through the opening
-/// parenthesis -- when `node` is a call whose receiver is a path of names and
-/// which has arguments to open: the part of it that cannot be broken.
+/// Where the head of `Path::To.method(` or `method(` ends -- through the
+/// opening parenthesis -- when `node` is a call with no receiver or one that
+/// is a path of names, and which has arguments to open: the part of it that
+/// cannot be broken.
 fn call_head(node: &ruby_prism::Node<'_>) -> Option<usize> {
     let call = node.as_call_node()?;
     let opening = call.opening_loc()?;
@@ -423,7 +424,7 @@ fn call_head(node: &ruby_prism::Node<'_>) -> Option<usize> {
         .as_slice()
         .first()
         .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_');
-    (named && call.receiver().is_some_and(|r| is_indivisible(&r)) && call.arguments().is_some())
+    (named && call.receiver().is_none_or(|r| is_indivisible(&r)) && call.arguments().is_some())
         .then(|| opening.end_offset())
 }
 

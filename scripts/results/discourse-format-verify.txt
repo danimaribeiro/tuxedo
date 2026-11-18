@@ -13,9 +13,9 @@ Running tuxedo format...
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2059  Layout/LineLength [Safe Correctable]
-  180   Layout/IndentationWidth [Safe Correctable]
-  172   Layout/ElseAlignment [Safe Correctable]
+  2058  Layout/LineLength [Safe Correctable]
+  178   Layout/IndentationWidth [Safe Correctable]
+  171   Layout/ElseAlignment [Safe Correctable]
   59    Layout/EndAlignment [Safe Correctable]
   41    Layout/TrailingWhitespace [Safe Correctable]
   32    Layout/EmptyComment [Safe Correctable]
@@ -28,12 +28,12 @@ Running tuxedo format...
 
 Accepted (scripts/verify-accepted.tsv) and unexplained:
   accepted    4  Layout/BlockAlignment                    the body of a block on a broken chain's last link stays at the statement's indent, so breaking or joining the chain does not move it
-  accepted  172  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
+  accepted  171  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
   accepted   32  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
   accepted    1  Layout/EmptyLineAfterGuardClause         an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after
   accepted    1  Layout/EmptyLinesAroundAccessModifier    an access modifier as the last line of a body is the author's, and RuboCop's two cops leave no spelling of it they both accept
   accepted   59  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
-  accepted  180  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
+  accepted  178  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
   accepted    4  Layout/LeadingCommentSpace               a non-breaking space after `#` is a character of the comment's text, which is the author's
   accepted    4  Layout/MultilineMethodCallIndentation    a chain that is a value in a returned hash literal continues one level in from its key, as it does in any hash; it is not the `return`'s condition
   accepted    1  Layout/MultilineOperationIndentation     RuboCop's ArgumentAlignment wants the single step for a hash compared in a condition, MultilineOperationIndentation the doubled one, and no indent satisfies both
@@ -41,7 +41,7 @@ Accepted (scripts/verify-accepted.tsv) and unexplained:
   accepted    1  Layout/MultilineOperationIndentation     a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses
   accepted   39  Layout/TrailingWhitespace                a heredoc body is data, trailing spaces included
   accepted    2  Layout/TrailingWhitespace                a line break inside a quoted string is part of it, and so are the spaces before one
-offenses: 504 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
+offenses: 501 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
 
 ======================================================================
   discourse
@@ -50,10 +50,10 @@ offenses: 504 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
   parse       12371 ok, 0 BROKEN by tuxedo (1 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    52233 total, 0 displaced
-  layout      2563 offenses across 12 distinct cops
-  linelength: 2059 over 120, 2055 unsplittable, 4 breakable
+  layout      2559 offenses across 12 distinct cops
+  linelength: 2058 over 120, 2056 unsplittable, 2 breakable
 ----------------------------------------------------------------------
-  UNEXPLAINED 4 layout (LineLength breakable included), 0 comments; 0 stale rules
+  UNEXPLAINED 2 layout (LineLength breakable included), 0 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/discourse/verify for inspection.
