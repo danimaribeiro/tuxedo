@@ -134,6 +134,134 @@ fn is_scope_call(call: &ruby_prism::CallNode<'_>) -> bool {
         .is_some_and(|l| l.as_slice() == b"::")
 }
 
+/// The chain carried in `link`'s sole argument, when `link` is written
+/// without parentheses: `.and change { B }.by(2)` hands back the base
+/// `change { B }` and the links after it (`.by(2)`), base-to-end.
+///
+/// RSpec's compound matchers read as one chain (`.to change { A }.by(1)
+/// .and change { B }.by(2)`), but Ruby parses each `change` as the argument
+/// of the link before it. Laid out by the parse, each matcher would nest one
+/// level deeper than the last; the chain takes these links in as its own
+/// instead, at its one indent, which is what RuboCop's
+/// `Layout/MultilineMethodCallIndentation` expects and what authors write.
+///
+/// A link with a block of its own keeps its argument: the block's header
+/// belongs on the line the argument ends on.
+fn carried_chain<'a>(
+    link: &ruby_prism::CallNode<'a>,
+    has_comment: &dyn Fn(usize, usize) -> bool,
+) -> Option<(ruby_prism::Node<'a>, Vec<ruby_prism::CallNode<'a>>)> {
+    if link.opening_loc().is_some() || link.block().is_some() || is_index_link(link) {
+        return None;
+    }
+    let mut arguments = link.arguments()?.arguments().iter();
+    let only = arguments.next()?;
+    if arguments.next().is_some() {
+        return None;
+    }
+    let last = only.as_call_node()?;
+    let joins = |call: &ruby_prism::CallNode<'_>| {
+        is_index_link(call)
+            || (is_plain_method_call(call)
+                && block_can_join(call, has_comment)
+                && !is_scope_call(call))
+    };
+    if !joins(&last) {
+        return None;
+    }
+    let mut links = vec![last];
+    let mut base = links[0].receiver()?;
+    while let Some(call) = base.as_call_node() {
+        let Some(next_base) = call.receiver().filter(|_| joins(&call)) else {
+            break;
+        };
+        links.push(call);
+        base = next_base;
+    }
+    // Only a chain in its own right: two of its pieces carry arguments or a
+    // block, as `change { B }.by(2)` does. `.find firm.id` and
+    // `.and output(/x/).to_stdout` keep their argument whole; their `.id`
+    // on a line of its own would read as a link of the outer chain.
+    let base_works = base
+        .as_call_node()
+        .is_some_and(|call| call.arguments().is_some() || call.block().is_some());
+    let working = links
+        .iter()
+        .filter(|call| {
+            !is_index_link(call) && (call.arguments().is_some() || call.block().is_some())
+        })
+        .count()
+        + usize::from(base_works);
+    if working < 2 {
+        return None;
+    }
+    links.reverse();
+    Some((base, links))
+}
+
+/// A link that does more than read: it takes arguments or a block.
+fn carries_work(call: &ruby_prism::CallNode<'_>) -> bool {
+    !is_index_link(call) && (call.arguments().is_some() || call.block().is_some())
+}
+
+/// How many pieces of a chain carry work (`carries_work`): its links, its
+/// last call, and a `::` head. A chain breaks only when two do; one with a
+/// single working link stays a call on a receiver.
+fn chain_work(
+    base: &ruby_prism::Node<'_>,
+    links: &[ruby_prism::CallNode<'_>],
+    node: &ruby_prism::CallNode<'_>,
+) -> usize {
+    let scoped_head = base
+        .as_call_node()
+        .filter(|call| is_scope_call(call) && carries_work(call));
+    links
+        .iter()
+        .chain(scoped_head.as_ref())
+        .chain(std::iter::once(node))
+        .filter(|c| carries_work(c))
+        .count()
+}
+
+/// True for an operand that will lay out as a method chain
+/// (`try_build_chain_doc`), seen through a leading `!`. In a block
+/// condition it takes the condition's doubled indent, as an operand that
+/// is an infix spine does: `Layout/MultilineMethodCallIndentation` holds a
+/// chain's links in a condition two levels in from its receiver.
+pub(super) fn is_condition_chain(node: &ruby_prism::Node<'_>) -> bool {
+    let Some(mut call) = node.as_call_node() else {
+        return false;
+    };
+    if call.name().as_slice() == b"!"
+        && call.call_operator_loc().is_none()
+        && call.arguments().is_none()
+        && let Some(inner) = call.receiver().and_then(|r| r.as_call_node())
+    {
+        call = inner;
+    }
+    is_chain_operand(&call.as_node())
+}
+
+/// True for a node that lays out as a method chain (`try_build_chain_doc`):
+/// two of its pieces carry work, so it breaks before every `.` when it
+/// does not fit. Its last call is a `.` link or an index: an operator call
+/// (`a.b(x) != c`) is an infix spine with the chain as an operand.
+fn is_chain_operand(node: &ruby_prism::Node<'_>) -> bool {
+    node.as_call_node().is_some_and(|call| {
+        (call.call_operator_loc().is_some() || is_index_link(&call))
+            && collect_chain(&call, &|_, _| false)
+                .is_some_and(|(base, links)| chain_work(&base, &links, &call) >= 2)
+    })
+}
+
+/// Another handle on the same call: Prism's nodes are views into the
+/// parse, and `CallNode` has no `Clone` of its own.
+fn copy_call<'a>(call: &ruby_prism::CallNode<'a>) -> ruby_prism::CallNode<'a> {
+    call.as_node()
+        .as_call_node()
+        .expect("a call node is a call node")
+}
+
 /// The `.`/`&.` a chain link is reached through, as written.
 fn call_operator<'a>(call: &'a ruby_prism::CallNode<'a>) -> &'a str {
     call.call_operator_loc()
@@ -248,9 +376,6 @@ impl Formatter {
         // to sit on a line of its own, so it still breaks them.
         // An index is not counted: `params[:user][:name].strip` is one
         // `.` link, with nothing to break between.
-        let carries_work = |call: &ruby_prism::CallNode<'_>| {
-            !is_index_link(call) && (call.arguments().is_some() || call.block().is_some())
-        };
         let commented = links.iter().chain(std::iter::once(node)).any(|link| {
             !is_index_link(link)
                 && link.receiver().is_some_and(|receiver| {
@@ -264,16 +389,7 @@ impl Formatter {
                         })
                 })
         });
-        let scoped_head = base
-            .as_call_node()
-            .filter(|call| is_scope_call(call) && carries_work(call));
-        let working = links
-            .iter()
-            .chain(scoped_head.as_ref())
-            .chain(std::iter::once(node))
-            .filter(|c| carries_work(c))
-            .count();
-        if working < 2 && !commented {
+        if chain_work(&base, &links, node) < 2 && !commented {
             return None;
         }
 
@@ -288,6 +404,34 @@ impl Formatter {
             1
         };
 
+        // The links in order, each with the base of the chain it carries
+        // in place of its argument list (see `carried_chain`). Only the
+        // chain's own last link hands its block to the caller as `tail`.
+        let mut sequence: Vec<(ruby_prism::CallNode<'_>, Option<ruby_prism::Node<'_>>, bool)> =
+            links
+                .iter()
+                .map(|link| (copy_call(link), None, true))
+                .collect();
+        let mut last = copy_call(node);
+        let mut owns_tail = true;
+        loop {
+            let carried = {
+                let this = &*self;
+                carried_chain(&last, &|start, end| this.has_pending_comment_in(start, end))
+            };
+            let Some((carried_base, carried_links)) = carried else {
+                break;
+            };
+            sequence.push((last, Some(carried_base), true));
+            let (tail_link, rest) = carried_links
+                .split_last()
+                .expect("a carried chain has links");
+            sequence.extend(rest.iter().map(|link| (copy_call(link), None, true)));
+            last = copy_call(tail_link);
+            owns_tail = false;
+        }
+        sequence.push((last, None, !owns_tail));
+
         let leading_index = links.first().is_some_and(is_index_link);
         let mut run = self.begin_run();
         self.run_node(&mut run, &base);
@@ -301,7 +445,7 @@ impl Formatter {
         // are claimed after the first link's arguments and before the
         // second's.
         let mut segments: Vec<(Option<Doc>, Doc)> = Vec::new();
-        for (at, link) in links.iter().chain(std::iter::once(node)).enumerate() {
+        for (link, carried_base, carries_block) in &sequence {
             if is_index_link(link) {
                 let index = self.index_link_doc(link);
                 match segments.last_mut() {
@@ -311,15 +455,17 @@ impl Formatter {
                 continue;
             }
             let gap = self.link_gap_comments_doc(link);
-            let args = self.call_args_doc(link, link.opening_loc().is_some());
+            let args = match carried_base {
+                Some(base) => Doc::text(" ").append(self.node_doc(base)),
+                None => self.call_args_doc(link, link.opening_loc().is_some()),
+            };
             let mut segment = Doc::text(call_operator(link))
                 .append(super::bytes_doc(link.name().as_slice()))
                 .append(args);
             // The last link's block is the caller's: its header is `tail`
             // and its body follows the chain. Any other link carries its
             // block along.
-            if at < links.len()
-                && let Some(block) = real_block(link).and_then(|b| b.as_block_node())
+            if *carries_block && let Some(block) = real_block(link).and_then(|b| b.as_block_node())
             {
                 let header = self.block_header_doc(&block);
                 let body = self.block_body_doc(&block);
@@ -745,6 +891,29 @@ impl Formatter {
                     .append(value)
                     .indent(self.indent_str.len()),
             );
+        }
+
+        // `Post.where(...).limit(n).count > max`: a method chain that has to
+        // break anyway ends on a line of its own, and the comparison stays
+        // on it. Broken after the operator as well, the right side would
+        // dangle on a line by itself under the chain's last link. While
+        // the chain fits on the line with its operator, the spine breaks
+        // the usual way.
+        if let [chain, _] = operands.as_slice()
+            && is_chain_operand(chain)
+            && gaps.iter().all(Option::is_none)
+            && !leaves.iter().any(Doc::breaks)
+        {
+            let head = format!(
+                "{} {name_str}",
+                leaves[0].clone().flat().render(usize::MAX / 2)
+            );
+            let sticky = leaves[0]
+                .clone()
+                .append(Doc::text(format!(" {name_str} ")))
+                .append(leaves[1].clone());
+            let spine = self.infix_doc(leaves, gaps, name_str, condition, false);
+            return Doc::stay_or_move(&head, spine, sticky);
         }
         self.infix_doc(leaves, gaps, name_str, condition, false)
     }
