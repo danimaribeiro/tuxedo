@@ -94,14 +94,15 @@ exec > >(tee "$REPORT")
 # matcher in src/walk.rs: a check that looked only at *.rb would leave
 # every Rakefile, Gemfile, .rake task, .gemspec and config.ru tuxedo
 # rewrites unmeasured, and those are the least test-covered files in a
-# project.
+# project. Hidden files and directories are skipped, as the walk skips
+# them: a `.devcontainer/` script tuxedo never formatted is not its output.
 #
 # The list goes to a file that the loops below read, not into `< <(...)`:
 # bash 5.3 can block waiting on a process substitution that is itself
 # blocked writing into the full pipe the loop has not yet read, and a
 # project's file list (discourse's, for one) is longer than a pipe buffer.
 ruby_files() {
-  find "$1" \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
+  find "$1" -mindepth 1 -name '.*' -prune -o \( -name '*.rb' -o -name '*.rake' -o -name '*.gemspec' \
     -o -name '*.ru' -o -name 'Rakefile' -o -name 'Gemfile' \) \
     -print0 | sort -z >"$2"
 }

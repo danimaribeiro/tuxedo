@@ -20,6 +20,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there does.
 - A comparison on a method chain that breaks stays on the chain's last line
   (`.count > max`), instead of putting the right side on a line of its own.
+- In a command call without parentheses, a `{ }` hash value of the first
+  argument, with more arguments after it (`render json: {...}, status:
+  :ok`), moves under its key when it does not fit, at the indent of the
+  arguments after it. It used to expand on the command's line.
+- A command call in `( )` (`return (render json: x, status: :ok)`) breaks
+  between its arguments the way it does outside the parentheses. It was
+  held to one line, so only its last argument's own brackets could break.
+- An arithmetic or comparison spine whose last operand is a call with a
+  `do` block (`a + b + list.map do ... end`) puts each operand on its own
+  line when the head does not fit, the block body one level in from its
+  operand, as `&&`/`||` spines already did.
+
+### Fixed
+
+- A blank line between a file's last statement and the comments after it
+  (a `# == Schema Information` block under a model) is kept; it was removed.
+- A comment right after `(` (`return(` + newline + `# why`) no longer joins
+  the `(` line: the body goes on lines of its own, with `)` below it.
+- A comment between a key and its value (`logs:` + newline + `# rubocop:disable`
+  + newline + the value) keeps the value on its own line below it; the value
+  joined the key and left the comment underneath, uncovered.
+- A modifier `if`/`unless` written out as a block keeps the comment that
+  ended its line on the body's line, not after `end`.
+- A `do ... end` block written on one line and expanded keeps the comment
+  after it at the end of the statement; it moved to the `do` line.
 
 ## [0.0.3] - 2026-11-17
 

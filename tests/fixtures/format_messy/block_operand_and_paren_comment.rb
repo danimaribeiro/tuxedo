@@ -1,0 +1,17 @@
+class HomepageSiteSetting
+  def self.values
+    [{ name: "admin.homepage.top_menu_default", value: "" }] + TopMenu.homepage_choices.map { |f| { name: "filters.#{f}.title", value: f } } + DiscoursePluginRegistry.homepage_options.map do |option|
+      { name: option[:name], value: option[:id] }
+    end
+  end
+
+  def self.agent(agent_class)
+    return(
+      # we need a new copy so we don't leak information
+      # across sites
+      Class.new(agent_class) do
+        define_singleton_method(:to_s) { agent_class.to_s }
+      end
+    )
+  end
+end

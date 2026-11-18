@@ -9,7 +9,10 @@
 # before   how many source lines above the offense's own line are searched
 #          too, for a construct that begins earlier than the line RuboCop names.
 # pattern  a Ruby regexp matched against those lines joined by newlines, or
-#          `@heredoc` for an offense inside a heredoc body.
+#          `@heredoc` for an offense inside a heredoc body, `@string` for one
+#          on a line a multi-line quoted string literal continues past,
+#          `@modifier-before-end` for a bare access modifier on the line
+#          right above an `end`.
 # reason   why tuxedo is right and RuboCop is not asked to agree.
 # witness  the corpus project where the rule matches something. A rule applies
 #          to every project, but is only checked for staleness on its witness:
@@ -46,17 +49,31 @@ Layout/SpaceInsidePercentLiteralDelimiters	0	%x\(	the content of `%x( )` is a sh
 Layout/ExtraSpacing	0	@heredoc	the body of a heredoc is data, not code	rails
 Layout/SpaceAroundOperators	0	@heredoc	a heredoc body, its `#{}` holes included, is copied verbatim	homebrew
 Layout/TrailingWhitespace	0	@heredoc	a heredoc body is data, trailing spaces included	homebrew
-Layout/EmptyComment	0	^\s*#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails
+Layout/TrailingWhitespace	0	@string	a line break inside a quoted string is part of it, and so are the spaces before one	discourse
+Layout/EmptyComment	0	(?:^|\s)#\s*$	a bare `#` is the author's comment, and deleting one is not a formatter's job	rails
+Layout/LeadingCommentSpace	0	#\u00A0	a non-breaking space after `#` is a character of the comment's text, which is the author's	discourse
 # --- Layouts that follow from block indentation ---
 Layout/HashAlignment	3	\byield\s+\w+:	the keys of a braceless hash after `yield` continue at a fixed indent from the statement, not under the first key	rails
 Layout/FirstArgumentIndentation	4	/[a-zA-Z]*\.\w+\($	an argument of a call on a multi-line regex literal indents from the line the call opens on, and RuboCop reads the literal's closing line as the previous one	rails
+# A method chain after `x =` or `key:` that breaks, its last link opening a
+# `do` block: the body and `end` stay at the statement's indent, where they
+# sit whether the chain breaks or not, so joining or breaking the chain
+# leaves the body's lines alone. RuboCop's BlockAlignment measures from the
+# chain's receiver (`Dir` in `versions = Dir`) or the link's line instead.
+Layout/BlockAlignment	10	(?:=|\w:) [A-Za-z_][\w:]*\n\s+\.	the body of a block on a broken chain's last link stays at the statement's indent, so breaking or joining the chain does not move it	discourse
 Layout/MultilineOperationIndentation	4	\b(if|unless|while|until)\b[^\n]*\{\s*\|[^\n]*\|\s*$	the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition	rails
 # A modifier `while`/`until` whose condition wraps at an operator (the
 # condition itself, not a block, is what's too long): the continuation gets
 # the statement's normal single indent step, the fixed-indent rule this
 # project applies everywhere, not RuboCop's doubled indent for a continued
 # expression.
-Layout/MultilineOperationIndentation	1	\b(while|until)\b[^\n]*(!=|==|[<>+\-*\/]=?)\s*\n	a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses	ruby-spec
+Layout/MultilineOperationIndentation	1	\b(while|until)\b[^\n]*(&&|\|\||!=|==|[<>+\-*\/]=?)\s*\n	a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses	ruby-spec
+# A condition operand compared against a hash literal (`a.slice(:k) !=` +
+# newline + `{ k: 1 }`): RuboCop asks for two indents through
+# MultilineOperationIndentation and for one through ArgumentAlignment,
+# which reads the hash as the operator call's argument list, flat or
+# expanded. No indent satisfies both; tuxedo takes the single step.
+Layout/MultilineOperationIndentation	1	(!=|==)\s*\n\s*\{	RuboCop's ArgumentAlignment wants the single step for a hash compared in a condition, MultilineOperationIndentation the doubled one, and no indent satisfies both	discourse
 # `do |; c|`, `{ |; c| c }`: a block-local variable list gets the same space
 # after `;` that every other list separator gets (`, `, `; ` between
 # statements). RuboCop's no-space-inside-pipes style reads the semicolon as
@@ -67,7 +84,7 @@ Layout/SpaceAroundBlockParameters	0	\|;\s	a block-local variable list is spaced 
 # forbids treating one arm as more "guarded" than the other), and RuboCop's
 # cop looks only at the first. Tuxedo's guard clause is the narrower,
 # single-branch case.
-Layout/EmptyLineAfterGuardClause	8	\bif\b[^\n]*\n\s*(break|next|return|redo|retry|raise|fail)\b[^\n]*\n\s*(else|elsif)\b	an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after	ruby-spec
+Layout/EmptyLineAfterGuardClause	15	\bif\b[^\n]*\n\s*(break|next|return|redo|retry|raise|fail)\b[^\n]*\n\s*(else|elsif)\b	an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after	ruby-spec
 # `module_eval { module_function }`: the access modifier is the sole
 # statement of a one-line block, which has no line of its own to put a
 # blank line before or after.
@@ -97,3 +114,11 @@ Layout/MultilineArrayBraceLayout	1	%[wWiI]\([^)\n]*\\\s*$	a percent-literal's ow
 # attached on purpose, the way renaming or dropping the last value never
 # reflows the first.
 Layout/FirstArrayElementLineBreak	0	=\s*(?!["'\[({])\S.*,$	a bare assignment RHS's first value stays on the line the assignment began on, like a bare command argument list's does	ruby-spec
+# `private` as the last line of a class body: RuboCop wants a blank line
+# after it (EmptyLinesAroundAccessModifier) and none before `end`
+# (EmptyLinesAroundClassBody), so either spelling is an offense.
+Layout/EmptyLinesAroundAccessModifier	0	@modifier-before-end	an access modifier as the last line of a body is the author's, and RuboCop's two cops leave no spelling of it they both accept	discourse
+# A chain that is a hash value inside `return ({ ... })`: RuboCop applies its
+# "condition in a `return` statement" double indent to any chain in the
+# returned expression, even one nested in a literal, where it is no condition.
+Layout/MultilineMethodCallIndentation	40	\breturn\s*\(\{\n	a chain that is a value in a returned hash literal continues one level in from its key, as it does in any hash; it is not the `return`'s condition	discourse

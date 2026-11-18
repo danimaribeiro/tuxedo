@@ -298,9 +298,22 @@ fn format_unchecked(source: &str, config: &FormatConfig) -> Result<String, Forma
     if let Some(&stray) = markers.iter().find(|m| !formatter.honored_off.contains(m)) {
         return Err(regions::stray_marker(source, stray));
     }
+    // A blank line the author left between the last statement and the
+    // comments after it (a `# == Schema Information` block under a model)
+    // stays, as it does between two statements.
+    let blank_before_trailing = formatter
+        .comments
+        .get(formatter.comment_cursor)
+        .is_some_and(|c| {
+            formatter.source_line_is_blank(formatter.line_of(c.start).wrapping_sub(1))
+        });
     if let Some(trailing) = formatter.remaining_comments_doc() {
         if !empty_program {
-            doc = doc.append(Doc::hardline());
+            doc = doc.append(if blank_before_trailing {
+                Doc::blank_line()
+            } else {
+                Doc::hardline()
+            });
         }
         doc = doc.append(trailing);
     }
@@ -1131,7 +1144,13 @@ impl Formatter {
     ) -> Doc {
         let nest = self.indent_str.len();
         let mut doc = header;
-        if let Some(comment) = self.trailing_comment_doc(header_line) {
+        // A comment on the header's line is the header's, unless the
+        // construct closes on that line too (`expect do x end.to y # why`):
+        // then it comes after the closer and is about the whole statement,
+        // which keeps it at the end.
+        let closes_on_header_line =
+            closer.is_some_and(|offset| self.line_of(offset) == header_line);
+        if !closes_on_header_line && let Some(comment) = self.trailing_comment_doc(header_line) {
             doc = doc.append(comment);
         }
 
@@ -1139,7 +1158,13 @@ impl Formatter {
         self.indent += 1;
         let mut inner = Doc::nil();
         if let Some(body) = body {
+            // Nor is it the body's, which shares that line too.
+            let was_limit = self.comment_limit;
+            if closes_on_header_line && let Some(offset) = closer {
+                self.comment_limit = Some(was_limit.map_or(offset, |limit| limit.min(offset)));
+            }
             let body_doc = self.node_doc(&body);
+            self.comment_limit = was_limit;
             // A statement list that opens with an outdented access modifier
             // draws the break before it, under its own dedent: the printer
             // takes a line's indent from what follows the break.
@@ -1581,9 +1606,73 @@ impl Formatter {
     /// into a parenthesized call.
     fn expanded_bare_args_doc(&mut self, items: &[ruby_prism::Node<'_>], gaps: ItemGaps) -> Doc {
         self.indent += 1;
-        let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
+        let leaves = self.bare_leaves(items);
         self.indent -= 1;
         self.bare_args_body_doc(items, leaves, true, gaps)
+    }
+
+    /// The documents of a bare list's items, the first one through
+    /// `leading_pair_doc` when it is a pair with a braced hash value and
+    /// others follow it.
+    fn bare_leaves(&mut self, items: &[ruby_prism::Node<'_>]) -> Vec<Doc> {
+        items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let pair = item.as_assoc_node().filter(|pair| {
+                    i == 0
+                        && items.len() > 1
+                        && pair
+                            .value()
+                            .as_hash_node()
+                            .is_some_and(|hash| hash.opening_loc().as_slice() == b"{")
+                });
+                match pair {
+                    Some(pair) => self.leading_pair_doc(&pair),
+                    None => self.node_doc(item),
+                }
+            })
+            .collect()
+    }
+
+    /// The first pair of a bare list with more after it (`render json:
+    /// {...}, status: :ok`), its braced hash value moved under the key, one
+    /// indent in, when the value does not fit on the command's line:
+    ///
+    /// ```ruby
+    /// render json:
+    ///   {
+    ///     deleted: false,
+    ///     message: I18n.t("user.cannot_delete_has_posts", count: count)
+    ///   },
+    ///   status: :forbidden
+    /// ```
+    ///
+    /// Moved, it sits at the indent of the arguments after it. Expanded
+    /// where it starts, the hash would open on the command's line and
+    /// close one indent left of the pairs after it, and RuboCop's
+    /// `Layout/FirstHashElementIndentation` measures a hash value followed
+    /// by more pairs from its key. A pair that fits on the line stays.
+    fn leading_pair_doc(&mut self, pair: &ruby_prism::AssocNode<'_>) -> Doc {
+        let value = pair.value();
+        let key = self.node_doc(&pair.key());
+        let operator = pair.operator_loc().map_or_else(Doc::nil, |op| {
+            Doc::text(" ").append(bytes_doc(op.as_slice()))
+        });
+        let value_doc = self.node_doc(&value);
+        if value_doc.breaks() {
+            return key
+                .append(operator)
+                .append(Doc::text(" "))
+                .append(value_doc);
+        }
+        let head = format!(" {},", value_doc.clone().flat().render(usize::MAX / 2));
+        let stay = Doc::text(" ").append(value_doc.clone());
+        let moved = Doc::hardline()
+            .append(value_doc)
+            .indent(self.indent_str.len());
+        key.append(operator)
+            .append(Doc::stay_or_move(&head, stay, moved))
     }
 
     /// `a, b, c` for a bare comma-joined list, `leaves` being the
@@ -1725,7 +1814,7 @@ impl Formatter {
             return self.commented_bare_args_doc(items, gaps);
         }
         let snap = self.render_snapshot();
-        let leaves: Vec<Doc> = items.iter().map(|item| self.node_doc(item)).collect();
+        let leaves = self.bare_leaves(items);
         if leaves.iter().any(Doc::breaks) {
             self.restore_render_snapshot(snap);
             return self.expanded_bare_args_doc(items, gaps);

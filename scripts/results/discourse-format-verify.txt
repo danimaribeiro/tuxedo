@@ -9,99 +9,51 @@ Running tuxedo format...
 [2/4] Idempotence check (format twice)...
 
 [3/4] Comment placement (scripts/comment-anchors.rb)...
-  52233 total, 4 displaced (each one is listed below as accepted or UNEXPLAINED)
+  52233 total, 0 displaced (each one is listed below as accepted or UNEXPLAINED)
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  2061  Layout/LineLength [Safe Correctable]
+  2059  Layout/LineLength [Safe Correctable]
   180   Layout/IndentationWidth [Safe Correctable]
   172   Layout/ElseAlignment [Safe Correctable]
   59    Layout/EndAlignment [Safe Correctable]
   41    Layout/TrailingWhitespace [Safe Correctable]
   32    Layout/EmptyComment [Safe Correctable]
-  13    Layout/MultilineMethodArgumentLineBreaks [Safe Correctable]
-  12    Layout/FirstHashElementIndentation [Safe Correctable]
   6     Layout/MultilineOperationIndentation [Safe Correctable]
-  5     Layout/BlockAlignment [Safe Correctable]
+  4     Layout/BlockAlignment [Safe Correctable]
   4     Layout/LeadingCommentSpace [Safe Correctable]
   4     Layout/MultilineMethodCallIndentation [Safe Correctable]
-  1     Layout/ArgumentAlignment [Safe Correctable]
   1     Layout/EmptyLineAfterGuardClause [Safe Correctable]
   1     Layout/EmptyLinesAroundAccessModifier [Safe Correctable]
-  1     Layout/SpaceBeforeComment [Safe Correctable]
 
 Accepted (scripts/verify-accepted.tsv) and unexplained:
+  accepted    4  Layout/BlockAlignment                    the body of a block on a broken chain's last link stays at the statement's indent, so breaking or joining the chain does not move it
   accepted  172  Layout/ElseAlignment                     a keyword used as a value keeps `else`/`elsif` at the statement's indent
-  accepted   30  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
+  accepted   32  Layout/EmptyComment                      a bare `#` is the author's comment, and deleting one is not a formatter's job
+  accepted    1  Layout/EmptyLineAfterGuardClause         an if/else or if/elsif whose first branch is a jump is still a branch, not the single-arm guard clause Tuxedo adds a blank line after
+  accepted    1  Layout/EmptyLinesAroundAccessModifier    an access modifier as the last line of a body is the author's, and RuboCop's two cops leave no spelling of it they both accept
   accepted   59  Layout/EndAlignment                      a keyword used as a value keeps its `end` at the statement's indent
   accepted  180  Layout/IndentationWidth                  a keyword used as a value keeps its body and `end` at the statement's indent, not under the keyword
+  accepted    4  Layout/LeadingCommentSpace               a non-breaking space after `#` is a character of the comment's text, which is the author's
+  accepted    4  Layout/MultilineMethodCallIndentation    a chain that is a value in a returned hash literal continues one level in from its key, as it does in any hash; it is not the `return`'s condition
+  accepted    1  Layout/MultilineOperationIndentation     RuboCop's ArgumentAlignment wants the single step for a hash compared in a condition, MultilineOperationIndentation the doubled one, and no indent satisfies both
   accepted    4  Layout/MultilineOperationIndentation     the body of a block inside a condition indents from its statement, and RuboCop reads it as part of the condition
+  accepted    1  Layout/MultilineOperationIndentation     a wrapped modifier condition indents by the statement's normal step, the same fixed indent every other break uses
   accepted   39  Layout/TrailingWhitespace                a heredoc body is data, trailing spaces included
-  UNEXPLAINED .devcontainer/scripts/start.rb:11 Layout/ArgumentAlignment: Use one level of indentation for arguments following the first line of a multi-line method call.
-  UNEXPLAINED app/controllers/admin/badges_controller.rb:86 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED app/controllers/admin/badges_controller.rb:89 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/admin/themes_controller.rb:343 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/admin/users_controller.rb:417 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED app/controllers/admin/users_controller.rb:419 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/groups_controller.rb:165 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/groups_controller.rb:568 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/mcp_controller.rb:14 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/mcp_controller.rb:23 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/post_localizations_controller.rb:27 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED app/controllers/post_localizations_controller.rb:32 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/search_controller.rb:120 Layout/EmptyLineAfterGuardClause: Add empty line after guard clause.
-  UNEXPLAINED app/controllers/session_controller.rb:655 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED app/controllers/session_controller.rb:659 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/tag_localizations_controller.rb:15 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED app/controllers/tag_localizations_controller.rb:20 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED app/controllers/user_badges_controller.rb:89 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/users_controller.rb:370 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/controllers/users_controller.rb:635 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED app/jobs/scheduled/notify_admins_of_available_upcoming_changes.rb:91 Layout/BlockAlignment: `end` at 91, 10 is not aligned with `new_notification_data_by_user` at 83, 19 or `.map do |admin_id, notification_data|` at 85, 12.
-  UNEXPLAINED app/models/homepage_site_setting.rb:17 Layout/BlockAlignment: `end` at 17, 4 is not aligned with `DiscoursePluginRegistry.homepage_options.map do |option|` at 15, 10 or `} + DiscoursePluginRegistry.homepage_options.map do |option|` at 15, 6.
-  UNEXPLAINED app/models/site.rb:236 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:237 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:238 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED app/models/site.rb:239 Layout/MultilineMethodCallIndentation: Use 4 (not 2) spaces for indenting a condition in a `return` statement spanning multiple lines.
-  UNEXPLAINED config/environment.rb:13 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `if` statement spanning multiple lines.
-  UNEXPLAINED lib/tasks/plugin.rake:269 Layout/BlockAlignment: `end` at 269, 2 is not aligned with `Dir` at 264, 13 or `.select do |plugin, plugin_dir, plugin_git_dir|` at 267, 4.
-  UNEXPLAINED plugins/chat/lib/chat/user_notifications_extension.rb:52 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/chat/lib/chat/user_notifications_extension.rb:53 Layout/TrailingWhitespace: Trailing whitespace detected.
-  UNEXPLAINED plugins/discourse-ai/app/controllers/discourse_ai/translation/translation_controller.rb:29 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED plugins/discourse-ai/app/controllers/discourse_ai/translation/translation_controller.rb:42 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:113 Layout/BlockAlignment: `end` at 113, 6 is not aligned with `AiAgent` at 107, 16 or `.sort_by do |id, name, description|` at 111, 8.
-  UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:369 Layout/SpaceBeforeComment: Put a space before an end-of-line comment.
-  UNEXPLAINED plugins/discourse-ai/app/models/llm_credit_allocation.rb:143 Layout/EmptyLinesAroundAccessModifier: Keep a blank line before and after `private`.
-  UNEXPLAINED plugins/discourse-ai/lib/completions/xml_tool_processor.rb:185 Layout/BlockAlignment: `end` at 185, 12 is not aligned with `params` at 175, 24 or `.each_with_object({}) do |(name, value), hash|` at 183, 14.
-  UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:55 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:117 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED plugins/discourse-lti/lib/discourse_lti/lti_omniauth_strategy.rb:133 Layout/MultilineMethodArgumentLineBreaks: Each argument in a multi-line method call must start on a separate line.
-  UNEXPLAINED plugins/discourse-rss-polling/app/controllers/discourse_rss_polling/feed_settings_controller.rb:31 Layout/FirstHashElementIndentation: Use 2 spaces for indentation in a hash, relative to the parent hash key.
-  UNEXPLAINED plugins/discourse-rss-polling/app/controllers/discourse_rss_polling/feed_settings_controller.rb:33 Layout/FirstHashElementIndentation: Indent the right brace the same as the parent hash key.
-  UNEXPLAINED script/bulk_import/base.rb:1429 Layout/MultilineOperationIndentation: Use 4 (not 2) spaces for indenting a condition in an `until` statement spanning multiple lines.
-  UNEXPLAINED spec/lib/final_destination_spec.rb:27 Layout/LeadingCommentSpace: Missing space after `#`.
-  UNEXPLAINED spec/requests/users_controller_spec.rb:207 Layout/EmptyComment: Source code comment is empty.
-  UNEXPLAINED spec/requests/users_controller_spec.rb:269 Layout/EmptyComment: Source code comment is empty.
-  UNEXPLAINED spec/system/header_spec.rb:218 Layout/LeadingCommentSpace: Missing space after `#`.
-  UNEXPLAINED spec/system/header_spec.rb:229 Layout/LeadingCommentSpace: Missing space after `#`.
-  UNEXPLAINED spec/system/header_spec.rb:245 Layout/LeadingCommentSpace: Missing space after `#`.
-  UNEXPLAINED plugins/discourse-ai/app/models/ai_agent.rb:406 Comments: leading of `Class`: # we need a new copy so we don't leak information
-  UNEXPLAINED plugins/discourse-events/spec/jobs/regular/discourse_post_event/bulk_invite_spec.rb:184 Comments: leading of `<quote>`: # rubocop:disable Layout/LineLength
-  UNEXPLAINED plugins/discourse-subscriptions/app/services/discourse_subscriptions/campaign.rb:162 Comments: trailing of `]`: # Discourse only makes single-line item charges
-  UNEXPLAINED spec/jobs/pull_hotlinked_images_spec.rb:184 Comments: trailing of `}`: # We alread have the upload
-offenses: 532 listed, 48 unexplained layout, 4 unexplained comments, 0 stale
+  accepted    2  Layout/TrailingWhitespace                a line break inside a quoted string is part of it, and so are the spaces before one
+offenses: 504 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
 
 ======================================================================
   discourse
 ----------------------------------------------------------------------
   meaning     0 files refused: formatting would have changed the AST
-  parse       12373 ok, 0 BROKEN by tuxedo (1 skipped, never parsed)
+  parse       12371 ok, 0 BROKEN by tuxedo (1 skipped, never parsed)
   idempotent  0 files change on a second format
-  comments    52233 total, 4 displaced
-  layout      2593 offenses across 16 distinct cops
-  linelength: 2061 over 120, 2056 unsplittable, 5 breakable
+  comments    52233 total, 0 displaced
+  layout      2563 offenses across 12 distinct cops
+  linelength: 2059 over 120, 2055 unsplittable, 4 breakable
 ----------------------------------------------------------------------
-  UNEXPLAINED 53 layout (LineLength breakable included), 4 comments; 0 stale rules
+  UNEXPLAINED 4 layout (LineLength breakable included), 0 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/discourse/verify for inspection.
