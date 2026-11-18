@@ -264,6 +264,35 @@ impl Formatter {
         }
         // `key => value` keeps whichever operator the source wrote;
         // `key: value` has none of its own -- the `:` is part of the key.
+        // A comment between the key and its value (`logs:` + newline +
+        // `# rubocop:disable Layout/LineLength` + newline + the value)
+        // keeps the value on a line of its own under it, one level in:
+        // joined to the key, the value would leave the comment below it,
+        // and a directive would no longer cover the line it was written for.
+        let key_end = node
+            .operator_loc()
+            .map_or(node.key().location().end_offset(), |op| op.end_offset());
+        if !self.single_line
+            && self.has_pending_comment_in(key_end, value.location().start_offset())
+        {
+            if let Some(op) = node.operator_loc() {
+                self.run_text(&mut run, " ");
+                self.run_bytes(&mut run, op.as_slice());
+            }
+            let head = self.end_run(run);
+            self.indent += 1;
+            let comments = self
+                .leading_comments_doc(value.location().start_offset(), false)
+                .unwrap_or_else(Doc::nil);
+            let value_doc = self.node_doc(&value);
+            self.indent -= 1;
+            return head.append(
+                comments
+                    .append(Doc::hardline())
+                    .append(value_doc)
+                    .indent(self.indent_str.len()),
+            );
+        }
         self.run_text(&mut run, " ");
         if let Some(op) = node.operator_loc() {
             self.run_bytes(&mut run, op.as_slice());

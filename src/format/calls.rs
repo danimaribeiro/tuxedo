@@ -915,7 +915,10 @@ impl Formatter {
             let spine = self.infix_doc(leaves, gaps, name_str, condition, false);
             return Doc::stay_or_move(&head, spine, sticky);
         }
-        self.infix_doc(leaves, gaps, name_str, condition, false)
+        let block_tail = operands
+            .last()
+            .is_some_and(super::control_flow::ends_in_block);
+        self.infix_doc(leaves, gaps, name_str, condition, block_tail)
     }
 
     /// The operands of `node`'s receiver spine, in source order, as long as

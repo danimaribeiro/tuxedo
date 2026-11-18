@@ -208,9 +208,35 @@ impl Formatter {
         // still pick the modifier, which has no header to carry it.
         let was_limit = self.comment_limit.replace(end_offset);
         let header = Doc::text(format!("{keyword} ")).append(self.condition_doc(predicate));
-        let block = self.branching_doc(header, predicate, block_statements, None, None);
+        let header_line = self.line_of(predicate.location().end_offset().saturating_sub(1));
+        let body = self.clause_body_doc(
+            header,
+            header_line,
+            block_statements.map(|s| s.as_node()),
+            Some(end_offset),
+        );
         self.comment_limit = was_limit;
-        Doc::if_break(block, modifier.flat()).group()
+        // A comment that ends the modifier's line is about the statement
+        // the modifier guards. Both shapes take it: after the condition when
+        // flat, after the body when written out (not after `end`, where it
+        // would read as a note on the whole `if`). The flat shape already
+        // measured it, as the statement's owner would have appended it.
+        let comment_start = self.comments.get(self.comment_cursor).map(|c| c.start);
+        let ends_line = comment_start.is_some_and(|start| {
+            start >= end_offset && self.source[end_offset..start].trim().is_empty()
+        });
+        let trailing = ends_line
+            .then(|| self.trailing_comment_doc(self.line_of(end_offset.saturating_sub(1))))
+            .flatten();
+        let Some(trailing) = trailing else {
+            let block = body.append(Doc::hardline()).append(Doc::text("end"));
+            return Doc::if_break(block, modifier.flat()).group();
+        };
+        let block = body
+            .append(trailing.clone())
+            .append(Doc::hardline())
+            .append(Doc::text("end"));
+        Doc::if_break(block, modifier.flat().append(trailing)).group()
     }
 
     /// `body if cond`, `body unless cond`, `body while cond`,
@@ -935,7 +961,7 @@ impl Formatter {
 /// does. Such an
 /// operand is what `block_operand_doc` keeps on the operator's line while
 /// it fits, and gives a line of its own when it does not.
-fn ends_in_block(node: &ruby_prism::Node<'_>) -> bool {
+pub(super) fn ends_in_block(node: &ruby_prism::Node<'_>) -> bool {
     if node.as_begin_node().is_some()
         || node
             .as_if_node()

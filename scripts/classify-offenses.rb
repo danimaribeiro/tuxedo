@@ -53,12 +53,41 @@ def heredoc_lines(path)
   ranges
 end
 
+# The lines a multi-line quoted string literal (not a heredoc) runs on, but
+# its last: a line break inside the quotes is part of the string, so
+# whatever precedes it on those lines is the string's content.
+def string_lines(path)
+  result = Prism.parse_file(path)
+  ranges = []
+  stack = [result.value]
+  until stack.empty?
+    node = stack.pop
+    next unless node.is_a?(Prism::Node)
+
+    quoted = node.is_a?(Prism::StringNode) || node.is_a?(Prism::InterpolatedStringNode) ||
+      node.is_a?(Prism::XStringNode) || node.is_a?(Prism::InterpolatedXStringNode)
+    opening = node.opening_loc&.slice if node.respond_to?(:opening_loc)
+    if quoted && opening && !opening.start_with?("<<") && node.location.start_line < node.location.end_line
+      ranges << (node.location.start_line...node.location.end_line)
+    end
+    stack.concat(node.compact_child_nodes)
+  end
+  ranges
+end
+
 heredocs = Hash.new { |h, path| h[path] = heredoc_lines(path) }
+strings = Hash.new { |h, path| h[path] = string_lines(path) }
 lines_of = Hash.new { |h, path| h[path] = File.readlines(path, chomp: true) }
 
 matches = lambda do |rule, text, path, lineno|
   if rule.pattern == "@heredoc"
     heredocs[path].any? { |range| range.cover?(lineno) }
+  elsif rule.pattern == "@string"
+    strings[path].any? { |range| range.cover?(lineno) }
+  elsif rule.pattern == "@modifier-before-end"
+    lines = lines_of[path]
+    lines[lineno - 1].to_s.match?(/\A\s*(?:private|protected|public)\s*\z/) &&
+      lines[lineno].to_s.match?(/\A\s*end\b/)
   else
     # A file tuxedo refuses for not being valid UTF-8 is still read here
     # (rubocop can lint text a Ruby string can't hold), and `scrub` keeps a

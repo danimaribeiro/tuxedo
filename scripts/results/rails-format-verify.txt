@@ -40,7 +40,7 @@ offenses: 50 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
   rails
 ----------------------------------------------------------------------
   meaning     0 files refused: formatting would have changed the AST
-  parse       3520 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
+  parse       3517 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    75088 total, 0 displaced
   layout      2137 offenses across 10 distinct cops

@@ -29,6 +29,33 @@ impl Formatter {
                     || super::defs::holds_expanding_brace_block(&body))
         });
         let commented = !self.single_line && (expands || self.has_pending_comment_in(start, end));
+        // A lone command call (`return (render json: x, status: :ok)`)
+        // breaks between its arguments the way it does outside the
+        // parentheses. Held to one line, its last argument could only break
+        // inside its own brackets, with the arguments after it sharing the
+        // closing line.
+        let command = !self.single_line
+            && node.body().is_some_and(|body| {
+                body.as_statements_node().is_some_and(|s| {
+                    let mut statements = s.body().iter();
+                    statements.next().is_some_and(|only| {
+                        only.as_call_node().is_some_and(|call| {
+                            call.opening_loc().is_none()
+                                && call.block().is_none()
+                                && call.arguments().is_some_and(|a| {
+                                    a.arguments()
+                                        .iter()
+                                        .map(|arg| {
+                                            arg.as_keyword_hash_node()
+                                                .map_or(1, |h| h.elements().iter().count())
+                                        })
+                                        .sum::<usize>()
+                                        > 1
+                                })
+                        })
+                    }) && statements.next().is_none()
+                })
+            });
         // Anything written after the last statement -- a trailing comment,
         // or comments on lines of their own -- ends a line `)` cannot share.
         let body_end = node.body().map_or(node.opening_loc().end_offset(), |b| {
@@ -37,9 +64,39 @@ impl Formatter {
         let closing_start = node.closing_loc().start_offset();
         let comment_before_close =
             commented && self.has_pending_comment_in(body_end, closing_start);
+        // A comment right after `(` (`return(` + newline + `# why` + newline
+        // + the value) cannot share the parenthesis' line with the code after
+        // it, and joined to the `(` it would read as a comment on the line
+        // the parenthesis opens. The body goes on lines of its own, one
+        // level in, and `)` on its own line below.
+        let opening_end = node.opening_loc().end_offset();
+        let comment_after_open = commented
+            && node.body().is_some_and(|body| {
+                self.has_pending_comment_in(opening_end, body.location().start_offset())
+            });
+        if comment_after_open && let Some(body) = node.body() {
+            self.indent += 1;
+            let was_single_line = std::mem::replace(&mut self.single_line, false);
+            let inner = self.node_doc(&body);
+            self.single_line = was_single_line;
+            let bottom = self
+                .leading_comments_doc(closing_start, true)
+                .unwrap_or_else(Doc::nil);
+            self.indent -= 1;
+            return Doc::text("(")
+                .append(
+                    Doc::hardline()
+                        .append(inner)
+                        .append(bottom)
+                        .indent(self.indent_str.len()),
+                )
+                .append(Doc::hardline())
+                .append(Doc::text(")"));
+        }
         let inner = match node.body() {
             Some(body) => {
-                let was_single_line = std::mem::replace(&mut self.single_line, !commented);
+                let was_single_line =
+                    std::mem::replace(&mut self.single_line, !commented && !command);
                 let doc = self.node_doc(&body);
                 self.single_line = was_single_line;
                 doc
