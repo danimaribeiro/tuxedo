@@ -1,0 +1,30 @@
+---
+source: tests/format_snapshot_test.rs
+expression: output
+---
+it "imports everything" do
+  expect { import(import_data) }.to change { Category.count }
+    .by(6)
+    .and change { Group.count }
+    .by(2)
+    .and change { Topic.count }
+    .by(8)
+  expect { post.rebake! }.to change { post.reload.post_search_data.version }
+    .from(SearchIndexer::POST_INDEX_VERSION)
+    .to(SearchIndexer::REINDEX_VERSION)
+    .and change { post2.reload.post_search_data.version }
+    .from(SearchIndexer::POST_INDEX_VERSION)
+    .to(SearchIndexer::REINDEX_VERSION)
+  expect { x }.to change { a }.by(1).and change { b }.by(2)
+end
+
+# An argument that is not a chain of its own stays whole: `.id` on a line
+# of its own would read as a link of the outer chain.
+aa = AuthorAddress
+  .references(:author_addresses)
+  .merge(includes: { author: :posts })
+  .where(id: 1)
+  .find author_addresses(:david_address).id
+expect { brew "cask-ci", "--cask", "local-transmission" }.to raise_error(RuntimeError).and output(
+  /::error.*Some applications are still installed/
+).to_stdout

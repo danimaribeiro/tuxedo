@@ -1947,7 +1947,8 @@ impl Formatter {
         let mut leaves = Vec::with_capacity(operands.len());
         let mut gaps = Vec::with_capacity(operands.len());
         for (i, operand) in operands.iter().enumerate() {
-            self.condition_spine = condition && is_infix_spine(operand);
+            self.condition_spine =
+                condition && (is_infix_spine(operand) || calls::is_condition_chain(operand));
             leaves.push(self.node_doc(operand));
             self.condition_spine = false;
             if let Some(next) = operands.get(i + 1) {

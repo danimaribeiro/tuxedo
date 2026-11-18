@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A multiple assignment whose targets do not fit on the line with their `=`
   puts each target on its own line, one indent in, with the value after the
   last one. The targets used to stay on one line past the limit.
+- An RSpec compound matcher (`.to change { A }.by(1).and change { B }.by(2)`)
+  breaks as one chain, every link one indent in; each matcher used to nest a
+  level deeper than the one before it.
+- A method chain that is an operand of an `if`, `unless`, `while` or `until`
+  condition continues two levels in from its receiver, as an operator spine
+  there does.
+- A comparison on a method chain that breaks stays on the chain's last line
+  (`.count > max`), instead of putting the right side on a line of its own.
 
 ## [0.0.3] - 2026-11-17
 
