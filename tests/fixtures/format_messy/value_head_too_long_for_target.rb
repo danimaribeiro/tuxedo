@@ -1,0 +1,16 @@
+class RegistrationService
+  def register
+    if valid?
+      credential_public_key, credential_public_key_bytes, credential_id = extract_public_key_and_credential_from_attestation(auth_data)
+    end
+    requires_confirmation_settings[name] = (if SiteSettings::TypeSupervisor::REQUIRES_CONFIRMATION_TYPES.values.include?(opts[:requires_confirmation])
+      opts[:requires_confirmation]
+    end)
+    # Fits after the `(`, so it stays there.
+    label = (if count > 0
+      I18n.t("with_count", count: count)
+    else
+      I18n.t("without_count")
+    end)
+  end
+end

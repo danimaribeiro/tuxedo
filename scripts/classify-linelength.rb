@@ -407,6 +407,10 @@ files.each do |path|
   comments = result.comments.group_by { |c| c.location.start_line }
   heredocs = heredoc_body_lines(result.value)
   literals = literal_body_lines(result.value)
+  # A `=begin`/`=end` block is one comment to Prism, starting at `=begin`:
+  # grouped by start line it would leave every line inside it looking like
+  # code with nothing in it to measure.
+  embdocs = result.comments.grep(Prism::EmbDocComment).map { |c| c.location.start_line..c.location.end_line }
 
   source.lines.each_with_index do |line, index|
     line = line.chomp
@@ -417,6 +421,12 @@ files.each do |path|
     else
       next unless measured_length(line, limit) > limit
       next if heredocs.any? { |range| range.cover?(lineno) }
+    end
+
+    if embdocs.any? { |range| range.cover?(lineno) }
+      # The author's prose, which tuxedo copies as it is.
+      offenses << Offense.new(rel, lineno, line.length, line.length, "EmbeddedDocument", line.length)
+      next
     end
 
     if literals.any? { |range| range.cover?(lineno) }

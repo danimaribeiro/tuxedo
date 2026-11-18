@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `do` block (`a + b + list.map do ... end`) puts each operand on its own
   line when the head does not fit, the block body one level in from its
   operand, as `&&`/`||` spines already did.
+- A call without a receiver that does not fit after its assignment's
+  target (`a, b, c = extract_key(data)`) moves under the target, as a call
+  on a constant path already did, instead of breaking inside its parentheses.
+- A `( )` holding an `if`/`case`/`begin` whose first line does not fit after
+  the `(` puts the construct on lines of its own between `(` and `)`.
 
 ### Fixed
 
