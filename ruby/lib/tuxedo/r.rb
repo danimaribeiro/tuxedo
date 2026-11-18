@@ -29,6 +29,12 @@ module Tuxedo
         [:cpu, :os, :version].map { |m| Gem::Platform.local.send(m) }.compact.join("-")
       end
 
+      # The executable's file name on this host: Windows will not run a
+      # binary without its `.exe`, so TUXEDO_INSTALL_DIR must name it.
+      def binary_name
+        Gem.win_platform? ? "tuxedo.exe" : "tuxedo"
+      end
+
       # Absolute path to the tuxedo binary that should be executed on this host.
       #
       # Resolution order:
@@ -48,7 +54,7 @@ module Tuxedo
           end
 
           warn "NOTE: using TUXEDO_INSTALL_DIR to find the tuxedo executable: #{tuxedo_install_dir}"
-          exe_file = File.expand_path(File.join(tuxedo_install_dir, "tuxedo"))
+          exe_file = File.expand_path(File.join(tuxedo_install_dir, binary_name))
         else
           if NativePlatforms::TARGETS.keys.none? { |p| Gem::Platform.match_gem?(Gem::Platform.new(p), GEM_NAME) }
             raise UnsupportedPlatformException, <<~MESSAGE

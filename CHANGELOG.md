@@ -11,8 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Precompiled `tuxedo-r` gems for macOS (`arm64-darwin`, `x86_64-darwin`),
   arm64 Linux (`aarch64-linux`) and musl Linux (`x86_64-linux-musl`,
-  `aarch64-linux-musl`), next to x86_64 Linux. Windows still has none. The
-  GitHub Releases archive is still x86_64 Linux only.
+  `aarch64-linux-musl`) and Windows (`x64-mingw-ucrt`), next to x86_64
+  Linux. The GitHub Releases archive is still x86_64 Linux only.
+
+### Fixed
+
+- On Windows, `TUXEDO_INSTALL_DIR` finds `tuxedo.exe`; it looked for
+  `tuxedo`, which Windows does not run.
 
 ### Changed
 

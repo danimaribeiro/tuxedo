@@ -46,12 +46,14 @@ bundle exec tuxedo format --check .
 
 Without Bundler, `gem install tuxedo-r` puts `tuxedo` on your `PATH`. See
 [`ruby/README.md`](ruby/README.md) for supported platforms and requirements.
-This release ships a precompiled binary for x86_64 Linux (glibc) only; on
-any other platform, build from source and point the gem at it with
-`TUXEDO_INSTALL_DIR`.
+From 0.0.3 the gem carries a precompiled binary for macOS (arm64 and
+x86_64), Linux (x86_64 and arm64, glibc 2.28+ or musl) and Windows (x64).
+0.0.2 and earlier ship one for x86_64 Linux (glibc) only; elsewhere, build
+from source and point the gem at it with `TUXEDO_INSTALL_DIR`.
 
-Or download a prebuilt archive for your platform from the
-[GitHub Releases](https://github.com/danimaribeiro/tuxedo/releases) page.
+Or download a prebuilt archive from the
+[GitHub Releases](https://github.com/danimaribeiro/tuxedo/releases) page
+(x86_64 Linux only for now).
 
 It is not on crates.io. The name `tuxedo` there belongs to an unrelated crate,
 so `cargo install tuxedo` would install someone else's project. To build this

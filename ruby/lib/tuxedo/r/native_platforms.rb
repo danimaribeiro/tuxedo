@@ -5,7 +5,7 @@ module Tuxedo
     module NativePlatforms
       # rubygems platform name => rust target triple
       #
-      # Keep this in sync with the build matrix in
+      # Keep this in sync with the build and build-windows jobs in
       # tuxedo/.github/workflows/release.yml
       TARGETS = {
         "arm64-darwin" => "aarch64-apple-darwin",
