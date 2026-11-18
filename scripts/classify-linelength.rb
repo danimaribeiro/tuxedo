@@ -138,8 +138,28 @@ def bare_call_pinning_an_atom?(node, lineno)
   arguments = node.arguments&.arguments
   return false unless arguments&.size == 1
 
-  only = arguments.first
-  ATOMS.any? { |k| only.is_a?(k) } && only.location.start_line == lineno
+  pinned_sole_argument?(arguments.first, lineno)
+end
+
+# The sole argument a bare call pins: a literal, or another bare call that
+# pins one in turn -- `eq "huge string"` in `.to eq "huge string"`, where
+# neither call has a comma to break at.
+def pinned_sole_argument?(only, lineno)
+  only.location.start_line == lineno &&
+    (ATOMS.any? { |k| only.is_a?(k) } || bare_call_pinning_an_atom?(only, lineno))
+end
+
+# `receiver.to eq "huge string"`, the receiver ending on an earlier line or
+# earlier on this one: the chain may break before the `.`, and nowhere after
+# it, so from the `.` to the end of the line is one piece.
+def bare_link_pinning_an_atom(node, lineno, line)
+  return unless node.is_a?(Prism::CallNode) && node.opening_loc.nil? && node.receiver
+  return unless (dot = node.call_operator_loc) && dot.start_line == lineno
+
+  arguments = node.arguments&.arguments
+  return unless arguments&.size == 1 && pinned_sole_argument?(arguments.first, lineno)
+
+  moved_width(line.length - dot.start_column, dot.start_column, line)
 end
 
 # A hash pair whose value is a literal, or a literal by itself: the pieces a
@@ -342,6 +362,10 @@ def widest_atom(node, lineno, line_length, best, line = "")
 
   if bare_call_pinning_an_atom?(node, lineno)
     width = line_length - loc.start_column
+    best = [width, "BareCallArgument"] if width > best[0]
+  end
+
+  if (width = bare_link_pinning_an_atom(node, lineno, line))
     best = [width, "BareCallArgument"] if width > best[0]
   end
 
