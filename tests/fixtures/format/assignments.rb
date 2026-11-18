@@ -57,6 +57,18 @@ prev_configs, ActiveRecord::Base.configurations = ActiveRecord::Base.configurati
 old_value, ENV["HTTP_ACCEPT"] = ENV["HTTP_ACCEPT"],
   "text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,text/plain;q=0.8,image/png,*/*;q=0.5"
 
+# Targets that do not fit with their `=` go one per line, one indent in,
+# and the value follows the last target.
+if (check_formula_deps = self.check_formula_deps)
+  @indirect_deps,
+    @undeclared_deps,
+    @unnecessary_deps,
+    @version_conflict_deps,
+    @no_linkage_deps,
+    @unexpected_linkage_deps = check_formula_deps
+end
+first_long_target_name, second_long_target_name, third_long_target_name, = values
+
 def long_values
   expected =
     "ALTER TABLE `people` ADD `last_name` varchar(255), ADD `first_name` varchar(255), ALGORITHM = INPLACE, LOCK = NONE"

@@ -192,19 +192,72 @@ impl Formatter {
         self.assignment_to_doc(&target, "&&=", &node.value())
     }
 
+    /// `a, b, c = value`. While the targets and the `=` fit on the line they
+    /// stay there, and the value breaks after the `=` as any assignment's
+    /// does. When they do not, every target goes on a line of its own one
+    /// indent in, the way a command call's arguments do, and the value
+    /// follows the last one:
+    ///
+    /// ```ruby
+    /// @indirect_deps,
+    ///   @undeclared_deps,
+    ///   @unexpected_linkage_deps = check_formula_deps
+    /// ```
+    ///
+    /// Ruby continues a target list after a comma, so no `\` is needed.
+    /// One target per line rather than as many as fit, so that adding a
+    /// target never reflows its neighbours.
     pub(super) fn fmt_multi_write_node(&mut self, node: &ruby_prism::MultiWriteNode<'_>) -> Doc {
+        let mut flat = self.begin_run();
+        let snapshot = self.render_snapshot();
+        self.run_multi_targets(&mut flat, node.lefts(), node.rest(), node.rights());
+        let flat = self.end_run(flat);
+        let head = flat.clone().flat().render(usize::MAX / 2);
+        let targets = if self.single_line || head.contains('\n') {
+            flat
+        } else {
+            self.restore_render_snapshot(snapshot);
+            let pieces = self.multi_target_pieces(node.lefts(), node.rest(), node.rights());
+            let broken = Doc::join(pieces, Doc::text(",").append(Doc::hardline()))
+                .indent(self.indent_str.len());
+            Doc::stay_or_move(&format!("{head} ="), flat, broken)
+        };
         let mut run = self.begin_run();
-        self.run_multi_targets(&mut run, node.lefts(), node.rest(), node.rights());
+        run.leaves.push(targets);
         self.finish_assignment(run, "=", &node.value())
+    }
+
+    /// Each top-level target of a multiple assignment as its own document,
+    /// for the shape that puts one per line. A bare trailing comma
+    /// (`a, b, = x`) stays attached to the target before it.
+    fn multi_target_pieces(
+        &mut self,
+        lefts: ruby_prism::NodeList<'_>,
+        rest: Option<ruby_prism::Node<'_>>,
+        rights: ruby_prism::NodeList<'_>,
+    ) -> Vec<Doc> {
+        let mut pieces: Vec<Doc> = lefts.iter().map(|t| self.node_doc(&t)).collect();
+        if let Some(rest) = rest {
+            if matches!(rest, ruby_prism::Node::ImplicitRestNode { .. }) {
+                if let Some(last) = pieces.pop() {
+                    pieces.push(last.append(Doc::text(",")));
+                }
+            } else {
+                pieces.push(self.node_doc(&rest));
+            }
+        }
+        pieces.extend(rights.iter().map(|t| self.node_doc(&t)));
+        pieces
     }
 
     /// Appends a comma-joined multiple-assignment target list
     /// (`a, @b, (c, d), *rest`) to `run`. Shared by `MultiWriteNode` and by
     /// the nested `MultiTargetNode` that a parenthesized group parses as.
     ///
-    /// A target list is always one run of text, so it carries no line point
-    /// of its own: it either fits on the line the assignment starts or its
-    /// value breaks after the `=`.
+    /// This is the flat shape: one run of text with no line point. A
+    /// parenthesized group is always written this way; only the top-level
+    /// list of a `MultiWriteNode` has a broken shape, built from
+    /// `multi_target_pieces`.
     fn run_multi_targets(
         &mut self,
         run: &mut super::InlineRun,

@@ -13,7 +13,7 @@ Running tuxedo format...
 
 [4/4] Layout conformance (rubocop --only Layout)...
 
-  71   Layout/LineLength [Safe Correctable]
+  70   Layout/LineLength [Safe Correctable]
   11   Layout/EndAlignment [Safe Correctable]
   8    Layout/ExtraSpacing [Safe Correctable]
   8    Layout/IndentationWidth [Safe Correctable]
@@ -43,10 +43,10 @@ offenses: 45 listed, 0 unexplained layout, 0 unexplained comments, 0 stale
   parse       2367 ok, 0 BROKEN by tuxedo (0 skipped, never parsed)
   idempotent  0 files change on a second format
   comments    36697 total, 0 displaced
-  layout      116 offenses across 10 distinct cops
-  linelength: 71 over 120, 69 unsplittable, 2 breakable
+  layout      115 offenses across 10 distinct cops
+  linelength: 70 over 120, 70 unsplittable, 0 breakable
 ----------------------------------------------------------------------
-  UNEXPLAINED 2 layout (LineLength breakable included), 0 comments; 0 stale rules
+  UNEXPLAINED 0 layout (LineLength breakable included), 0 comments; 0 stale rules
 ======================================================================
 
 Output kept at test-projects/homebrew/verify for inspection.
