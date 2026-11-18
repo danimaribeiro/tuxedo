@@ -28,9 +28,21 @@ tuxedo format .
 ```
 
 RubyGems automatically resolves and installs the platform-specific gem that
-matches your machine (for example `tuxedo-r-x86_64-linux`). This release
-ships a precompiled binary for x86_64 Linux (glibc) only; on any other
-platform, see [Unsupported platforms](#unsupported-platforms). The
+matches your machine (for example `tuxedo-r-x86_64-linux`). From 0.0.3
+there is one for each of these platforms:
+
+| Gem platform | Machine |
+| --- | --- |
+| `arm64-darwin` | macOS, Apple Silicon |
+| `x86_64-darwin` | macOS, Intel |
+| `x86_64-linux` | Linux x86_64, glibc 2.28+ (Debian 10, Ubuntu 20.04, RHEL 8) |
+| `aarch64-linux` | Linux arm64, glibc 2.28+ |
+| `x86_64-linux-musl` | Linux x86_64, musl (Alpine) |
+| `aarch64-linux-musl` | Linux arm64, musl (Alpine) |
+| `x64-mingw-ucrt` | Windows x64 (RubyInstaller 3.1+) |
+
+0.0.2 and earlier ship a binary for x86_64 Linux (glibc) only. On any
+other platform, see [Unsupported platforms](#unsupported-platforms). The
 [documentation](https://danimar.dev/tuxedo/docs.html) covers what
 the formatter does, its command line and its configuration.
 
@@ -44,8 +56,8 @@ older than 3.3.22 resolves the glibc gem, whose binary will not run.
 ### Unsupported platforms
 
 If a precompiled binary isn't available for your platform yet, set
-`TUXEDO_INSTALL_DIR` to a directory containing a `tuxedo` executable (for
-example, one you built yourself from the
+`TUXEDO_INSTALL_DIR` to a directory containing a `tuxedo` executable
+(`tuxedo.exe` on Windows; for example, one you built yourself from the
 [Rust crate](https://github.com/danimaribeiro/tuxedo)):
 
 ```bash
@@ -60,7 +72,7 @@ bundle exec tuxedo format --check .
 - `tuxedo-r-<platform>` gems (built by `rake package`, see
   [`rakelib/package.rake`](https://github.com/danimaribeiro/tuxedo/blob/main/ruby/rakelib/package.rake))
   each bundle a `tuxedo` binary compiled for that target triple, under
-  `exe/<platform>/tuxedo`.
+  `exe/<platform>/tuxedo` (`tuxedo.exe` on Windows).
 - The `exe/tuxedo` script installed onto your `PATH` is plain Ruby (RubyGems
   requires gem executables to be Ruby scripts) — it just finds the right
   binary for the current platform and `exec`s it, forwarding all arguments and
