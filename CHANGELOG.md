@@ -5,24 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.3] - 2026-11-17
 
 ### Added
 
 - Precompiled `tuxedo-r` gems for macOS (`arm64-darwin`, `x86_64-darwin`),
-  arm64 Linux (`aarch64-linux`) and musl Linux (`x86_64-linux-musl`,
+  arm64 Linux (`aarch64-linux`), musl Linux (`x86_64-linux-musl`,
   `aarch64-linux-musl`) and Windows (`x64-mingw-ucrt`), next to x86_64
   Linux. The GitHub Releases archive is still x86_64 Linux only.
-
-### Fixed
-
-- On Windows, `TUXEDO_INSTALL_DIR` finds `tuxedo.exe`; it looked for
-  `tuxedo`, which Windows does not run.
 
 ### Changed
 
 - The Linux (glibc) binaries need glibc 2.28 or newer (Debian 10, Ubuntu
   20.04, RHEL 8), down from 2.34.
+- A chain on an array or hash literal stays on the closing bracket's line
+  when it fits there (`].map { ... }.join(" ")`), instead of breaking
+  before every `.`. A literal that fits by itself now expands when the
+  whole chain does not fit on one line.
+- A wrapped `return` value and an operand of an `&&`/`||` condition
+  continue two levels in, as RuboCop's indentation cops expect.
+- A `do` block at the end of an `&&`/`||` chain moves to its own line when
+  the line before it does not fit; in a block condition, a multi-line
+  operand puts every operand on its own line.
+- A long `rescue A, B, C => e` list breaks one class per line, like `when`
+  values.
+- A Sorbet `sig { ... }` stays directly above its `def`, with no blank line
+  between them.
+- `redo` and `retry` no longer count as guard clauses, matching RuboCop's
+  `Layout/EmptyLineAfterGuardClause`: no blank line is added after them,
+  and one after a `break if` before them is kept.
+
+### Fixed
+
+- A `( )` body or a multi-line `#{}` holding a `begin`/`rescue`, an
+  `if`/`else` or a `do` block keeps its lines; it was joined with `;`.
+- A trailing comment in a command call without parentheses stays with the
+  argument it follows; it moved to the first argument on that line.
+- Comments stay where they were written among `when` values, between `=`
+  and its value, and after a one-line endless `def` (which no longer
+  expands because of the comment). Trailing whitespace is trimmed from
+  comment lines.
+- Magic comments only count above the first line of code, so a comment
+  that looks like one inside a doc comment no longer gets a blank line
+  forced into it. `typed` and `rbs_inline` now count;
+  `shareable_constant_value` and `warn_indent` still count anywhere.
+- A value after `%` on a backslash-continued string continues from that
+  line's indent.
+- On Windows, `TUXEDO_INSTALL_DIR` finds `tuxedo.exe`; it looked for
+  `tuxedo`, which Windows does not run.
 
 ## [0.0.2] - 2026-09-24
 
